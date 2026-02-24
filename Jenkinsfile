@@ -61,7 +61,7 @@ pipeline {
                             sed -i 's|\${FRONTEND_IMAGE}|${FRONTEND_IMAGE}|g' k8s/infra-test.yaml
                             
                             # 서비스 및 배포 적용
-                            kubectl apply -f k8s/infra-test.yaml
+                            kubectl apply -f k8s/infra-test.yaml --validate=false
                             rm kubeconfig
                         """
                     }
