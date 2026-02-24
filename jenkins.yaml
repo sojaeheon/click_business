@@ -67,7 +67,7 @@ jobs:
                   url('https://lab.ssafy.com/s14-bigdata-dist-sub1/S14P21B109.git')
                   credentials('gitlab-auth')
                 }
-                branches('*/test_infra')
+                branches('*/infra_test')
                 extensions {
                   cleanBeforeCheckout() // 빌드 전 폴더를 깨끗이 비웁니다.
                 }

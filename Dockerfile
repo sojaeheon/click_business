@@ -3,7 +3,7 @@ USER root
 
 # 1. Java 21 및 필수 도구 설치
 RUN apt-get update && apt-get install -y \
-    openjdk-21-jdk \
+    eclipse-temurin:21-jdk-alpine \
     python3 \
     python3-pip \
     python3-venv \
