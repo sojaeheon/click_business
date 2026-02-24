@@ -76,6 +76,15 @@ jobs:
             scriptPath('Jenkinsfile') // 저장소 루트의 Jenkinsfile 읽기
           }
         }
+        triggers {
+          gitlab {
+            triggerOnPush(true)
+            triggerOnMergeRequest(true)
+            secretToken("${GITLAB_WEBHOOK_TOKEN}")
+            setBuildDescription(true)
+            addNoteOnMergeRequest(true)
+          }
+        }
       }
 
 # Mattermost 알림 설정 (필요 시 플러그인 설정 추가)
