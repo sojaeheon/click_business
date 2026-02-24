@@ -1,0 +1,46 @@
+# [보안 관련 - 절대 금지]
+secrets/
+secret.key
+secret.key.not-so-secret
+credentials.xml
+users/
+
+# [빌드 결과물 및 임시 파일]
+war/
+work/
+jobs/*/builds/
+jobs/*/lastStable
+jobs/*/lastSuccessful
+workspace/
+
+# [로그 및 시스템 상태]
+logs/
+*.log
+*.tmp
+*.bak
+Fingerprints/
+
+# [플러그인 관련]
+# 플러그인 자체(.hpi)는 다시 다운로드하면 되므로 제외하는 것이 일반적입니다.
+plugins/*.jpi
+plugins/*.hpi
+plugins/*.bak
+
+# 젠킨스 내부 데이터 제외
+jenkins_home/
+jobs/
+logs/
+*.log
+work/
+workspace/
+secret.key
+secrets/
+credentials.xml
+
+# 1. 환경 변수 파일 (가장 중요)
+.env
+
+# 3. 운영체제 및 IDE 관련
+.DS_Store
+.idea/
+.vscode/

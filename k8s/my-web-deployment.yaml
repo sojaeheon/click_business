@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-web
+spec:
+  replicas: 3          # 서버를 3대 띄워라
+  selector:
+    matchLabels:
+      app: web-server
+  template:
+    metadata:
+      labels:
+        app: web-server
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.16.1 # 처음엔 1.14.2 버전으로 시작
+        ports:
+        - containerPort: 80
