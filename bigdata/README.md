@@ -19,3 +19,6 @@ helm install my-release spark-operator/spark-operator --namespace spark-operator
 
 ## 3. 리소스 관리
 빅데이터 작업은 CPU와 Memory 소모가 큽니다. Jenkins 빌드 시 K8s Cluster의 Node 리소스가 충분한지 반드시 확인하십시오.
+
+## 테스트용
+수정 한 뒤 푸쉬용으로 사용
