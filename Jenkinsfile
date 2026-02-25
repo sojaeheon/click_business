@@ -101,6 +101,11 @@ pipeline {
                                 sed -i 's|\${BACKEND_IMAGE}|${BACKEND_IMAGE}|g' k8s/infra-test.yaml
                                 sed -i 's|\${FRONTEND_IMAGE}|${FRONTEND_IMAGE}|g' k8s/infra-test.yaml
                                 kubectl apply -f k8s/infra-test.yaml --validate=false
+                                
+                                # 강제 재기동 (이미지 태그가 동일하더라도 Pod 교체 유도)
+                                kubectl rollout restart deployment/backend-app
+                                kubectl rollout restart deployment/frontend-app
+                                
                                 rm kubeconfig
                             """
                         }
@@ -152,15 +157,16 @@ pipeline {
                     color: color,
                     channel: 'jetkins',
                     message: """
-                        ### 🚀 빌드/테스트 파이프라인 결과: ${buildStatus}
-                        ${changeLog}
-                        
-                        #### 📋 상세 리포트
-                        ${summaryMsg}
-                        
-                        ---
-                        🔗 [상세 로그 확인하기](${env.BUILD_URL}console)
-                    """.stripIndent()
+**🚀 파이프라인 결과: ${buildStatus}**
+${changeLog}
+
+| Stage | status |
+| :--- | :--- |
+${stageResults.collect { k, v -> "| ${k} | ${v} |" }.join('\n')}
+
+---
+🔗 [상세 로그 확인하기](${env.BUILD_URL ?: 'http://localhost:8080/'}console)
+""".stripIndent()
                 )
             }
         }

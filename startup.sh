@@ -130,6 +130,10 @@ else
     echo "📢 GitLab Webhook 등록 주소:"
     echo "$NGROK_URL/project/S14P21B109-Practice-Pipeline"
     echo "===================================================="
+    
+    # 젠킨스 Root URL 설정을 위해 .env 업데이트
+    sed -i '/JENKINS_URL=/d' .env
+    echo "JENKINS_URL=$NGROK_URL" >> .env
 fi
 
 # 설정 변경사항 Jenkins에 즉시 반영

@@ -87,8 +87,11 @@ jobs:
         }
       }
 
-# Mattermost 알림 설정 (필요 시 플러그인 설정 추가)
+# Mattermost 알림 및 기본 설정
 unclassified:
+  location:
+    adminAddress: "admin@ssafy.com"
+    url: "${JENKINS_URL}"
   mattermostnotifier:
     endpoint: "${MM_WEBHOOK_URL}"
   gitLabConnectionConfig:

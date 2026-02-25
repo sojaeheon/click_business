@@ -21,6 +21,7 @@ spec:
       containers:
       - name: backend
         image: ${BACKEND_IMAGE}
+        imagePullPolicy: Always
         ports:
         - containerPort: 8080
 ---
@@ -61,6 +62,7 @@ spec:
       containers:
       - name: frontend
         image: ${FRONTEND_IMAGE}
+        imagePullPolicy: Always
         ports:
         - containerPort: 80
 ---
