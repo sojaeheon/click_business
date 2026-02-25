@@ -100,6 +100,7 @@ pipeline {
                                 export KUBECONFIG=kubeconfig
                                 sed -i 's|\${BACKEND_IMAGE}|${BACKEND_IMAGE}|g' k8s/infra-test.yaml
                                 sed -i 's|\${FRONTEND_IMAGE}|${FRONTEND_IMAGE}|g' k8s/infra-test.yaml
+                                sed -i 's|\${BUILD_NUMBER}|${env.BUILD_NUMBER}|g' k8s/infra-test.yaml
                                 kubectl apply -f k8s/infra-test.yaml --validate=false
                                 
                                 # 강제 재기동 (이미지 태그가 동일하더라도 Pod 교체 유도)
@@ -165,7 +166,7 @@ ${changeLog}
 ${stageResults.collect { k, v -> "| ${k} | ${v} |" }.join('\n')}
 
 ---
-🔗 [상세 로그 확인하기](${env.BUILD_URL ?: 'http://localhost:8080/'}console)
+🔗 [상세 로그 확인하기](${env.BUILD_URL}console)
 """.stripIndent()
                 )
             }

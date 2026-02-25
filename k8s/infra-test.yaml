@@ -17,6 +17,8 @@ spec:
     metadata:
       labels:
         app: backend
+      annotations:
+        build-number: "${BUILD_NUMBER}"
     spec:
       containers:
       - name: backend
@@ -58,6 +60,8 @@ spec:
     metadata:
       labels:
         app: frontend
+      annotations:
+        build-number: "${BUILD_NUMBER}"
     spec:
       containers:
       - name: frontend
