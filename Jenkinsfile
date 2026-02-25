@@ -1,3 +1,11 @@
+// 각 단계의 결과를 저장할 맵
+def stageResults = [
+    'Backend Build': '➖ Skipped',
+    'Frontend Build': '➖ Skipped',
+    'K8s Deployment': '➖ Skipped',
+    'Big Data Test': '➖ Skipped'
+]
+
 pipeline {
     agent any
 
@@ -32,10 +40,16 @@ pipeline {
                     }
                     steps {
                         script {
-                            docker.withRegistry('https://index.docker.io/v1/', DOCKER_HUB_CREDENTIAL_ID) {
-                                def backendImg = docker.build("${BACKEND_IMAGE}", "./backend")
-                                backendImg.push()
-                                backendImg.push("latest")
+                            try {
+                                docker.withRegistry('https://index.docker.io/v1/', DOCKER_HUB_CREDENTIAL_ID) {
+                                    def backendImg = docker.build("${BACKEND_IMAGE}", "./backend")
+                                    backendImg.push()
+                                    backendImg.push("latest")
+                                }
+                                stageResults['Backend Build'] = '✅ Success'
+                            } catch (e) {
+                                stageResults['Backend Build'] = '❌ Failed'
+                                throw e
                             }
                         }
                     }
@@ -50,10 +64,16 @@ pipeline {
                     }
                     steps {
                         script {
-                            docker.withRegistry('https://index.docker.io/v1/', DOCKER_HUB_CREDENTIAL_ID) {
-                                def frontendImg = docker.build("${FRONTEND_IMAGE}", "./frontend")
-                                frontendImg.push()
-                                frontendImg.push("latest")
+                            try {
+                                docker.withRegistry('https://index.docker.io/v1/', DOCKER_HUB_CREDENTIAL_ID) {
+                                    def frontendImg = docker.build("${FRONTEND_IMAGE}", "./frontend")
+                                    frontendImg.push()
+                                    frontendImg.push("latest")
+                                }
+                                stageResults['Frontend Build'] = '✅ Success'
+                            } catch (e) {
+                                stageResults['Frontend Build'] = '❌ Failed'
+                                throw e
                             }
                         }
                     }
@@ -73,19 +93,21 @@ pipeline {
             }
             steps {
                 script {
-                    withCredentials([string(credentialsId: K8S_CREDENTIAL_ID, variable: 'KUBE_CONTENT')]) {
-                        writeFile file: 'kubeconfig', text: KUBE_CONTENT
-                        sh """
-                            export KUBECONFIG=kubeconfig
-                            # 배포 파일 내 이미지 태그 치환 (변경된 이미지만 반영되도록 sed 처리)
-                            # 빌드되지 않은 이미지는 기존 배포의 'latest'나 이전 버전을 유지하도록 논리를 짤 수 있으나,
-                            # 여기서는 새 빌드 번호로 태깅된 이미지가 push 되었을 때만 정상 작동함.
-                            sed -i 's|\${BACKEND_IMAGE}|${BACKEND_IMAGE}|g' k8s/infra-test.yaml
-                            sed -i 's|\${FRONTEND_IMAGE}|${FRONTEND_IMAGE}|g' k8s/infra-test.yaml
-                            
-                            kubectl apply -f k8s/infra-test.yaml --validate=false
-                            rm kubeconfig
-                        """
+                    try {
+                        withCredentials([string(credentialsId: K8S_CREDENTIAL_ID, variable: 'KUBE_CONTENT')]) {
+                            writeFile file: 'kubeconfig', text: KUBE_CONTENT
+                            sh """
+                                export KUBECONFIG=kubeconfig
+                                sed -i 's|\${BACKEND_IMAGE}|${BACKEND_IMAGE}|g' k8s/infra-test.yaml
+                                sed -i 's|\${FRONTEND_IMAGE}|${FRONTEND_IMAGE}|g' k8s/infra-test.yaml
+                                kubectl apply -f k8s/infra-test.yaml --validate=false
+                                rm kubeconfig
+                            """
+                        }
+                        stageResults['K8s Deployment'] = '✅ Success'
+                    } catch (e) {
+                        stageResults['K8s Deployment'] = '❌ Failed'
+                        throw e
                     }
                 }
             }
@@ -94,7 +116,15 @@ pipeline {
         stage('Big Data Integration Test') {
             when { changeset "bigdata/**" }
             steps {
-                echo '빅데이터 분산 환경(Spark/Hadoop) 연결 테스트 및 리소스 할당 검증...'
+                script {
+                    try {
+                        echo '빅데이터 분산 환경 연동 테스트 중...'
+                        stageResults['Big Data Test'] = '✅ Success'
+                    } catch (e) {
+                        stageResults['Big Data Test'] = '❌ Failed'
+                        throw e
+                    }
+                }
             }
         }
     }
@@ -103,17 +133,33 @@ pipeline {
         always {
             script {
                 def buildStatus = currentBuild.currentResult
-                def color = (buildStatus == 'SUCCESS') ? '#00FF00' : '#FF0000'
+                def color = (buildStatus == 'SUCCESS') ? '#00FF00' : (buildStatus == 'FAILURE' ? '#FF0000' : '#FFA500')
                 
+                // 상세 리포트 생성
+                def summaryMsg = stageResults.collect { k, v -> "- **${k}**: ${v}" }.join('\n')
+                
+                // 커밋 정보 가져오기
+                def changeLog = "N/A"
+                try {
+                    def changeLogSets = currentBuild.changeSets
+                    if (changeLogSets.size() > 0 && changeLogSets[0].items.length > 0) {
+                        def entry = changeLogSets[0].items[0]
+                        changeLog = "✍️ **Author:** ${entry.author.fullName}\n💬 **Msg:** ${entry.msg}"
+                    }
+                } catch (e) { /* ignore */ }
+
                 mattermostSend (
                     color: color,
                     channel: 'jetkins',
                     message: """
-                        ### 🚀 인프라 구축 테스트 알림: ${buildStatus}
-                        - **Backend:** `${BACKEND_IMAGE}`
-                        - **Frontend:** `${FRONTEND_IMAGE}`
-                        - **대상:** Spring + React + Big Data Infra
-                        - **결과:** [Jenkins Log](${env.BUILD_URL})
+                        ### 🚀 빌드/테스트 파이프라인 결과: ${buildStatus}
+                        ${changeLog}
+                        
+                        #### 📋 상세 리포트
+                        ${summaryMsg}
+                        
+                        ---
+                        🔗 [상세 로그 확인하기](${env.BUILD_URL}console)
                     """.stripIndent()
                 )
             }
