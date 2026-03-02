@@ -1,5 +1,4 @@
 ### --- [1. Security & Secrets] --- ###
-# 절대 Git에 포함되면 안 되는 민감 정보
 .env
 .env.*
 /env/
@@ -20,13 +19,16 @@ build/
 bin/
 out/
 target/
+# 예외 처리: 빌드 폴더 내 일부 실행에 필요한 파일은 허용
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
 # Spring Boot sensitive setting files (Local)
 application*.properties
 application*.yml
 .mvn/wrapper/maven-wrapper.jar
 
 ### --- [3. Jenkins & CI/CD] --- ###
-# Jenkins Home 내의 데이터 및 빌드 결과물
 .jenkins/
 jenkins_home/
 war/
@@ -39,13 +41,11 @@ workspace/
 *.war
 *.ear
 *.jar
-# Jenkinsfile.local (로컬 테스트용)
 
 ### --- [4. Docker & Kubernetes] --- ###
 .docker/
 docker-compose.override.yml
 .kube/
-# Helm 차트 결과물
 charts/*.tgz
 charts/charts/
 charts/index.yaml
@@ -59,6 +59,10 @@ charts/index.yaml
 .classpath
 .project
 .settings/
+.apt_generated
+.factorypath
+.springBeans
+.sts4-cache
 .DS_Store
 Thumbs.db
 desktop.ini
