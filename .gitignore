@@ -76,3 +76,5 @@ tmp/
 /data/
 *.db
 *.sqlite
+
+rule.md
