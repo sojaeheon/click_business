@@ -38,11 +38,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         // 유저 정보 저장 또는 업데이트 로직
         User user = saveOrUpdateUser(provider, providerUserId, email);
 
-        return new DefaultOAuth2User(
-                Collections.emptyList(),
-                attributes,
-                userRequest.getClientRegistration().getProviderDetails().getUserInfoEndpoint()
-                        .getUserNameAttributeName());
+        return new PrincipalDetails(user, attributes);
     }
 
     private User saveOrUpdateUser(String provider, String providerUserId, String email) {
