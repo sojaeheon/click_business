@@ -7,6 +7,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.http.HttpStatus;
@@ -49,7 +50,7 @@ public class SecurityConfig {
                                                 .anyRequest().authenticated())
                                 .headers(headers -> headers.frameOptions(options -> options.disable())) // H2 콘솔 프레임 허용
                                 .addFilterBefore(new OAuth2GuestFilter(tokenProvider),
-                                                UsernamePasswordAuthenticationFilter.class)
+                                                OAuth2AuthorizationRequestRedirectFilter.class)
                                 .addFilterBefore(new JwtAuthenticationFilter(tokenProvider),
                                                 UsernamePasswordAuthenticationFilter.class)
                                 .oauth2Login(oauth2 -> oauth2

@@ -21,8 +21,9 @@ public class OAuth2GuestFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 
+        String uri = request.getRequestURI();
         // OAuth2 인증 시작 요청(/oauth2/authorization/*)인 경우에만 체크
-        if (request.getRequestURI().startsWith("/oauth2/authorization/")) {
+        if (uri.contains("/oauth2/authorization/")) {
             String token = resolveToken(request);
             if (token != null && tokenProvider.validateToken(token)) {
                 Authentication auth = tokenProvider.getAuthentication(token);

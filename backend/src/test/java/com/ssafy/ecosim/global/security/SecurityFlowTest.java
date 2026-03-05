@@ -16,7 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-class SecurityFlowTest {
+public class SecurityFlowTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -29,7 +29,7 @@ class SecurityFlowTest {
 
     @Test
     @DisplayName("회원가입 API는 인증 없이 접근 가능해야 한다")
-    void signupApiIsPublic() throws Exception {
+    public void signupApiIsPublic() throws Exception {
         String randomId = java.util.UUID.randomUUID().toString();
         mockMvc.perform(post("/api/v1/users/signup")
                 .contentType(MediaType.APPLICATION_JSON)
