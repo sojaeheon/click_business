@@ -50,8 +50,8 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         return userOauthRepository.findByProviderAndProviderUserId(provider, providerUserId)
                 .map(UserOauth::getUser)
                 .orElseGet(() -> {
-                    // 2. 가입된 정보가 없다면, 현재 세션에 게스트 ID가 있는지 확인 (연동 처리)
-                    Long guestId = getGuestIdFromSession();
+                    // 2. 가입된 정보가 없다면, 현재 요청 쿠키에 게스트 ID가 있는지 확인 (연동 처리)
+                    Long guestId = getGuestIdFromCookie();
                     User user;
 
                     if (guestId != null) {
@@ -75,7 +75,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         return userRepository.save(newUser);
     }
 
-    private Long getGuestIdFromSession() {
+    private Long getGuestIdFromCookie() {
         try {
             HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes())
                     .getRequest();
