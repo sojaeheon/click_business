@@ -1,10 +1,13 @@
 package com.ssafy.ecosim.domain.user.controller;
 
 import com.ssafy.ecosim.domain.user.dto.request.UserRegisterRequest;
+import com.ssafy.ecosim.domain.user.dto.response.LoginResponse;
 import com.ssafy.ecosim.domain.user.dto.response.UserProfileDto;
 import com.ssafy.ecosim.domain.user.entity.User;
 import com.ssafy.ecosim.domain.user.service.UserService;
 import com.ssafy.ecosim.global.common.ApiResponse;
+import com.ssafy.ecosim.global.security.JwtTokenProvider;
+import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
@@ -14,15 +17,25 @@ import org.springframework.web.bind.annotation.*;
 public class UserController {
 
     private final UserService userService;
+    private final JwtTokenProvider tokenProvider;
 
-    public UserController(UserService userService) {
+    public UserController(UserService userService, JwtTokenProvider tokenProvider) {
         this.userService = userService;
+        this.tokenProvider = tokenProvider;
     }
 
     @PostMapping("/signup")
-    public ApiResponse<Long> register(@RequestBody UserRegisterRequest request) {
+    public ApiResponse<LoginResponse> register(@Valid @RequestBody UserRegisterRequest request) {
         Long userId = userService.registerUser(request);
-        return ApiResponse.success(userId);
+        String token = tokenProvider.createToken(userId, request.getEmail());
+        return ApiResponse.success(new LoginResponse(token, userId, false));
+    }
+
+    @PostMapping("/guest")
+    public ApiResponse<LoginResponse> createGuest() {
+        Long guestId = userService.createGuestUser();
+        String token = tokenProvider.createToken(guestId, "guest_" + guestId + "@ecosim.com");
+        return ApiResponse.success(new LoginResponse(token, guestId, true));
     }
 
     @GetMapping("/me")
