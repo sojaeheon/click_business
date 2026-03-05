@@ -12,6 +12,10 @@ import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.Cookie;
 
 import java.util.Collections;
 import java.util.Map;
@@ -42,15 +46,50 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     }
 
     private User saveOrUpdateUser(String provider, String providerUserId, String email) {
+        // 1. 이미 가입된 OAuth 정보가 있는지 확인
         return userOauthRepository.findByProviderAndProviderUserId(provider, providerUserId)
                 .map(UserOauth::getUser)
                 .orElseGet(() -> {
-                    User newUser = new User(false);
-                    userRepository.save(newUser);
+                    // 2. 가입된 정보가 없다면, 현재 세션에 게스트 ID가 있는지 확인 (연동 처리)
+                    Long guestId = getGuestIdFromSession();
+                    User user;
 
-                    UserOauth oauth = new UserOauth(newUser, provider, providerUserId, email);
+                    if (guestId != null) {
+                        user = userRepository.findById(guestId)
+                                .orElseGet(() -> createNewUser());
+                        if (user.getIsGuest()) {
+                            user.promoteFromGuest(); // 게스트에서 일반 유저로 승격
+                        }
+                    } else {
+                        user = createNewUser();
+                    }
+
+                    UserOauth oauth = new UserOauth(user, provider, providerUserId, email);
                     userOauthRepository.save(oauth);
-                    return newUser;
+                    return user;
                 });
+    }
+
+    private User createNewUser() {
+        User newUser = new User(false);
+        return userRepository.save(newUser);
+    }
+
+    private Long getGuestIdFromSession() {
+        try {
+            HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes())
+                    .getRequest();
+
+            if (request.getCookies() != null) {
+                for (jakarta.servlet.http.Cookie cookie : request.getCookies()) {
+                    if ("GUEST_ID".equals(cookie.getName())) {
+                        return Long.parseLong(cookie.getValue());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // 쿠키 접근 또는 파싱 실패 시 무시
+        }
+        return null;
     }
 }
