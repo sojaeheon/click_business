@@ -51,4 +51,6 @@ tasks.withType(JavaCompile) {
 
 test {
 	systemProperty "file.encoding", "UTF-8"
+	useJUnitPlatform()
+	scanForTestClasses = true
 }
