@@ -7,7 +7,9 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.http.HttpStatus;
 
 @Configuration
 @EnableWebSecurity
@@ -36,15 +38,16 @@ public class SecurityConfig {
                                                                                 // (Django의 SessionMiddleware와 다른 점)
                 )
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/", "/h2-console/**", "/oauth2/**", "/login/**").permitAll() // 메인, H2 콘솔, 로그인
-                                                                                                       // 경로는 허용
-                        .anyRequest().authenticated() // 나머지는 인증 필요
-                )
+                        .requestMatchers("/", "/h2-console/**", "/oauth2/**", "/login/**", "/api/v1/users/signup")
+                        .permitAll()
+                        .anyRequest().authenticated())
                 .headers(headers -> headers.frameOptions(options -> options.disable())) // H2 콘솔 프레임 허용
                 .addFilterBefore(new JwtAuthenticationFilter(tokenProvider), UsernamePasswordAuthenticationFilter.class)
                 .oauth2Login(oauth2 -> oauth2
                         .userInfoEndpoint(info -> info.userService(customOAuth2UserService))
-                        .successHandler(successHandler));
+                        .successHandler(successHandler))
+                .exceptionHandling(handler -> handler
+                        .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)));
 
         return http.build();
     }
