@@ -14,9 +14,15 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtTokenProvider tokenProvider;
+    private final CustomOAuth2UserService customOAuth2UserService;
+    private final OAuth2AuthenticationSuccessHandler successHandler;
 
-    public SecurityConfig(JwtTokenProvider tokenProvider) {
+    public SecurityConfig(JwtTokenProvider tokenProvider,
+            CustomOAuth2UserService customOAuth2UserService,
+            OAuth2AuthenticationSuccessHandler successHandler) {
         this.tokenProvider = tokenProvider;
+        this.customOAuth2UserService = customOAuth2UserService;
+        this.successHandler = successHandler;
     }
 
     @Bean
@@ -37,10 +43,8 @@ public class SecurityConfig {
                 .headers(headers -> headers.frameOptions(options -> options.disable())) // H2 콘솔 프레임 허용
                 .addFilterBefore(new JwtAuthenticationFilter(tokenProvider), UsernamePasswordAuthenticationFilter.class)
                 .oauth2Login(oauth2 -> oauth2
-                // .userInfoEndpoint(info -> info.userService(customOAuth2UserService)) // 나중에 이
-                // 부분을 추가할 예정입니다.
-                // .successHandler(oAuth2AuthenticationSuccessHandler)
-                );
+                        .userInfoEndpoint(info -> info.userService(customOAuth2UserService))
+                        .successHandler(successHandler));
 
         return http.build();
     }
