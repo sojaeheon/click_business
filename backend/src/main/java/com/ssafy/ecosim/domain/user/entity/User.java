@@ -13,9 +13,6 @@ public class User extends BaseEntity {
     @Column(name = "user_id")
     private Long id;
 
-    @Column(length = 50, nullable = false)
-    private String nickname;
-
     @Column(nullable = false)
     private Boolean isGuest = false;
 
@@ -23,8 +20,7 @@ public class User extends BaseEntity {
     protected User() {
     }
 
-    public User(String nickname, Boolean isGuest) {
-        this.nickname = nickname;
+    public User(Boolean isGuest) {
         this.isGuest = isGuest;
     }
 
@@ -32,11 +28,11 @@ public class User extends BaseEntity {
         return id;
     }
 
-    public String getNickname() {
-        return nickname;
-    }
-
     public Boolean getIsGuest() {
         return isGuest;
+    }
+
+    public void promoteFromGuest() {
+        this.isGuest = false;
     }
 }
