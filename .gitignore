@@ -121,3 +121,16 @@ tmp/
 /env/
 .env
 .env.*
+# Frontend specific
+node_modules/
+dist/
+dist-ssr/
+*.local
+.npm/
+.pnpm-debug.log*
+.yarn/
+.editorconfig
+.eslintcache
+.stylelintcache
+*.tsbuildinfo
+.vite
