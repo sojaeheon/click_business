@@ -79,3 +79,4 @@ tmp/
 *.sqlite
 
 rule.md
+/postgres_data/
