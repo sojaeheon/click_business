@@ -1,48 +1,40 @@
 /// <reference types="@react-three/fiber" />
-import React, { useRef, useState, useMemo } from "react";
+import React, { useRef, useState, useMemo, useEffect } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { MapControls, Text, useGLTF } from "@react-three/drei";
+// ★ Html 모듈을 추가로 import 합니다!
+import { MapControls, Text, useGLTF, Html, useAnimations } from "@react-three/drei";
 import * as THREE from "three";
 import { useGame } from "../../store/gameStore";
 import type { BuildingPage } from "../../store/gameStore";
+// @ts-ignore
+import { ConveyorBelt } from "../models/Animated_conveyer_belt.jsx";
 
 // ==========================================
-// ⚙️ [게임 설정 및 커스텀 (Configuration)] ⚙️
-// ------------------------------------------
-// ※ 거리/크기 단위 설명: 
-//   - 모든 숫자는 '블록(Grid) 1칸'을 1단위로 합니다.
-//   - 숫자가 5라면 블록 5칸만큼의 길이나 거리를 의미합니다.
+// ⚙️ [게임 설정 및 커스텀 (Configuration)]
 // ==========================================
-export const CONFIG = {
-  // 1. 화면(카메라) 각도 및 줌 설정
+const CONFIG = {
   CAMERA: {
-    polarAngle: Math.PI / 3,     // [수직 각도] 위아래 회전각 (고정값)
-    azimuthAngle: Math.PI / 4,   // [수평 각도] 좌우 회전각 (고정값)
-    initialZoom: 100,             // [기본 확대수준] 숫자가 클수록 가깝게 보입니다.
-    distance: 60,                // [가상 거리] 건물을 바라보는 시점의 깊이감
-    minZoom: 100,                 // [축소 금지] initialZoom과 동일하게 설정하여 더 멀어지는 것을 막았습니다.
-    maxZoom: 180,                // [확대 허용] 숫자를 높여서 더 가까이 볼 수 있게 했습니다.
-    boundLimit: 3,               // [이동 반경] 중심(0,0)에서 블록 8칸 이상 못 벗어나게 제한 (약 20% 수준)
+    polarAngle: Math.PI / 3,
+    azimuthAngle: Math.PI / 4,
+    initialZoom: 90,
+    distance: 60,
+    minZoom: 90,
+    maxZoom: 180,
+    boundLimit: 3,
   },
-
-  // 2. 건물 배치 간격 (Layout)
   LAYOUT: {
-    xSpread: 5,   // 좌우 행 건물들이 중심에서 떨어진 거리 (블록 5칸)
-    zSpread: 3,   // 상하 열 건물들이 중심에서 떨어진 거리 (블록 3칸)
+    xSpread: 5,
+    zSpread: 3,
   },
-
-  // 3. 건물 기본 크기 (Scale)
-  // 1.0 이면 원래 크기(박스 크기), 0.7 이면 70% 크기입니다.
   BUILDING_SCALE: 0.7,
 };
-// ==========================================
 
 const buildingToPage: Record<string, BuildingPage> = {
   hr: "hr",
   bank: "bank",
   warehouse: "warehouse",
   minigame: "minigame",
-  factory: "factory",
+  // factory: "factory", <- 이제 페이지 이동을 안 하므로 지우거나 무시해도 됩니다.
   market: "market",
 };
 
@@ -57,7 +49,6 @@ function WorldBounds() {
       if (target) {
         target.x = THREE.MathUtils.clamp(target.x, -limit, limit);
         target.z = THREE.MathUtils.clamp(target.z, -limit, limit);
-        // 컨트롤 업데이트를 호출하여 변경사항을 즉시 반영합니다.
         // @ts-ignore
         controls.update();
       }
@@ -108,11 +99,8 @@ function HoverableGroup({
 }
 
 // --- [ GLTF Model Loading Component ] ---
-// 외부 분리된 GLTF/GLB 파일을 불러오기 위한 컴포넌트입니다.
-// public 폴더 밑에 있는 모델 파일 경로를 modelUrl 로 전달하면 됩니다. (예: modelUrl="/models/bank.glb")
 function CustomModel({ modelUrl }: { modelUrl: string }) {
   const { scene } = useGLTF(modelUrl);
-  // 그림자 적용을 위해 모델 안의 모든 mesh에 castShadow/receiveShadow 부여
   useMemo(() => {
     scene.traverse((child: any) => {
       if ((child as THREE.Mesh).isMesh) {
@@ -125,7 +113,7 @@ function CustomModel({ modelUrl }: { modelUrl: string }) {
   return <primitive object={scene} />;
 }
 
-// --- [ Building Component ] ---
+// --- [ Building Component (일반 건물) ] ---
 function Building({ position, size, color, label, name, onClick, scale = CONFIG.BUILDING_SCALE, modelUrl }: any) {
   const [w, h, d] = size;
 
@@ -134,10 +122,7 @@ function Building({ position, size, color, label, name, onClick, scale = CONFIG.
     for (let row = 0; row < Math.floor(h / 0.6); row++) {
       for (let col = 0; col < Math.floor(w / 0.8); col++) {
         list.push(
-          <mesh
-            key={`${row}-${col}`}
-            position={[-w / 2 + 0.5 + col * 0.7, 0.5 + row * 0.6, d / 2 + 0.01]}
-          >
+          <mesh key={`${row}-${col}`} position={[-w / 2 + 0.5 + col * 0.7, 0.5 + row * 0.6, d / 2 + 0.01]}>
             <boxGeometry args={[0.3, 0.3, 0.02]} />
             <meshStandardMaterial color="#a8d8ea" emissive="#a8d8ea" emissiveIntensity={0.15} />
           </mesh>
@@ -149,22 +134,13 @@ function Building({ position, size, color, label, name, onClick, scale = CONFIG.
 
   return (
     <HoverableGroup position={position} scale={scale} onClick={onClick} originalColor={color}>
-      {/* 
-        ★ GLTF 커스텀 모델 적용 방법 ★
-        만약 modelUrl이 프롭스로 전달되었다면(예: modelUrl="/models/my_building.gltf"),
-        기본 박스 형태(Mockup)를 렌더링하지 않고 해당 3D 파일을 렌더링하도록 분기합니다.
-      */}
       {modelUrl ? (
         <React.Suspense fallback={
-          <mesh>
-            <boxGeometry args={size} />
-            <meshStandardMaterial color={color} wireframe />
-          </mesh>
+          <mesh><boxGeometry args={size} /><meshStandardMaterial color={color} wireframe /></mesh>
         }>
           <CustomModel modelUrl={modelUrl} />
         </React.Suspense>
       ) : (
-        // [기본 Mockup 박스형 건물]
         <>
           <mesh position={[0, -0.05, 0]} receiveShadow>
             <boxGeometry args={[w + 0.6, 0.1, d + 0.6]} />
@@ -182,9 +158,8 @@ function Building({ position, size, color, label, name, onClick, scale = CONFIG.
         </>
       )}
 
-      {/* 라벨 텍스트 */}
       <Text
-        position={[0, modelUrl ? 3.0 : h + 1.2, 0]} // 모델 로드시 텍스트 높이
+        position={[0, modelUrl ? 3.0 : h + 1.2, 0]}
         fontSize={0.5}
         color="#333"
         anchorX="center"
@@ -198,121 +173,157 @@ function Building({ position, size, color, label, name, onClick, scale = CONFIG.
   );
 }
 
-// pre-load 처리 (선택사항)
-// useGLTF.preload("/models/my_building.gltf");
+// --- [ Factory Component (오픈형 작업장) ] ---
+function Factory({ position, scale = CONFIG.BUILDING_SCALE }: any) {
+  const workerRef = useRef<THREE.Group>(null);
 
-// --- [ Factory Component ] ---
-function Factory({ position, onClick, scale = CONFIG.BUILDING_SCALE }: any) {
-  const gearRef = useRef<THREE.Mesh>(null);
-  const smokeRefs = useRef<(THREE.Mesh | null)[]>([]);
+  // --- [ 애니메이션 설정 추가 ] ---
+  // 1. 애니메이션 파일 로드
+  const { animations: toolAnimations } = useGLTF("/models/animations/Rig_Medium_Tools.glb");
+  // 2. workerRef를 대상으로 하는 애니메이션 액션 추출
+  const { actions } = useAnimations(toolAnimations, workerRef);
+
+  // ★ 모달창(팝업)을 띄울지 말지 결정하는 상태값
+  const [showModal, setShowModal] = useState(false);
+
+  useEffect(() => {
+    if (!actions) return;
+
+    // 3. 애니메이션 찾기 순서: 
+    //   (1) 이름에 'tool'이 포함된 것 
+    //   (2) 'pickaxing' (곡괭이질)
+    //   (3) 'working_a' (일반 작업)
+    const actionNames = Object.keys(actions);
+    console.log("찾은 전체 애니메이션 목록:", actionNames);
+
+    const targetAction = actionNames.find(name => name.toLowerCase().endsWith("tool")) ||
+      actionNames.find(name => name.toLowerCase().includes("pickaxing")) ||
+      actionNames.find(name => name.toLowerCase().includes("working_a"));
+
+    // 4. 애니메이션이 존재하면 재생합니다.
+    if (targetAction && actions[targetAction]) {
+      console.log("재생할 애니메이션:", targetAction);
+      actions[targetAction].reset().fadeIn(0.5).play();
+    }
+  }, [actions]);
 
   useFrame((state) => {
-    const elapsed = state.clock.elapsedTime;
-    if (gearRef.current) gearRef.current.rotation.z += 0.01;
-    smokeRefs.current.forEach((smoke, i) => {
-      if (smoke) {
-        const baseY = 2.8 + i * 0.4;
-        const speed = 0.3 + (i % 2) * 0.2;
-        smoke.position.y = baseY + Math.sin(elapsed * speed + (i * 0.5)) * 0.3;
-        const mat = smoke.material as THREE.MeshStandardMaterial;
-        if (mat) mat.opacity = 0.3 + Math.sin(elapsed * 0.5) * 0.15;
-      }
-    });
+    // const elapsed = state.clock.elapsedTime;
   });
 
   return (
-    <HoverableGroup position={position} scale={scale} onClick={onClick} originalColor="#c8c8c8">
-      <mesh position={[0, -0.05, 0]} receiveShadow>
-        <boxGeometry args={[3.6, 0.1, 3.6]} />
-        <meshStandardMaterial color="#e0e0e0" />
+    // 클릭 시 페이지 이동이 아니라, 모달을 띄우도록(showModal을 true로) 변경!
+    <HoverableGroup position={position} scale={scale} onClick={() => setShowModal(true)} originalColor="#a0a0a0">
+
+      {/* 0. 작업장 바닥 */}
+      <mesh position={[0, -0.05, 0]} receiveShadow userData={{ isBody: true }}>
+        <boxGeometry args={[4, 0.1, 4]} />
+        <meshStandardMaterial color="#8b7355" />
       </mesh>
-      <mesh position={[0, 0.75, 0]} castShadow receiveShadow userData={{ isBody: true }}>
-        <boxGeometry args={[3, 1.5, 3]} />
-        <meshStandardMaterial color="#c8c8c8" metalness={0.2} roughness={0.7} />
-      </mesh>
-      <mesh position={[-0.8, 2, -0.5]} castShadow>
-        <cylinderGeometry args={[0.2, 0.25, 1.5, 8]} />
-        <meshStandardMaterial color="#888" />
-      </mesh>
-      <mesh position={[-0.3, 1.85, -0.5]} castShadow>
-        <cylinderGeometry args={[0.15, 0.2, 1.2, 8]} />
-        <meshStandardMaterial color="#777" />
-      </mesh>
-      {[0, 1, 2].map((i) => (
-        <mesh
-          key={i}
-          ref={(el: any) => { smokeRefs.current[i] = el; }}
-          position={[-0.8, 2.8 + i * 0.4, -0.5]}
-        >
-          <sphereGeometry args={[0.15 + i * 0.08, 8, 8]} />
-          <meshStandardMaterial color="#ddd" transparent opacity={0.5} />
-        </mesh>
-      ))}
-      <mesh ref={gearRef} position={[0.5, 1.8, 1.51]} castShadow>
-        <torusGeometry args={[0.3, 0.08, 8, 6]} />
-        <meshStandardMaterial color="#666" metalness={0.5} />
-      </mesh>
-      <mesh position={[0, 0.3, 1.8]} receiveShadow>
-        <boxGeometry args={[1.5, 0.15, 0.6]} />
-        <meshStandardMaterial color="#777" />
-      </mesh>
-      {[0, 1, 2].map((i) => (
-        <mesh key={i} position={[-0.4 + i * 0.4, 0.5, 1.8]} castShadow>
-          <boxGeometry args={[0.25, 0.15, 0.15]} />
-          <meshStandardMaterial color="#DAA520" metalness={0.6} roughness={0.3} />
-        </mesh>
-      ))}
-      <Text
-        position={[0, 2.8, 0]}
-        fontSize={0.5}
-        color="#333"
-        anchorX="center"
-        anchorY="middle"
-        outlineWidth={0.03}
-        outlineColor="#fff"
-      >
-        공장
-      </Text>
+
+      {/* ★ 3D 공간 위에 떠있는 HTML 미니 모달창 ★ */}
+      {showModal && (
+        <Html position={[0, 2.5, 0]} center className="pointer-events-auto">
+          <div className="bg-white border-2 border-slate-800 rounded-xl p-4 shadow-xl flex flex-col gap-3 w-56 animate-in zoom-in duration-200">
+            <h3 className="font-bold text-center text-slate-800 flex items-center justify-center gap-2">
+              <span>⛏️</span> 작업 지시
+            </h3>
+            <div className="text-xs text-slate-500 text-center mb-1">
+              무엇을 캘까요?
+            </div>
+
+            {/* 작업 버튼들 */}
+            <button
+              className="bg-yellow-400 text-yellow-900 font-bold py-2 rounded-lg border-2 border-yellow-500 hover:bg-yellow-300 transition-colors"
+              onClick={(e) => {
+                e.stopPropagation(); // 클릭 이벤트가 바닥으로 뚫고 들어가는 것 방지
+                alert('금광석 캐기를 시작합니다!');
+                setShowModal(false);
+              }}
+            >
+              금광석 캐기
+            </button>
+            <button
+              className="bg-slate-200 text-slate-800 font-bold py-2 rounded-lg border-2 border-slate-300 hover:bg-slate-300 transition-colors"
+              onClick={(e) => {
+                e.stopPropagation();
+                alert('은광석 캐기를 시작합니다!');
+                setShowModal(false);
+              }}
+            >
+              은광석 캐기
+            </button>
+
+            {/* 닫기 버튼 */}
+            <button
+              className="mt-2 text-xs text-slate-400 underline hover:text-slate-600"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowModal(false);
+              }}
+            >
+              닫기
+            </button>
+          </div>
+        </Html>
+      )}
+
+      {/* 1. 커다란 금광석 */}
+      <group scale={[0.6, 0.6, 0.6]} position={[-0.8, 0.8, -0.5]}>
+        {/* ★ 이렇게 React.Suspense 로 감싸야 흰 화면이 안 뜹니다! ★ */}
+        <React.Suspense fallback={<mesh><boxGeometry args={[1, 1, 1]} /><meshStandardMaterial color="red" wireframe /></mesh>}>
+          {/* 테스트용 가짜 모델 (실제 모델 경로로 바꾸세요) */}
+          {/* <CustomModel modelUrl="/models/props/animated_conveyer_belt.glb" /> */}
+          <ConveyorBelt />
+        </React.Suspense>
+      </group>
+
+      {/* 2. 작업자 캐릭터 */}
+      <group ref={workerRef} position={[2, 0, 1]} rotation={[0, 130, 0]}>
+        <React.Suspense fallback={<mesh><boxGeometry args={[0.5, 1, 0.5]} /><meshStandardMaterial color="blue" wireframe /></mesh>}>
+          <CustomModel modelUrl="/models/characters/Barbarian.glb" />
+        </React.Suspense>
+      </group>
+
+      {/* 3. 금광석 더미 */}
+      <group position={[1.2, 0, -1.2]}>
+        <React.Suspense fallback={<mesh><boxGeometry args={[0.5, 0.5, 0.5]} /><meshStandardMaterial color="yellow" wireframe /></mesh>}>
+          <CustomModel modelUrl="/models/props/Gold_Nugget_Large.gltf" />
+        </React.Suspense>
+      </group>
+
     </HoverableGroup>
   );
 }
 
 // --- [ Environment Component ] ---
 function Environment() {
-  // 도로 배치를 위한 기준값 계산 (CONFIG.LAYOUT 기준)
-  const hRoads = [-CONFIG.LAYOUT.zSpread - 3, 0, CONFIG.LAYOUT.zSpread + 3]; // 가로 길 3개
+  const hRoads = [-CONFIG.LAYOUT.zSpread - 3, 0, CONFIG.LAYOUT.zSpread + 3];
   const vRoads = [
     -CONFIG.LAYOUT.xSpread - 3,
     -CONFIG.LAYOUT.xSpread + 2.5,
     CONFIG.LAYOUT.xSpread - 2.5,
     CONFIG.LAYOUT.xSpread + 3
-  ]; // 세로 길 4개
+  ];
 
   return (
     <group>
-      {/* 바닥 전체 판 */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, 0]} receiveShadow>
         <planeGeometry args={[2000, 2000]} />
         <meshStandardMaterial color="#f0ede8" />
       </mesh>
-
-      {/* 가로 도로 3개 (3x2 그리드용) */}
       {hRoads.map((z, i) => (
         <mesh key={`h-${i}`} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, z]}>
           <planeGeometry args={[40, 1.2]} />
           <meshStandardMaterial color="#d4d4d4" />
         </mesh>
       ))}
-
-      {/* 세로 도로 4개 (3x2 그리드용) */}
       {vRoads.map((x, i) => (
         <mesh key={`v-${i}`} rotation={[-Math.PI / 2, 0, 0]} position={[x, 0.01, 0]}>
           <planeGeometry args={[1.2, 20]} />
           <meshStandardMaterial color="#d4d4d4" />
         </mesh>
       ))}
-
-      {/* 배경 가이드 그리드 (얇은 선) */}
       {Array.from({ length: 41 }).map((_, i) => (
         <group key={i}>
           <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, -60 + i * 3]}>
@@ -346,11 +357,6 @@ const GameScene = () => {
 
       <Environment />
 
-      {/* 건물 배치를 CONFIG 파일의 변수로 연동했습니다. */}
-      {/* 
-        ★ GLTF 모델 적용 예시 ★ 
-        <Building ... modelUrl="/models/bank.glb" /> 형태로 속성을 추가하세요! 
-      */}
       <Building
         position={[-CONFIG.LAYOUT.xSpread, 0, -CONFIG.LAYOUT.zSpread]}
         size={[2, 2, 2]}
@@ -387,11 +393,17 @@ const GameScene = () => {
         scale={CONFIG.BUILDING_SCALE}
         onClick={() => handleBuildingClick("minigame")}
       />
-      <Factory
-        position={[0, 0, CONFIG.LAYOUT.zSpread]}
-        scale={CONFIG.BUILDING_SCALE}
-        onClick={() => handleBuildingClick("factory")}
-      />
+
+      {/* ★ Factory는 이제 외부 클릭 핸들러를 받지 않고 내부에서 모달을 켭니다! 
+          Suspense로 감싸서 로딩 중 크래시를 방지합니다.
+      */}
+      <React.Suspense fallback={null}>
+        <Factory
+          position={[0, 0, CONFIG.LAYOUT.zSpread]}
+          scale={CONFIG.BUILDING_SCALE}
+        />
+      </React.Suspense>
+
       <Building
         position={[CONFIG.LAYOUT.xSpread, 0, CONFIG.LAYOUT.zSpread]}
         size={[2.5, 1.5, 2]}
@@ -406,13 +418,10 @@ const GameScene = () => {
 };
 
 export function IsometricScene() {
-  // CONFIG에서 설정한 각도를 카메라의 위치로 계산하기 (구면 좌표계 -> 데카르트 좌표계)
-  // 좌우 회전, 위아래 회전을 모두 반영하여 카메라가 어디서 시작할지 정해줍니다.
   const d = CONFIG.CAMERA.distance;
   const pAngle = CONFIG.CAMERA.polarAngle;
   const aAngle = CONFIG.CAMERA.azimuthAngle;
 
-  // 구면 좌표계를 이용한 3D x, y, z 변환 공식
   const cx = d * Math.sin(pAngle) * Math.sin(aAngle);
   const cy = d * Math.cos(pAngle);
   const cz = d * Math.sin(pAngle) * Math.cos(aAngle);
@@ -431,26 +440,26 @@ export function IsometricScene() {
         <GameScene />
         <WorldBounds />
         <MapControls
-          makeDefault // useThree().controls 에서 이 컨트롤을 참조할 수 있게 합니다.
+          makeDefault
           enableRotate={false}
           enableZoom={true}
           enablePan={true}
           minZoom={CONFIG.CAMERA.minZoom}
           maxZoom={CONFIG.CAMERA.maxZoom}
-          // 변수 하나로 통일되도록 적용 (min과 max를 같게 두면 유저가 회전시킬 때 각도가 고정됨)
           maxPolarAngle={CONFIG.CAMERA.polarAngle}
           minPolarAngle={CONFIG.CAMERA.polarAngle}
-          // 좌우 각도 마저도 고정하기 위해서 Azimuth Angle도 고정을 겁니다.
           minAzimuthAngle={CONFIG.CAMERA.azimuthAngle}
           maxAzimuthAngle={CONFIG.CAMERA.azimuthAngle}
           mouseButtons={{
             LEFT: THREE.MOUSE.PAN,
             MIDDLE: THREE.MOUSE.DOLLY,
-            // RIGHT 버튼은 비활성화하려면 기본적으로 속성을 제공하지 않거나,
-            // 별도로 THREE.MOUSE 기본 내장 상수를 할당합니다.
           }}
         />
       </Canvas>
     </div>
   );
 }
+
+useGLTF.preload('/models/props/animated_conveyer_belt.glb');
+useGLTF.preload('/models/characters/Barbarian.glb');
+useGLTF.preload('/models/animations/Rig_Medium_Tools.glb');
