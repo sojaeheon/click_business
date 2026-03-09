@@ -6,6 +6,7 @@ import com.ssafy.ecosim.domain.production.dto.request.AddMaterialRequest;
 import com.ssafy.ecosim.domain.production.dto.request.ProcessProductionRequest;
 import com.ssafy.ecosim.domain.production.service.WorkstationService;
 import com.ssafy.ecosim.global.common.ApiResponse;
+import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
@@ -25,6 +26,14 @@ public class WorkstationController {
     private Company getCompanyByUserId(Long userId) {
         return companyRepository.findByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("이 유저는 아직 회사를 소유하고 있지 않습니다."));
+    }
+
+    @PostMapping("/create")
+    public ApiResponse <String> createWorkstation(@AuthenticationPrincipal UserDetails userDetails) {
+        Long userId = Long.parseLong(userDetails.getUsername());
+        Company company = getCompanyByUserId(userId);
+        workstationService.createWorkstation(company.getId());
+        return ApiResponse.success("공장이 생성 되었습니다.");
     }
 
     @PostMapping("/{workstationId}/toggle")
