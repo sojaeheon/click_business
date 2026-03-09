@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { ArrowLeft, Plus, Minus, Package } from "lucide-react";
 import { useGame } from "../../store/gameStore";
 

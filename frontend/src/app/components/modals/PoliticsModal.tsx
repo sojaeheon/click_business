@@ -1,4 +1,4 @@
-import React from "react";
+
 import { Landmark, TrendingUp, TrendingDown, Vote } from "lucide-react";
 
 const policies = [

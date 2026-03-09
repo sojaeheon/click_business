@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { ArrowLeft } from "lucide-react";
 import { useGame } from "../../store/gameStore";
 

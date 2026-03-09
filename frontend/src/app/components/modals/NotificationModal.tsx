@@ -1,4 +1,3 @@
-import React from "react";
 import { X, Bell } from "lucide-react";
 import { useGame } from "../../store/gameStore";
 
@@ -25,22 +24,17 @@ export function NotificationModal() {
                 : "bg-gray-50 border-gray-200"
             }`}
           >
-            {/* Newest indicator */}
+            {/* 최신 알림 파란 점 (가장 최신에만 표시) */}
             {index === 0 && (
               <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-3 h-3 bg-blue-500 rounded-full border-2 border-white shadow" />
             )}
 
             <div className="flex-1">
-              <p
-                className="text-gray-800"
-                style={{ fontWeight: !notification.read ? 600 : 400 }}
-              >
+              <p className="text-gray-800" style={{ fontWeight: !notification.read ? 600 : 400 }}>
                 {notification.message}
               </p>
               {notification.detail && (
-                <p className="text-sm text-gray-500 mt-0.5">
-                  {notification.detail}
-                </p>
+                <p className="text-sm text-gray-500 mt-0.5">{notification.detail}</p>
               )}
               <div className="flex items-center gap-2 mt-1.5">
                 <span className="text-[11px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
@@ -49,6 +43,7 @@ export function NotificationModal() {
               </div>
             </div>
 
+            {/* X 버튼: 알림 삭제 */}
             <button
               onClick={() => dismissNotification(notification.id)}
               className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-200 transition-colors cursor-pointer"

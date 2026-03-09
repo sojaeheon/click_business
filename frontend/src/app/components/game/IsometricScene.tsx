@@ -114,7 +114,7 @@ function CustomModel({ modelUrl }: { modelUrl: string }) {
 }
 
 // --- [ Building Component (일반 건물) ] ---
-function Building({ position, size, color, label, name, onClick, scale = CONFIG.BUILDING_SCALE, modelUrl }: any) {
+function Building({ position, size, color, label, name: _name, onClick, scale = CONFIG.BUILDING_SCALE, modelUrl }: any) {
   const [w, h, d] = size;
 
   const windows = useMemo(() => {
@@ -207,7 +207,7 @@ function Factory({ position, scale = CONFIG.BUILDING_SCALE }: any) {
     }
   }, [actions]);
 
-  useFrame((state) => {
+  useFrame(() => {
     // const elapsed = state.clock.elapsedTime;
   });
 
