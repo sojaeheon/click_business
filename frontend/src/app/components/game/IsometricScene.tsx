@@ -1,7 +1,7 @@
 /// <reference types="@react-three/fiber" />
 import React, { useRef, useState, useMemo, useEffect, useCallback } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { MapControls, Text, useGLTF, useAnimations } from "@react-three/drei";
+import { MapControls, Text, useGLTF, useAnimations, Html } from "@react-three/drei";
 import * as THREE from "three";
 import { SkeletonUtils } from "three-stdlib";
 import { useGame } from "../../store/gameStore";
@@ -74,61 +74,47 @@ const M = {
   minigame: `${ENV}minecraft_pickaxe.gltf`,
 };
 
-// ─── 자동차 경로 (중앙선 기준 좌우 분리 - 충돌 방지) ─────
-const LANE_OFFSET = 1.2; // 중앙선에서 좌우 오프셋
+// ─── 자동차 경로 (중앙선 기준 - 차량 컴포넌트 내부에서 우측 동적 오프셋 적용) ─────
 const CAR_PATHS = {
-  // 1. 외곽 시계방향 (좌측 차선)
+  // 1. 외곽 루프
   outer: [
-    [-outerX, -outerZ + LANE_OFFSET], [0, -outerZ + LANE_OFFSET], [outerX - LANE_OFFSET, -outerZ + LANE_OFFSET],
-    [outerX - LANE_OFFSET, 0], [outerX - LANE_OFFSET, outerZ - LANE_OFFSET],
-    [0, outerZ - LANE_OFFSET], [-outerX + LANE_OFFSET, outerZ - LANE_OFFSET], [-outerX + LANE_OFFSET, 0],
+    [-outerX, -outerZ], [outerX, -outerZ], [outerX, outerZ], [-outerX, outerZ], [-outerX, -outerZ]
   ] as [number, number][],
-  // 2. 중앙 가로 + 지그재그 (상측 차선, z=+LANE_OFFSET)
+  // 2. 중앙 가로 루프 (내부)
   innerH: [
-    [-outerX, LANE_OFFSET], [vRoadX1 - LANE_OFFSET, LANE_OFFSET],
-    [vRoadX1 - LANE_OFFSET, -outerZ + LANE_OFFSET], [vRoadX2 + LANE_OFFSET, -outerZ + LANE_OFFSET],
-    [vRoadX2 + LANE_OFFSET, LANE_OFFSET], [outerX, LANE_OFFSET],
-    [outerX, outerZ - LANE_OFFSET], [-outerX, outerZ - LANE_OFFSET],
+    [-outerX, 0], [vRoadX1, 0], [vRoadX2, 0], [outerX, 0], [vRoadX2, 0], [vRoadX1, 0], [-outerX, 0]
   ] as [number, number][],
-  // 3. 왼쪽 세로 + 하단 횡단 (좌측 차선, x=vRoadX1-LANE_OFFSET)
+  // 3. 왼쪽 세로 루프
   innerV: [
-    [vRoadX1 + LANE_OFFSET, -outerZ], [vRoadX1 + LANE_OFFSET, -BZ],
-    [vRoadX1 + LANE_OFFSET, 0], [vRoadX2 - LANE_OFFSET, 0],
-    [vRoadX2 - LANE_OFFSET, outerZ], [0, outerZ],
-    [-outerX, outerZ + LANE_OFFSET], [-outerX, -outerZ],
+    [vRoadX1, -outerZ], [vRoadX1, -BZ], [vRoadX1, 0], [vRoadX1, BZ], [vRoadX1, outerZ], [vRoadX1, BZ], [vRoadX1, 0], [vRoadX1, -BZ], [vRoadX1, -outerZ]
   ] as [number, number][],
-  // 4. 외곽 반시계방향 (우측 차선)
-  outerCCW: [
-    [outerX, outerZ + LANE_OFFSET], [vRoadX2 + LANE_OFFSET, outerZ + LANE_OFFSET],
-    [vRoadX2 + LANE_OFFSET, -outerZ - LANE_OFFSET], [0, -outerZ - LANE_OFFSET],
-    [vRoadX1 - LANE_OFFSET, -outerZ - LANE_OFFSET], [vRoadX1 - LANE_OFFSET, outerZ + LANE_OFFSET],
-    [-outerX, outerZ + LANE_OFFSET], [-outerX, -outerZ - LANE_OFFSET], [outerX, -outerZ - LANE_OFFSET],
-  ] as [number, number][],
-  // 5. 오른쪽 세로 + 복합 루프 (우측 차선)
+  // 4. 우측 8자 패턴
   topLoop: [
-    [vRoadX2 - LANE_OFFSET, outerZ], [vRoadX2 - LANE_OFFSET, 0],
-    [outerX - LANE_OFFSET, 0], [outerX - LANE_OFFSET, -outerZ],
-    [0, -outerZ - LANE_OFFSET], [-outerX + LANE_OFFSET, -outerZ],
-    [-outerX + LANE_OFFSET, 0], [vRoadX1 + LANE_OFFSET, 0], [vRoadX1 + LANE_OFFSET, outerZ],
+    [vRoadX2, outerZ], [vRoadX2, 0], [outerX, 0], [outerX, -outerZ], [vRoadX2, -outerZ], [vRoadX2, -BZ], [vRoadX2, 0], [vRoadX2, outerZ]
   ] as [number, number][],
 };
 
 // ─── 전역 충돌 관리 상태 ─────────────────────────────────────────
 // 차량 간 및 캐릭터 간 충돌을 감지하기 위한 공유 상태
-const SHARED_STATE = {
+export const SHARED_STATE = {
   playerPos: new THREE.Vector3(0, -100, 0),
-  cars: {} as Record<string, THREE.Vector3>
+  cars: {} as Record<string, THREE.Vector3>,
 };
 
 // ─── WorldBounds ────────────────────────────────────────────────
-function WorldBounds() {
-  const { controls } = useThree();
+function WorldBounds({ autoCamera = true }: { autoCamera?: boolean }) {
+  const { controls, camera } = useThree();
   useFrame(() => {
     if (controls) {
       const limit = CONFIG.CAMERA.boundLimit;
       // @ts-ignore
       const t = controls.target;
       if (t) {
+        // 화면 확대 비율이 최대가 아닐 때 (zoom이 최소값+1 보다 클 때) && 자동 카메라가 켜져있을 때
+        if (autoCamera && camera.zoom > CONFIG.CAMERA.minZoom + 1) {
+          t.lerp(SHARED_STATE.playerPos, 0.1);
+        }
+
         t.x = THREE.MathUtils.clamp(t.x, -limit, limit);
         t.z = THREE.MathUtils.clamp(t.z, -limit, limit);
         // @ts-ignore
@@ -231,6 +217,15 @@ const BUILDING_AREAS = [
 ];
 const FACTORY_POS = [0, BZ] as const;
 
+// ─── 이모트 목록 (스페이스바 유지) ──────────────────────────────────
+const EMOTES = [
+  { id: "Death_A", icon: "☠️" },
+  { id: "Spawn_Air", icon: "✨" },
+  { id: "Sawing", icon: "🪚" },
+  { id: "Pickaxing", icon: "⛏️" },
+  { id: "Digging", icon: "🪏" },
+];
+
 // ─── PlayerCharacter: WASD 이동 + Barbarian 외형 + 애니메이션 ───────
 function PlayerCharacter({
   isFactoryWorking,
@@ -251,6 +246,10 @@ function PlayerCharacter({
   const lastBuildingRef = useRef<string | null>(null);
   const modeRef = useRef<"idle" | "walking" | "working" | "spawning">("spawning");
   const [mode, setMode] = useState<"idle" | "walking" | "working" | "spawning">("spawning");
+
+  // 모션 이모트 드롭다운 UI 가시성 및 애니메이션 상속
+  const [showMenu, setShowMenu] = useState(false);
+  const [emotionAnim, setEmotionAnim] = useState<string | null>(null);
 
   const { scene: barbarianScene } = useGLTF("/models/characters/Barbarian.glb");
   // 3개 파일에서 애니메이션 로드
@@ -275,13 +274,15 @@ function PlayerCharacter({
   }, [toolsAnims, moveAnims, generalAnims]);
   const { actions } = useAnimations(allAnimations, groupRef);
 
-  // 키보드 이벤트
+  // 키보드 이벤트 (스페이스바 이모트 기능 포함)
   useEffect(() => {
     const onDown = (e: KeyboardEvent) => {
+      if (e.code === "Space" && !e.repeat) setShowMenu(true);
       const k = e.key.toLowerCase() as keyof typeof keysRef.current;
       if (k in keysRef.current) keysRef.current[k] = true;
     };
     const onUp = (e: KeyboardEvent) => {
+      if (e.code === "Space") setShowMenu(false);
       const k = e.key.toLowerCase() as keyof typeof keysRef.current;
       if (k in keysRef.current) keysRef.current[k] = false;
     };
@@ -337,6 +338,13 @@ function PlayerCharacter({
       return;
     }
 
+    if (emotionAnim && actions[emotionAnim]) {
+      const act = actions[emotionAnim]!;
+      act.setEffectiveTimeScale(1);
+      act.reset().fadeIn(0.3).play();
+      return;
+    }
+
     if (mode === "spawning") return; // Spawn 중에는 다른 애니메이션 대기
 
     if (mode === "working") {
@@ -361,7 +369,7 @@ function PlayerCharacter({
         act.reset().fadeIn(0.3).play();
       }
     }
-  }, [actions, mode, debugAnim]);
+  }, [actions, mode, debugAnim, emotionAnim]);
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
@@ -379,6 +387,12 @@ function PlayerCharacter({
 
     const canMove = !isPaused && mode !== "spawning";
     const isMoving = canMove && dir.length() > 0.01;
+
+    // 움직이면 이모션 강제 취소
+    if (isMoving && emotionAnim) {
+      setEmotionAnim(null);
+    }
+
     if (isMoving) {
       dir.normalize().multiplyScalar(speed * delta);
       posRef.current.add(dir);
@@ -433,6 +447,32 @@ function PlayerCharacter({
   return (
     <group ref={groupRef} scale={WORKER_S * 1.5}>
       <primitive object={clonedBarbarian} />
+      {showMenu && (
+        <Html position={[0, 4, 0]} center zIndexRange={[100, 0]}>
+          <div className="relative w-40 h-40 flex items-center justify-center pointer-events-auto">
+            {EMOTES.map((em, i) => {
+              const angle = (i / EMOTES.length) * Math.PI * 2 - Math.PI / 2;
+              const x = Math.cos(angle) * 70;
+              const y = Math.sin(angle) * 70;
+              return (
+                <button
+                  key={em.id}
+                  className="absolute w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center text-3xl hover:bg-slate-100 hover:scale-110 transition-transform cursor-pointer border-2 border-slate-200"
+                  style={{ transform: `translate(${x}px, ${y}px)` }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    setEmotionAnim(em.id);
+                    setShowMenu(false);
+                  }}
+                  title={em.id}
+                >
+                  {em.icon}
+                </button>
+              );
+            })}
+          </div>
+        </Html>
+      )}
     </group>
   );
 }
@@ -515,10 +555,12 @@ function Factory({
   onOpenModal: () => void;
 }) {
   const half = BW / 2;
-  const [totalGold, setTotalGold] = useState(0);
+  const [progress, setProgress] = useState(0); // 0 ~ 100 API 기반 진행도 (목업)
   const [flyingBars, setFlyingBars] = useState<number[]>([]);
   const flyIdRef = useRef(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const isCompleted = progress >= 100;
 
   const beltEndPos: [number, number, number] = [-0.75 + 2.5, 0.5, 1];
   // 3개 더미 위치 (바닥에서 Y측 위로 띄움)
@@ -528,23 +570,34 @@ function Factory({
     [half * 0.6, 0.3, -half * 0.2],
   ];
 
-  // 작업 중일 때 주기적으로 금괴 날리기 (맥스 상태여도 계속 날림)
+  // 작업 중일 때 주기적으로 비주얼 금괴 날리기 + 목업용 진행도 상승
   useEffect(() => {
-    if (isWorking) {
+    if (isWorking && !isCompleted) {
       intervalRef.current = setInterval(() => {
         flyIdRef.current += 1;
         setFlyingBars(prev => [...prev, flyIdRef.current]);
-      }, 3000);
+
+        // 목업: 75초간 100채우기 (100%시 정지)
+        setProgress(p => {
+          if (p >= 98) {
+            if (intervalRef.current) clearInterval(intervalRef.current);
+            return 100;
+          }
+          return p + 2;
+        });
+      }, 1500);
     } else {
       if (intervalRef.current) clearInterval(intervalRef.current);
     }
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [isWorking]);
+  }, [isWorking, isCompleted]);
 
-  // 금괴 도착 시 - MAX_TOTAL 이하만 증가
+  // progress 기반으로 최대 12개 스택을 계산 (더미 3개 각 4형태씩)
+  const totalGold = Math.floor((progress / 100) * MAX_TOTAL);
+
+  // 금괴 도착 시 비행 금괴 ID만 삭제 (총계는 progress 기반 연산)
   const handleBarArrive = useCallback((barId: number) => {
     setFlyingBars(prev => prev.filter(id => id !== barId));
-    setTotalGold(prev => Math.min(prev + 1, MAX_TOTAL));
   }, []);
 
   // 현재 날아가는 금괴의 목적지 더미 결정
@@ -565,7 +618,7 @@ function Factory({
           <mesh><boxGeometry args={[BW, TW * 0.3, TW * 0.5]} /><meshStandardMaterial color="#555" wireframe /></mesh>
         }>
           {/* @ts-ignore */}
-          <ConveyorBelt isAnimating={isWorking} />
+          <ConveyorBelt isAnimating={isWorking && !isCompleted} />
         </React.Suspense>
       </group>
 
@@ -587,7 +640,37 @@ function Factory({
       ))}
 
       <AreaLabel label="작업장" />
-    </HoverableGroup>
+
+      {/* 진행도 도넛 차트 */}
+      <group position={[0, 4, 0]}>
+        <Html center zIndexRange={[10, 0]}>
+          <div
+            className="relative flex items-center justify-center w-28 h-28 rounded-full bg-white shadow-xl border-4 border-slate-50 flex-col pointer-events-auto"
+            title={isCompleted ? "작업완료" : "작업 진행중"}
+          >
+            {isCompleted ? (
+              <span className="text-5xl border-emerald-500 text-emerald-500 font-bold mix-blend-multiply pt-1">❗️</span>
+            ) : (
+              <>
+                <svg className="absolute w-full h-full transform -rotate-90">
+                  <circle cx="52" cy="52" r="44" fill="transparent" stroke="#f1f5f9" strokeWidth="12" />
+                  <circle
+                    cx="52" cy="52" r="44" fill="transparent" stroke="#3b82f6" strokeWidth="12"
+                    strokeDasharray={`${(progress / 100) * 276.4} 276.4`}
+                    strokeLinecap="round"
+                    className="transition-all duration-700 ease-out"
+                  />
+                </svg>
+                <span className="text-[10px] font-bold text-slate-400 z-10 -mb-1 mt-1">PROGRESS</span>
+                <span className="text-2xl font-black text-slate-800 z-10 tracking-tighter" style={{ fontFamily: "'KerisKeduR', sans-serif" }}>
+                  {progress}%
+                </span>
+              </>
+            )}
+          </div>
+        </Html>
+      </group>
+    </HoverableGroup >
   );
 }
 
@@ -609,67 +692,68 @@ function Minigame({ position, onClick }: { position: [number, number, number]; o
   );
 }
 
-// ─── AnimatedCar (CatmullRomCurve3로 부드러운 코너링 + 유턴 시스템) ───────────────
+// ─── AnimatedCar (충돌 회피 서행 및 우측 차선 교정) ───────────────
 function AnimatedCar({
   modelKey, path, speed = 4, initialProgress = 0,
 }: {
   modelKey: keyof typeof M;
-  path: [number, number][];
+  path: [number, number][] | undefined;
   speed?: number;
   initialProgress?: number;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const progressRef = useRef(initialProgress);
-  const speedRef = useRef(speed);
-  const cooldownRef = useRef(0);
+  const currentSpeedRef = useRef(speed);
 
   const curve = useMemo(() => {
+    if (!path || path.length < 2) {
+      return new THREE.CatmullRomCurve3([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0.1)]);
+    }
     const pts = path.map(p => new THREE.Vector3(p[0], 0, p[1]));
-    return new THREE.CatmullRomCurve3(pts, true, "centripetal", 0.5);
+    // catmullrom 곡선, 낮은 tension(장력)을 적용하여 코너에서 크게 바깥으로 돌아 나가지 않도록 조정
+    return new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0.1);
   }, [path]);
 
   useFrame((_, delta) => {
-    if (!groupRef.current) return;
+    if (!groupRef.current || !path || path.length < 2) return;
 
     const currentPos = groupRef.current.position;
+    const tangent = curve.getTangentAt(progressRef.current);
+    const forwardDir = new THREE.Vector3(tangent.x, 0, tangent.z).normalize();
 
-    // 1. 충돌 감지 로직
-    let collision = false;
+    // 1. 충돌 회피(양보/정지) 판정: 내 앞(시야 전방 60도)에 차량 등 장애물이 있으면 서행 및 정지
+    let targetSpeed = speed;
+    let collisionDistance = 3.0; // 반경 판정 거리
 
-    // (a) 플레이어와의 거리 체크 (거리 반경 2.5 이내)
-    if (currentPos.distanceTo(SHARED_STATE.playerPos) < 2.5) {
-      collision = true;
+    // (a) 플레이어 체크
+    if (currentPos.distanceTo(SHARED_STATE.playerPos) < collisionDistance) {
+      const toPlayer = SHARED_STATE.playerPos.clone().sub(currentPos).normalize();
+      if (toPlayer.dot(forwardDir) > 0.5) targetSpeed = 0; // 내 앞이면 정지
     }
 
-    // (b) 다른 자동차와의 거리 체크
+    // (b) 다른 차량 체크
     for (const [otherId, otherPos] of Object.entries(SHARED_STATE.cars)) {
-      if (otherId !== modelKey && currentPos.distanceTo(otherPos) < 2.5) {
-        collision = true;
-        break;
+      if (otherId !== modelKey && currentPos.distanceTo(otherPos) < collisionDistance) {
+        const toOther = otherPos.clone().sub(currentPos).normalize();
+        if (toOther.dot(forwardDir) > 0.5) targetSpeed = 0;
       }
     }
 
-    // 2. 쿨다운 동안 대기 및 충돌 시 유턴(속도 반전) 수행
-    if (cooldownRef.current > 0) {
-      cooldownRef.current -= delta;
-    } else if (collision) {
-      speedRef.current *= -1;    // 유턴 (속도 방향 반전)
-      cooldownRef.current = 1.5; // 연속 유턴을 방지하기 위한 쿨다운 (1.5초)
-    }
+    // 급정거 및 부드러운 가속
+    currentSpeedRef.current = THREE.MathUtils.lerp(currentSpeedRef.current, targetSpeed, 0.1);
 
-    // 3. 이동 및 위치 갱신
+    // 2. 이동 및 위치 갱신
     const len = curve.getLength();
-    progressRef.current = (progressRef.current + (speedRef.current * delta) / len) % 1;
+    progressRef.current = (progressRef.current + (currentSpeedRef.current * delta) / len) % 1;
     if (progressRef.current < 0) progressRef.current += 1;
 
     const point = curve.getPointAt(progressRef.current);
-    const tangent = curve.getTangentAt(progressRef.current);
 
-    groupRef.current.position.set(point.x, 0.65, point.z);
+    // (핵심) 우측 차선 오프셋 적용. 접선(진행방향)을 90도 돌린 방향이 내 우측.
+    const rightOffset = new THREE.Vector3(forwardDir.z, 0, -forwardDir.x).multiplyScalar(1.2);
 
-    // 후진(유턴) 중이면 180도 회전
-    const rotationOffset = speedRef.current < 0 ? Math.PI : 0;
-    groupRef.current.rotation.y = Math.atan2(tangent.x, tangent.z) + rotationOffset;
+    groupRef.current.position.set(point.x + rightOffset.x, 0.65, point.z + rightOffset.z);
+    groupRef.current.rotation.y = Math.atan2(forwardDir.x, forwardDir.z);
 
     // 4. 충돌 판정용 공유 상태 갱신
     SHARED_STATE.cars[modelKey] = groupRef.current.position.clone();
@@ -685,7 +769,7 @@ function AnimatedCar({
 }
 
 // ─── MapEnvironment ────────────────────────────────────────────────
-function MapEnvironment() {
+function MapEnvironment({ theme }: { theme: "grass" | "skyblock" | "water" }) {
   const Y = 0;
 
   const hLineX: number[] = [];
@@ -745,11 +829,25 @@ function MapEnvironment() {
 
   return (
     <group>
-      {/* 잔디 */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
-        <planeGeometry args={[300, 300]} />
-        <meshStandardMaterial color="#c8d8a0" />
-      </mesh>
+      {/* 테마별 바닥(자연 잔디, 우주, 파도풀) 렌더링 */}
+      {theme === "grass" && (
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
+          <planeGeometry args={[300, 300]} />
+          <meshStandardMaterial color="#c8d8a0" />
+        </mesh>
+      )}
+      {theme === "water" && (
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.4, 0]} receiveShadow>
+          <planeGeometry args={[300, 300]} />
+          <meshStandardMaterial color="#3b82f6" transparent opacity={0.8} />
+        </mesh>
+      )}
+      {theme === "skyblock" && (
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -50, 0]} receiveShadow>
+          <planeGeometry args={[500, 500]} />
+          <meshBasicMaterial color="#0f172a" />
+        </mesh>
+      )}
 
       {baseTiles.map(([tx, tz], i) => (
         <React.Suspense key={`base-${i}`} fallback={null}>
@@ -777,12 +875,16 @@ function MapEnvironment() {
         </React.Suspense>
       ))}
 
-      {/* 자동차 5대 - 독립 경로, 서로 다른 속도 */}
-      <AnimatedCar modelKey="carSedan" path={CAR_PATHS.outer} speed={6} initialProgress={0} />
-      <AnimatedCar modelKey="carTaxi" path={CAR_PATHS.innerH} speed={5} initialProgress={0} />
-      <AnimatedCar modelKey="carHatchback" path={CAR_PATHS.innerV} speed={4} initialProgress={0} />
-      <AnimatedCar modelKey="carStationwagon" path={CAR_PATHS.outerCCW} speed={5.5} initialProgress={0.5} />
-      <AnimatedCar modelKey="carPolice" path={CAR_PATHS.topLoop} speed={3.5} initialProgress={0} />
+      {/* 자동차 (경로에 맞춰서 렌더링) */}
+      <React.Suspense fallback={null}>
+        <AnimatedCar modelKey="carSedan" path={CAR_PATHS.outer} speed={6} initialProgress={0} />
+        <AnimatedCar modelKey="carHatchback" path={CAR_PATHS.innerH} speed={5} initialProgress={0.25} />
+        <AnimatedCar modelKey="carPolice" path={CAR_PATHS.innerV} speed={6} initialProgress={0.5} />
+        <AnimatedCar modelKey="carTaxi" path={CAR_PATHS.outer} speed={5.5} initialProgress={0.7} />
+        <AnimatedCar modelKey="carStationwagon" path={CAR_PATHS.topLoop} speed={4.5} initialProgress={0.1} />
+      </React.Suspense>
+
+      {/* 테마 배경 변경 HTML */}
     </group>
   );
 }
@@ -865,46 +967,66 @@ function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: () => voi
 }
 
 // ─── GameScene ─────────────────────────────────────────────────────
-const GameScene = ({ onDialog, debugAnim, onAnimList, isPaused }: { onDialog: (d: ConfirmData) => void; debugAnim?: string | null; onAnimList?: (names: string[]) => void; isPaused: boolean }) => {
+export function GameScene({
+  isFactoryWorking,
+  setIsFactoryWorking,
+  onEnterBuilding,
+  debugAnim,
+  onAnimList,
+  isPaused,
+  onDialog,
+}: {
+  isFactoryWorking: boolean;
+  setIsFactoryWorking: (v: boolean) => void;
+  onEnterBuilding: (name: string, label: string) => void;
+  debugAnim?: string | null;
+  onAnimList?: (names: string[]) => void;
+  isPaused: boolean;
+  onDialog?: (d: ConfirmData) => void;
+}) {
   const { openBuildingPage } = useGame();
-  const [isFactoryWorking, setIsFactoryWorking] = useState(false);
+  const [theme, setTheme] = useState<"grass" | "skyblock" | "water">("grass");
 
   const go = useCallback((name: string, label: string) => {
-    onDialog({
+    onDialog?.({
       type: "building", label,
       action: () => { const p = buildingToPage[name]; if (p) openBuildingPage(p); }
     });
   }, [onDialog, openBuildingPage]);
 
   const handleFactoryClick = useCallback(() => {
-    onDialog({
+    onDialog?.({
       type: "factory",
       label: "작업장 컨트롤",
       isWorking: isFactoryWorking,
       onStart: () => setIsFactoryWorking(true),
       onStop: () => setIsFactoryWorking(false),
     });
-  }, [onDialog, isFactoryWorking]);
+  }, [onDialog, isFactoryWorking, setIsFactoryWorking]);
 
   return (
     <>
-      <ambientLight intensity={0.7} color={0xffffff} />
-      <directionalLight position={[20, 30, 20]} intensity={1.2} castShadow shadow-mapSize={[4096, 4096]}>
-        <orthographicCamera attach="shadow-camera" args={[-40, 40, 40, -40, 0.1, 100]} />
-      </directionalLight>
-      <directionalLight position={[-10, 15, -10]} intensity={0.3} color={0xffe8c0} />
+      <color attach="background" args={[theme === "skyblock" ? "#1a202c" : "#e0e5ec"]} />
+      {theme === "skyblock" && <fog attach="fog" args={["#1a202c", 20, 150]} />}
 
-      <MapEnvironment />
+      <ambientLight intensity={0.6} />
+      <directionalLight position={[20, 30, 10]} intensity={1.2} castShadow shadow-mapSize={[2048, 2048]} />
+      <directionalLight position={[-10, 20, -10]} intensity={0.5} color="#abcdef" />
+
+      <MapEnvironment theme={theme} />
 
       <BuildingTile position={[-BX, 0, -BZ]} modelUrl={M.hr} label="인력소" onClick={() => go("hr", "인력소")} />
       <BuildingTile position={[0, 0, -BZ]} modelUrl={M.bank} label="은행" onClick={() => go("bank", "은행")} />
       <BuildingTile position={[BX, 0, -BZ]} modelUrl={M.warehouse} label="창고" onClick={() => go("warehouse", "창고")} />
       <BuildingTile position={[BX, 0, BZ]} modelUrl={M.market} label="마켓" onClick={() => go("market", "마켓")} />
 
-      <React.Suspense fallback={null}>
-        <Minigame position={[-BX, 0, BZ]} onClick={() => go("minigame", "미니게임")} />
-        <Factory position={[0, 0, BZ]} isWorking={isFactoryWorking} onOpenModal={handleFactoryClick} />
-      </React.Suspense>
+      <Minigame position={[-BX, 0, BZ]} onClick={() => go("minigame", "미니게임")} />
+
+      <Factory
+        position={[0, 0, BZ]}
+        isWorking={isFactoryWorking}
+        onOpenModal={handleFactoryClick}
+      />
 
       {/* WASD 플레이어 캐릭터 */}
       <React.Suspense fallback={null}>
@@ -916,15 +1038,32 @@ const GameScene = ({ onDialog, debugAnim, onAnimList, isPaused }: { onDialog: (d
           isPaused={isPaused}
         />
       </React.Suspense>
+
+      {/* 테마 배경 변경 HTML */}
+      <Html position={[-outerX, 10, -outerZ]} center zIndexRange={[10, 0]}>
+        <div className="absolute top-0 right-0 m-4 flex gap-2 bg-white/80 backdrop-blur rounded-full p-1 shadow">
+          {(["grass", "water", "skyblock"] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => setTheme(t)}
+              className={`px-3 py-1 text-xs font-bold rounded-full transition-colors ${theme === t ? "bg-slate-800 text-white" : "text-slate-500 hover:bg-slate-200"}`}
+            >
+              {t === "grass" ? "🌳 숲" : t === "water" ? "💧 바다" : "☁️ 공중"}
+            </button>
+          ))}
+        </div>
+      </Html>
     </>
   );
-};
+}
 
 // ─── IsometricScene ────────────────────────────────────────────────
 export function IsometricScene() {
   const [dialogData, setDialogData] = useState<ConfirmData | null>(null);
   const [debugAnim, setDebugAnim] = useState<string | null>(null);
   const [animNames, setAnimNames] = useState<string[]>([]);
+  const [isFactoryWorking, setIsFactoryWorking] = useState(false);
+  const [autoCamera, setAutoCamera] = useState(true);
 
   const d = CONFIG.CAMERA.distance;
   const pA = CONFIG.CAMERA.polarAngle;
@@ -934,50 +1073,71 @@ export function IsometricScene() {
   const cz = d * Math.sin(pA) * Math.cos(aA);
 
   return (
-    <div className="w-full h-full relative" style={{ fontFamily: "'KerisKeduR', sans-serif" }}>
-      <Canvas
-        flat
-        orthographic
-        camera={{ position: [cx, cy, cz], zoom: CONFIG.CAMERA.initialZoom }}
-        shadows
-        gl={{ antialias: true, alpha: true }}
-        onCreated={({ scene }) => { scene.background = new THREE.Color("#d6e8c0"); }}
-      >
-        <GameScene onDialog={setDialogData} debugAnim={debugAnim} onAnimList={setAnimNames} isPaused={!!dialogData} />
-        <WorldBounds />
-        <MapControls
-          makeDefault
-          enableRotate={false}
-          enableZoom={true}
-          enablePan={true}
-          minZoom={CONFIG.CAMERA.minZoom}
-          maxZoom={CONFIG.CAMERA.maxZoom}
-          maxPolarAngle={pA}
-          minPolarAngle={pA}
-          minAzimuthAngle={aA}
-          maxAzimuthAngle={aA}
-          mouseButtons={{ LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY }}
-        />
-      </Canvas>
+    <div className="relative w-full h-screen bg-slate-100 flex overflow-hidden font-sans">
+      <div className="flex-1 w-full h-full relative cursor-auto" style={{ fontFamily: "'KerisKeduR', sans-serif" }}>
+        {/* 카메라 자동 활성화 버튼 */}
+        {!autoCamera && (
+          <button
+            onClick={() => setAutoCamera(true)}
+            className="absolute top-4 left-4 z-10 px-4 py-2 bg-blue-500 text-white rounded-full shadow-lg font-bold text-sm hover:bg-blue-600 transition-all flex items-center gap-2"
+          >
+            🎯 내 캐릭터 포커스
+          </button>
+        )}
 
-      {dialogData && (
-        <GlobalDialog data={dialogData} onClose={() => setDialogData(null)} />
-      )}
-
-      {/* 🔧 애니메이션 디버그 패널 (임시) */}
-      <div className="absolute top-4 right-4 z-50 bg-white/90 rounded-xl shadow-lg p-3 flex flex-col gap-2 border border-slate-300" style={{ minWidth: 200 }}>
-        <p className="text-xs font-bold text-slate-600">🎬 애니메이션 테스트</p>
-        <select
-          className="text-sm border rounded-lg p-2 bg-white"
-          value={debugAnim || ""}
-          onChange={(e) => setDebugAnim(e.target.value || null)}
+        <Canvas
+          flat
+          orthographic
+          camera={{ position: [cx, cy, cz], zoom: CONFIG.CAMERA.initialZoom }}
+          shadows
+          gl={{ antialias: true, alpha: true }}
+          onCreated={({ scene }) => { scene.background = new THREE.Color("#d6e8c0"); }}
         >
-          <option value="">자동 (WASD 모드)</option>
-          {animNames.map(name => (
-            <option key={name} value={name}>{name}</option>
-          ))}
-        </select>
-        <p className="text-xs text-slate-400">선택하면 해당 애니메이션 재생</p>
+          <GameScene
+            onDialog={setDialogData}
+            debugAnim={debugAnim}
+            onAnimList={setAnimNames}
+            isPaused={!!dialogData}
+            isFactoryWorking={isFactoryWorking}
+            setIsFactoryWorking={setIsFactoryWorking}
+            onEnterBuilding={() => { }}
+          />
+          <WorldBounds autoCamera={autoCamera} />
+          <MapControls
+            makeDefault
+            enableRotate={false}
+            enableZoom={true}
+            enablePan={true}
+            minZoom={CONFIG.CAMERA.minZoom}
+            maxZoom={CONFIG.CAMERA.maxZoom}
+            maxPolarAngle={pA}
+            minPolarAngle={pA}
+            minAzimuthAngle={aA}
+            maxAzimuthAngle={aA}
+            mouseButtons={{ LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY }}
+            onStart={() => setAutoCamera(false)}
+          />
+        </Canvas>
+
+        {dialogData && (
+          <GlobalDialog data={dialogData} onClose={() => setDialogData(null)} />
+        )}
+
+        {/* 🔧 애니메이션 디버그 패널 (임시) */}
+        <div className="absolute top-4 right-4 z-50 bg-white/90 rounded-xl shadow-lg p-3 flex flex-col gap-2 border border-slate-300" style={{ minWidth: 200 }}>
+          <p className="text-xs font-bold text-slate-600">🎬 애니메이션 테스트</p>
+          <select
+            className="text-sm border rounded-lg p-2 bg-white"
+            value={debugAnim || ""}
+            onChange={(e) => setDebugAnim(e.target.value || null)}
+          >
+            <option value="">자동 (WASD 모드)</option>
+            {animNames.map(name => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+          <p className="text-xs text-slate-400">선택하면 해당 애니메이션 재생</p>
+        </div>
       </div>
     </div>
   );
