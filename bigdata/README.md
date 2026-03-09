@@ -6,7 +6,7 @@
 ## 디렉토리 구조
 
 bigdata/
-├── data/                 # 외부 데이터 수집 및 저장
+├── external_data/        # 외부 데이터 수집 및 저장
 │   ├── collector/        # 크롤러 스크립트
 │   │   ├── gold_crawler.py 
 │   │   ├── interest_crawler.py
