@@ -113,6 +113,13 @@ const CAR_PATHS = {
   ] as [number, number][],
 };
 
+// ─── 전역 충돌 관리 상태 ─────────────────────────────────────────
+// 차량 간 및 캐릭터 간 충돌을 감지하기 위한 공유 상태
+const SHARED_STATE = {
+  playerPos: new THREE.Vector3(0, -100, 0),
+  cars: {} as Record<string, THREE.Vector3>
+};
+
 // ─── WorldBounds ────────────────────────────────────────────────
 function WorldBounds() {
   const { controls } = useThree();
@@ -382,6 +389,9 @@ function PlayerCharacter({
 
     groupRef.current.position.set(posRef.current.x, 0.35, posRef.current.z);
 
+    // 차와의 충돌 감지를 위해 전역 상태에 위치 공유
+    SHARED_STATE.playerPos.copy(groupRef.current.position);
+
     // 영역 감지
     const px = posRef.current.x;
     const pz = posRef.current.z;
@@ -599,7 +609,7 @@ function Minigame({ position, onClick }: { position: [number, number, number]; o
   );
 }
 
-// ─── AnimatedCar (CatmullRomCurve3로 부드러운 코너링) ───────────────
+// ─── AnimatedCar (CatmullRomCurve3로 부드러운 코너링 + 유턴 시스템) ───────────────
 function AnimatedCar({
   modelKey, path, speed = 4, initialProgress = 0,
 }: {
@@ -610,6 +620,8 @@ function AnimatedCar({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const progressRef = useRef(initialProgress);
+  const speedRef = useRef(speed);
+  const cooldownRef = useRef(0);
 
   const curve = useMemo(() => {
     const pts = path.map(p => new THREE.Vector3(p[0], 0, p[1]));
@@ -618,12 +630,49 @@ function AnimatedCar({
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
+
+    const currentPos = groupRef.current.position;
+
+    // 1. 충돌 감지 로직
+    let collision = false;
+
+    // (a) 플레이어와의 거리 체크 (거리 반경 2.5 이내)
+    if (currentPos.distanceTo(SHARED_STATE.playerPos) < 2.5) {
+      collision = true;
+    }
+
+    // (b) 다른 자동차와의 거리 체크
+    for (const [otherId, otherPos] of Object.entries(SHARED_STATE.cars)) {
+      if (otherId !== modelKey && currentPos.distanceTo(otherPos) < 2.5) {
+        collision = true;
+        break;
+      }
+    }
+
+    // 2. 쿨다운 동안 대기 및 충돌 시 유턴(속도 반전) 수행
+    if (cooldownRef.current > 0) {
+      cooldownRef.current -= delta;
+    } else if (collision) {
+      speedRef.current *= -1;    // 유턴 (속도 방향 반전)
+      cooldownRef.current = 1.5; // 연속 유턴을 방지하기 위한 쿨다운 (1.5초)
+    }
+
+    // 3. 이동 및 위치 갱신
     const len = curve.getLength();
-    progressRef.current = (progressRef.current + (speed * delta) / len) % 1;
+    progressRef.current = (progressRef.current + (speedRef.current * delta) / len) % 1;
+    if (progressRef.current < 0) progressRef.current += 1;
+
     const point = curve.getPointAt(progressRef.current);
     const tangent = curve.getTangentAt(progressRef.current);
+
     groupRef.current.position.set(point.x, 0.65, point.z);
-    groupRef.current.rotation.y = Math.atan2(tangent.x, tangent.z);
+
+    // 후진(유턴) 중이면 180도 회전
+    const rotationOffset = speedRef.current < 0 ? Math.PI : 0;
+    groupRef.current.rotation.y = Math.atan2(tangent.x, tangent.z) + rotationOffset;
+
+    // 4. 충돌 판정용 공유 상태 갱신
+    SHARED_STATE.cars[modelKey] = groupRef.current.position.clone();
   });
 
   return (
@@ -751,6 +800,14 @@ interface ConfirmData {
 
 function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: () => void }) {
   const R: React.CSSProperties = { fontFamily: "'KerisKeduR', sans-serif" };
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [onClose]);
 
   if (data.type === "factory") {
     return (
