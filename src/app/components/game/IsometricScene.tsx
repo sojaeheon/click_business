@@ -536,7 +536,7 @@ function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: () => voi
           <button
             className="flex-1 py-3 rounded-xl bg-indigo-500 text-white font-bold text-sm hover:bg-indigo-600 transition-colors shadow"
             onClick={() => { data.action?.(); onClose(); }}
-          >이동 🚀</button>
+          >이동</button>
           <button
             className="flex-1 py-3 rounded-xl bg-slate-200 text-slate-700 font-bold text-sm hover:bg-slate-300 transition-colors"
             onClick={onClose}

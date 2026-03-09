@@ -33,6 +33,7 @@ export function ConveyorBelt({ isAnimating = false, ...props }) {
           <group name="conveyer_belt_fbx" rotation={[Math.PI / 2, 0, 0]} scale={0.01}>
             <group name="Object_2">
               <group name="RootNode">
+
                 <group name="Cube003" position={[452.534, 111.173, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={36.989}>
                   <mesh name="Cube003_Material007_0" geometry={nodes.Cube003_Material007_0.geometry} material={materials['Material.007']} />
                 </group>
@@ -42,15 +43,6 @@ export function ConveyorBelt({ isAnimating = false, ...props }) {
                 <group name="Cube005" position={[452.534, 111.173, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={36.989}>
                   <mesh name="Cube005_Material007_0" geometry={nodes.Cube005_Material007_0.geometry} material={materials['Material.007']} />
                 </group>
-                <group name="Cube007" position={[20.923, -4.786, 429.922]} rotation={[-Math.PI / 2, 0, 0]} scale={36.989}>
-                  <mesh name="Cube007_Material007_0" geometry={nodes.Cube007_Material007_0.geometry} material={materials['Material.007']} />
-                </group>
-                <group name="Cube008" position={[20.923, -4.786, 515.046]} rotation={[-Math.PI / 2, 0, 0]} scale={36.989}>
-                  <mesh name="Cube008_Material007_0" geometry={nodes.Cube008_Material007_0.geometry} material={materials['Material.007']} />
-                </group>
-                <group name="Cube009" position={[20.923, 71.186, 429.922]} rotation={[-Math.PI / 2, 0, 0]} scale={36.989}>
-                  <mesh name="Cube009_Material007_0" geometry={nodes.Cube009_Material007_0.geometry} material={materials['Material.007']} />
-                </group>
                 <group name="Cube002" position={[452.534, 111.173, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={36.989}>
                   <mesh name="Cube002_Material007_0" geometry={nodes.Cube002_Material007_0.geometry} material={materials['Material.007']} />
                 </group>
@@ -58,11 +50,7 @@ export function ConveyorBelt({ isAnimating = false, ...props }) {
                   <mesh name="Cube010_Material007_0" geometry={nodes.Cube010_Material007_0.geometry} material={materials['Material.007']} />
                 </group>
 
-                {/* 배경 지운 부분 유지 */}
-                {/* <group name="Plane001" rotation={[-Math.PI / 2, 0, 0]} scale={100}>
-                  <mesh name="Plane001_Material003_0" geometry={nodes.Plane001_Material003_0.geometry} material={materials['Material.003']} />
-                </group> */}
-
+                {/* 컨베이어벨트 몸통 */}
                 <group name="Cube" position={[0, 52.461, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[322.35, 44.433, 44.308]}>
                   <mesh name="Cube_Material004_0" geometry={nodes.Cube_Material004_0.geometry} material={materials['Material.004']} />
                 </group>
@@ -70,19 +58,12 @@ export function ConveyorBelt({ isAnimating = false, ...props }) {
                   <mesh name="Cube001_Material002_0" geometry={nodes.Cube001_Material002_0.geometry} material={materials['Material.002']} />
                 </group>
 
-                {/* 배경 지운 부분 유지 */}
-                {/* <group name="Plane002" position={[154.749, -6.854, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={2425.458}>
-                  <mesh name="Plane002_Material009_0" geometry={nodes.Plane002_Material009_0.geometry} material={materials['Material.009']} />
-                </group> */}
-
+                {/* 컨베이어벨트 지지대 */}
                 <group name="Cylinder" position={[-234.132, 43.029, -67.956]} scale={26.858}>
                   <mesh name="Cylinder_Material005_0" geometry={nodes.Cylinder_Material005_0.geometry} material={materials['Material.005']} />
                 </group>
                 <group name="Cylinder001" position={[247.218, 43.029, -67.956]} scale={26.858}>
                   <mesh name="Cylinder001_Material005_0" geometry={nodes.Cylinder001_Material005_0.geometry} material={materials['Material.005']} />
-                </group>
-                <group name="Cube006" position={[113.005, -4.786, 429.922]} rotation={[-Math.PI / 2, 0, 0]} scale={36.989}>
-                  <mesh name="Cube006_Material007_0" geometry={nodes.Cube006_Material007_0.geometry} material={materials['Material.007']} />
                 </group>
                 <group name="Cylinder002" position={[246.499, 32.796, 143.644]} rotation={[-Math.PI / 2, 0, 0]} scale={[45.978, 45.978, 51.538]}>
                   <mesh name="Cylinder002_Material005_0" geometry={nodes.Cylinder002_Material005_0.geometry} material={materials['Material.005']} />
