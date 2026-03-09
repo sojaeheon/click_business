@@ -56,7 +56,6 @@ export function CompanyProfile() {
               </div>
               <div>
                 <div className="text-gray-800 mb-0.5" style={{ fontWeight: 600 }}>{state.industry}</div>
-                <Factory className="w-5 h-5 text-gray-400" />
               </div>
             </div>
           </div>

@@ -14,7 +14,7 @@ export function NotificationModal() {
         </span>
       </div>
 
-      <div className="space-y-2">
+      <div className="flex-1 overflow-y-scroll space-y-2 pr-2" style={{ maxHeight: '400px' }}>
         {state.notifications.map((notification, index) => (
           <div
             key={notification.id}
