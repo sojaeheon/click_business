@@ -29,7 +29,7 @@ public class WorkstationController {
     }
 
     @PostMapping("/create")
-    public ApiResponse <String> createWorkstation(@AuthenticationPrincipal UserDetails userDetails) {
+    public ApiResponse<String> createWorkstation(@AuthenticationPrincipal UserDetails userDetails) {
         Long userId = Long.parseLong(userDetails.getUsername());
         Company company = getCompanyByUserId(userId);
         workstationService.createWorkstation(company.getId());
