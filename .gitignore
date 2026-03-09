@@ -80,3 +80,8 @@ tmp/
 
 rule.md
 /postgres_data/
+
+# Environment variables and secrets
+/env/
+.env
+.env.*
