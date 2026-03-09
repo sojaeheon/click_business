@@ -119,6 +119,40 @@ public class InventoryService {
     }
 
     @Transactional
+    public void removeItem(Long companyId, Long itemId, Long amount) {
+        if (amount <= 0)
+            throw new IllegalArgumentException("차감할 수량은 1 이상이어야 합니다.");
+
+        CompanyInventory inventory = companyInventoryRepository.findByCompanyId(companyId)
+                .orElseThrow(() -> new IllegalArgumentException("창고를 찾을 수 없습니다."));
+
+        List<InventorySlot> slots = inventory.getSlots().stream()
+                .filter(slot -> slot.getItem() != null && slot.getItem().getId().equals(itemId))
+                .collect(Collectors.toList());
+
+        long totalAvailable = slots.stream().mapToLong(InventorySlot::getQuantity).sum();
+        if (totalAvailable < amount) {
+            throw new IllegalStateException("해당 아이템의 수량이 부족합니다.");
+        }
+
+        long remainingAmount = amount;
+        for (InventorySlot slot : slots) {
+            if (remainingAmount <= 0) break;
+
+            long currentSlotAmount = slot.getQuantity();
+            if (currentSlotAmount <= remainingAmount) {
+                // 이 슬롯의 아이템을 전부 소진
+                remainingAmount -= currentSlotAmount;
+                slot.clearSlot();
+            } else {
+                // 이 슬롯에서 일부만 소진
+                slot.setItemAndQuantity(slot.getItem(), currentSlotAmount - remainingAmount);
+                remainingAmount = 0;
+            }
+        }
+    }
+
+    @Transactional
     public void swapOrMergeSlots(Long companyId, int fromSlotIndex, int toSlotIndex) {
         CompanyInventory inventory = companyInventoryRepository.findByCompanyId(companyId)
                 .orElseThrow(() -> new IllegalArgumentException("창고를 찾을 수 없습니다."));
