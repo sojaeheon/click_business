@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:17
+    container_name: postgres-db
+    restart: always
+    environment:
+      POSTGRES_DB: ecosim
+      POSTGRES_USER: ecosim
+      POSTGRES_PASSWORD: ecosim
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+    networks:
+      - ecosim-network
+
+networks:
+  ecosim-network:
+    driver: bridge

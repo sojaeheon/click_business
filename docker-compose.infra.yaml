@@ -1,0 +1,42 @@
+include:
+  - path: ./docker-compose.yaml
+
+services:
+  jenkins:
+    build: .
+    user: root
+    container_name: jenkins-server
+    restart: always
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    env_file:
+      - .env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./jenkins_home:/var/jenkins_home
+      - ./jenkins.yaml:/var/jenkins_home/jenkins.yaml
+    environment:
+      - CASC_JENKINS_CONFIG=/var/jenkins_home/jenkins.yaml
+      - KUBECONFIG_CONTENT
+    networks:
+      - ecosim-network
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    restart: always
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    command:
+      - http
+      - jenkins-server:8080
+    ports:
+      - "4040:4040"
+    depends_on:
+      - jenkins
+    networks:
+      - ecosim-network
+
+networks:
+  ecosim-network:
+    driver: bridge

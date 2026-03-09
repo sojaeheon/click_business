@@ -1,0 +1,9 @@
+# 도커 빌드 시 무시할 목록
+jenkins_home/
+.git/
+backend/
+frontend/
+bigdata/
+node_modules/
+.env
+startup.sh

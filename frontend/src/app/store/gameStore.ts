@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 
-export type ModalTab = "profile" | "news" | "politics" | "incentive" | "notification" | "settings" | null;
+export type ModalTab = "profile" | "news" | "politics" | "incentive" | "inventory" | "notification" | "settings" | null;
 
 export type BuildingPage = "hr" | "bank" | "warehouse" | "minigame" | "factory" | "market" | null;
 
