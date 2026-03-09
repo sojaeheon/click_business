@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { IsometricScene } from "./components/game/IsometricScene";
 import { GameHUD } from "./components/game/GameHUD";
 import { ModalContainer } from "./components/modals/ModalContainer";

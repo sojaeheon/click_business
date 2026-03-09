@@ -1,6 +1,6 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { HelpCircle, ArrowLeft } from "lucide-react";
-import { useGame } from "../../store/gameStore";
+import { useGame } from "../../app/store/gameStore";
 
 export function BankPage() {
   const { state, closeBuildingPage } = useGame();
@@ -85,11 +85,10 @@ export function BankPage() {
           <div className="flex-1 flex bg-white border-2 border-gray-400 rounded-xl overflow-hidden">
             <button
               onClick={() => setActiveTab("loan")}
-              className={`flex-1 py-3 text-center text-sm cursor-pointer transition-colors ${
-                activeTab === "loan"
+              className={`flex-1 py-3 text-center text-sm cursor-pointer transition-colors ${activeTab === "loan"
                   ? "bg-gray-800 text-white"
                   : "text-gray-600 hover:bg-gray-100"
-              }`}
+                }`}
               style={{ fontWeight: activeTab === "loan" ? 700 : 400 }}
             >
               대출금
@@ -97,11 +96,10 @@ export function BankPage() {
             <div className="w-[2px] bg-gray-400" />
             <button
               onClick={() => setActiveTab("deposit")}
-              className={`flex-1 py-3 text-center text-sm cursor-pointer transition-colors ${
-                activeTab === "deposit"
+              className={`flex-1 py-3 text-center text-sm cursor-pointer transition-colors ${activeTab === "deposit"
                   ? "bg-gray-800 text-white"
                   : "text-gray-600 hover:bg-gray-100"
-              }`}
+                }`}
               style={{ fontWeight: activeTab === "deposit" ? 700 : 400 }}
             >
               예금

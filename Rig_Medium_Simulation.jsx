@@ -5,7 +5,7 @@ Command: npx gltfjsx@6.5.3 public/models/animations/Rig_Medium_Simulation.glb --
 
 import React from 'react'
 import { useGraph } from '@react-three/fiber'
-import { useGLTF, useAnimations } from '@react-three/drei'
+import { useGLTF, useAnimations } from './frontend/node_modules/@react-three/drei'
 import { SkeletonUtils } from 'three-stdlib'
 
 export function Model(props) {

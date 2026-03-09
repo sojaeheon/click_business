@@ -10,19 +10,21 @@ Title: animated conveyer belt
 import React from 'react'
 import { useGLTF, useAnimations } from '@react-three/drei'
 
-export function ConveyorBelt(props) {
+export function ConveyorBelt({ isAnimating = false, ...props }) {
   const group = React.useRef()
-  // 🚨 12번째 줄: 이 부분을 preload 경로와 완벽하게 똑같이 맞췄습니다!
   const { nodes, materials, animations } = useGLTF('/models/props/animated_conveyer_belt.glb')
   const { actions } = useAnimations(animations, group)
 
-  // 컴포넌트 렌더링 시 첫 번째 애니메이션 자동 실행 (옵션)
+  // isAnimating prop에 따라 벨트 애니메이션 시작/정지
   React.useEffect(() => {
     const actionName = Object.keys(actions)[0];
-    if (actionName && actions[actionName]) {
-      actions[actionName].play();
+    if (!actionName || !actions[actionName]) return;
+    if (isAnimating) {
+      actions[actionName].reset().play();
+    } else {
+      actions[actionName].stop();
     }
-  }, [actions]);
+  }, [actions, isAnimating]);
 
   return (
     <group ref={group} {...props} dispose={null}>

@@ -1,6 +1,6 @@
-import { useState, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { ArrowLeft } from "lucide-react";
-import { useGame } from "../../store/gameStore";
+import { useGame } from "../../app/store/gameStore";
 
 export function HRPage() {
   const { state, closeBuildingPage } = useGame();
@@ -108,15 +108,14 @@ export function HRPage() {
                   {/* Torso */}
                   <div className="w-24 h-20 bg-gradient-to-b from-gray-200 to-gray-300 rounded-b-lg border-2 border-gray-600 flex items-center justify-center">
                     <div
-                      className={`w-6 h-6 rounded-full border-2 transition-colors duration-500 ${
-                        leverPulled
+                      className={`w-6 h-6 rounded-full border-2 transition-colors duration-500 ${leverPulled
                           ? resultMessage?.includes("성공")
                             ? "border-green-500 bg-green-300"
                             : resultMessage?.includes("실패")
-                            ? "border-red-500 bg-red-300"
-                            : "border-yellow-500 bg-yellow-300 animate-pulse"
+                              ? "border-red-500 bg-red-300"
+                              : "border-yellow-500 bg-yellow-300 animate-pulse"
                           : "border-gray-400 bg-gray-100"
-                      }`}
+                        }`}
                     />
                   </div>
                   {/* Arms */}
@@ -172,11 +171,10 @@ export function HRPage() {
       {resultMessage && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
           <div
-            className={`text-4xl px-8 py-4 rounded-2xl shadow-2xl ${
-              resultMessage.includes("성공")
+            className={`text-4xl px-8 py-4 rounded-2xl shadow-2xl ${resultMessage.includes("성공")
                 ? "bg-green-100 text-green-700 border-2 border-green-400"
                 : "bg-red-100 text-red-700 border-2 border-red-400"
-            }`}
+              }`}
             style={{ fontWeight: 900 }}
           >
             {resultMessage}

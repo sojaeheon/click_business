@@ -1,3 +1,17 @@
+@font-face {
+  font-family: 'KerisKeduLine';
+  src: url('/fonts/KERISKEDU_Line.ttf') format('truetype');
+  font-weight: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'KerisKeduR';
+  src: url('/fonts/KERISKEDU_R.ttf') format('truetype');
+  font-weight: normal;
+  font-display: swap;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {

@@ -1,6 +1,6 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { ArrowLeft, Plus, Minus, Package } from "lucide-react";
-import { useGame } from "../../store/gameStore";
+import { useGame } from "../../app/store/gameStore";
 
 function ShelfItem({
   name,
@@ -99,21 +99,19 @@ export function WarehousePage() {
       <div className="flex items-center gap-2 px-6 pt-4">
         <button
           onClick={() => setCompactView(false)}
-          className={`w-8 h-8 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors ${
-            !compactView
+          className={`w-8 h-8 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors ${!compactView
               ? "border-gray-800 bg-gray-800 text-white"
               : "border-gray-400 text-gray-500 hover:bg-gray-200"
-          }`}
+            }`}
         >
           <Plus className="w-4 h-4" />
         </button>
         <button
           onClick={() => setCompactView(true)}
-          className={`w-8 h-8 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors ${
-            compactView
+          className={`w-8 h-8 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors ${compactView
               ? "border-gray-800 bg-gray-800 text-white"
               : "border-gray-400 text-gray-500 hover:bg-gray-200"
-          }`}
+            }`}
         >
           <Minus className="w-4 h-4" />
         </button>
