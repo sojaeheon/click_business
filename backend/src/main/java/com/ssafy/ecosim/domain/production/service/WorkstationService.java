@@ -211,16 +211,6 @@ public class WorkstationService {
                                 .reservedQuantity(workstation.getReservedQuantity())
                                 .producedQuantity(workstation.getProducedQuantity());
 
-                // 공장의 내 인벤토리에서 재료(input 아이템) 보유량 총합을 조회하여 추가
-                if (inputItemId != null) {
-                        itemRepository.findById(inputItemId).ifPresent(item -> {
-                                builder.inputItemId(item.getId())
-                                                .inputItemName(item.getName())
-                                                .inputQuantity(inventoryService.getItemQuantity(companyId,
-                                                                inputItemId));
-                        });
-                }
-
                 // 결과물 정보 추가
                 if (outputItemId != null) {
                         itemRepository.findById(outputItemId).ifPresent(item -> {

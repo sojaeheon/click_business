@@ -12,11 +12,6 @@ public class WorkstationStatusResponse {
     private Long reservedQuantity;
     private Long producedQuantity;
 
-    // Input info
-    private Long inputItemId;
-    private String inputItemName;
-    private Long inputQuantity;
-
     // Output info
     private Long outputItemId;
     private String outputItemName;
