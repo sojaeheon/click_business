@@ -164,6 +164,7 @@ pipeline {
                 mattermostSend (
                     color: statusColor,
                     endpoint: "https://meeting.ssafy.com/hooks/64bwh9doxpnbfcndhpezpsp9ic",
+                    channel: '',
                     message: """
 **🚀 파이프라인 결과: ${currentStatus} (Branch: develop)**
 ${changeLog}
