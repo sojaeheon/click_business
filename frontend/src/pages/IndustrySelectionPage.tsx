@@ -1,6 +1,32 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+const IndustryCard = ({ title, iconLabel, onSelect }: { title: string; iconLabel: string; onSelect: () => void }) => {
+  const [isHovered, setIsHovered] = useState(false);
+  const bgImage = isHovered ? "/ui_icons/Button_Exit_Blue.png" : "/ui_icons/Button_Exit_Disable.png";
+
+  return (
+    <div
+      className="industry-card flex flex-col items-center justify-start cursor-pointer transition-transform hover:-translate-y-2 hover:shadow-2xl"
+      onClick={onSelect}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      {/* 타이틀 버튼 (이미지 배경) */}
+      <div className="relative w-48 h-16 flex items-center justify-center -mt-8 mb-6">
+        <img src={bgImage} alt="Title BG" className="absolute inset-0 w-full h-full object-fill drop-shadow-md transition-all" />
+        <span className={`relative font-bold text-lg tracking-wide ${isHovered ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]' : 'text-gray-300 drop-shadow'}`}>
+          {title}
+        </span>
+      </div>
+
+      <div className="industry-icon-wrapper rounded-full bg-slate-100 p-8 shadow-inner border border-slate-200">
+        <span className="industry-icon text-3xl font-black text-slate-500">{iconLabel}</span>
+      </div>
+    </div>
+  );
+};
+
 export const IndustrySelectionPage = () => {
   const navigate = useNavigate();
   const [selectedIndustry, setSelectedIndustry] = useState<string | null>(null);
@@ -20,34 +46,17 @@ export const IndustrySelectionPage = () => {
     // - 산업 설정 parameter: { company_id, industry_type }
     // - 이름 설정 parameter: { company_id, company_name }
     // (이곳에서 fetch/axios를 통해 위 값을 백엔드로 전송하시면 됩니다.)
-    
+
     navigate('/main');
   };
 
   return (
     <div className="industry-container">
       <div className="industry-content">
-        <div className="industry-cards-wrapper">
-          <div className="industry-card" onClick={() => handleSelect('금광업')}>
-            <h2 className="industry-title">금광업</h2>
-            <div className="industry-icon-wrapper">
-              <span className="industry-icon">금광석</span>
-            </div>
-          </div>
-
-          <div className="industry-card" onClick={() => handleSelect('금 제련업')}>
-            <h2 className="industry-title">금 제련업</h2>
-            <div className="industry-icon-wrapper">
-              <span className="industry-icon">금괴</span>
-            </div>
-          </div>
-
-          <div className="industry-card" onClick={() => handleSelect('제조업')}>
-            <h2 className="industry-title">제조업</h2>
-            <div className="industry-icon-wrapper">
-              <span className="industry-icon">광산 드릴</span>
-            </div>
-          </div>
+        <div className="industry-cards-wrapper flex gap-8">
+          <IndustryCard title="금광업" iconLabel="금광석" onSelect={() => handleSelect('금광업')} />
+          <IndustryCard title="금 제련업" iconLabel="금괴" onSelect={() => handleSelect('금 제련업')} />
+          <IndustryCard title="제조업" iconLabel="광산 드릴" onSelect={() => handleSelect('제조업')} />
         </div>
       </div>
 

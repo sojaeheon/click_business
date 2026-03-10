@@ -24,12 +24,20 @@ export const LoginPage = () => {
           <img src="/logo.png" alt="딸깍 비즈니스 로고" className="logo-image" />
         </div>
 
-        <div className="button-wrapper">
-          <button className="custom-button" onClick={handleLogin}>
-            로그인
+        <div className="button-wrapper flex flex-col items-center gap-4 mt-8">
+          <button
+            className="relative w-64 h-20 hover:scale-105 active:scale-95 transition-transform flex items-center justify-center cursor-pointer bg-transparent border-none p-0"
+            onClick={handleLogin}
+          >
+            <img src="/ui_icons/Button_Play_Blue.png" alt="Login BG" className="absolute inset-0 w-full h-full object-fill drop-shadow-md" />
+            <span className="relative text-white font-bold text-xl tracking-widest drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">로그인</span>
           </button>
-          <button className="custom-button" onClick={handleGuestMode}>
-            게스트모드
+          <button
+            className="relative w-64 h-20 hover:scale-105 active:scale-95 transition-transform flex items-center justify-center cursor-pointer bg-transparent border-none p-0"
+            onClick={handleGuestMode}
+          >
+            <img src="/ui_icons/Button_Exit_Yellow.png" alt="Guest BG" className="absolute inset-0 w-full h-full object-fill drop-shadow-md" />
+            <span className="relative text-white font-bold text-xl tracking-widest drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">게스트모드</span>
           </button>
         </div>
       </div>

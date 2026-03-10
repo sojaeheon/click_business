@@ -14,7 +14,7 @@ import {
   BUILDING_AREAS, FACTORY_POS, buildingToPage, EMOTES,
 } from "./constants";
 import { EnvModel, HoverableGroup } from "./BaseComponents";
-import { WorldBounds, WaterPlane } from "./SceneHelpers";
+import { WorldBounds } from "./SceneHelpers";
 import { AreaLabel, BuildingTile, Minigame } from "./BuildingComponents";
 import { Factory } from "./Factory";
 
@@ -136,14 +136,12 @@ function PlayerCharacter({
   isFactoryWorking,
   onEnterBuilding,
   isPaused,
-  setAutoCamera,
   onOpenFactoryModal,
   onInFactory,
 }: {
   isFactoryWorking: boolean;
   onEnterBuilding: (name: string, label: string) => void;
   isPaused: boolean;
-  setAutoCamera?: (val: boolean) => void;
   onOpenFactoryModal?: () => void;
   onInFactory?: (v: boolean) => void;
 }) {
@@ -179,6 +177,12 @@ function PlayerCharacter({
 
   // 키보드 이벤트
   useEffect(() => {
+    // 💡 핵심 버그 픽스: 모달이 팝업되면서 isPaused 상태가 되면 누르고 있던 모든 키 상태를 해제하여 유령입력 제거
+    if (isPaused) {
+      keysRef.current = { w: false, a: false, s: false, d: false };
+      // early return을 하면 이벤트 등록이 안돼서 스페이스바/상호작용이 다 날아가므로 해제만 하고 넘어감
+    }
+
     const setKey = (code: string, val: boolean) => {
       switch (code) {
         case 'KeyW': case 'ArrowUp': keysRef.current.w = val; break;
@@ -197,9 +201,17 @@ function PlayerCharacter({
       if (e.code === 'Space') setShowMenu(false);
       setKey(e.code, false);
     };
+    // 브라우저 화면 포커스 나갈 때 유령입력 제거
+    const onBlur = () => { keysRef.current = { w: false, a: false, s: false, d: false }; };
+
     window.addEventListener('keydown', onDown);
     window.addEventListener('keyup', onUp);
-    return () => { window.removeEventListener('keydown', onDown); window.removeEventListener('keyup', onUp); };
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onDown);
+      window.removeEventListener('keyup', onUp);
+      window.removeEventListener('blur', onBlur);
+    };
   }, [isPaused]);
 
   // 스폰 애니메이션
@@ -256,7 +268,6 @@ function PlayerCharacter({
     const isMoving = canMove && dir.length() > 0.01;
     if (isMoving && emotionAnim) setEmotionAnim(null);
     if (isMoving) {
-      if (setAutoCamera) setAutoCamera(true);
       dir.normalize().multiplyScalar(10 * delta);
       posRef.current.add(dir);
       posRef.current.x = THREE.MathUtils.clamp(posRef.current.x, -outerX + 1, outerX - 1);
@@ -466,14 +477,12 @@ export function GameScene({
   onEnterBuilding,
   isPaused,
   onDialog,
-  setAutoCamera,
 }: {
   isFactoryWorking: boolean;
   setIsFactoryWorking: (v: boolean) => void;
   onEnterBuilding: (name: string, label: string) => void;
   isPaused: boolean;
   onDialog?: (d: ConfirmData) => void;
-  setAutoCamera?: (v: boolean) => void;
 }) {
   const { openBuildingPage } = useGame();
   const [inFactory, setInFactory] = useState(false);
@@ -497,13 +506,27 @@ export function GameScene({
 
   return (
     <>
-      <color attach="background" args={['#0a3d6b']} />
-      <fog attach="fog" args={['#0a3d6b', 40, 200]} />
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[20, 30, 10]} intensity={1.2} castShadow shadow-mapSize={[2048, 2048]} />
-      <directionalLight position={[-10, 20, -10]} intensity={0.5} color="#abcdef" />
+      <color attach="background" args={['#b1e2f6']} />
+      <fog attach="fog" args={['#b1e2f6', 40, 200]} />
+      {/* 1. 배경을 부드럽게 밝혀줄 은은한 빛 */}
+      <ambientLight intensity={0.9} color="#ffffff" />
 
-      <WaterPlane />
+      {/* 2. 메인 태양광: 강도 증가, 그림자 범위(shadow-camera)를 전체 맵(-60~60)이 덮이도록 확장 */}
+      <directionalLight
+        position={[20, 40, 20]}
+        intensity={2.0}
+        castShadow
+        shadow-bias={-0.0001}
+        shadow-mapSize={[2048, 2048]}
+      >
+        <orthographicCamera attach="shadow-camera" args={[-80, 80, 80, -80, 0.5, 150]} />
+      </directionalLight>
+
+      {/* 3. 너무 파래보이는 원인이었던 파란 보조광 삭제 및 화이트 컬러 스포트라이트로 윤곽선 확보 */}
+      <spotLight position={[0, 20, 0]} intensity={1.5} distance={150} angle={1.2} penumbra={1} color="#6bd9e8" castShadow={false} />
+      <directionalLight position={[-30, 15, -30]} intensity={0.5} color="#ffffff" />
+
+
       <MapEnvironment />
 
       <BuildingTile position={[-BX, 0, -BZ]} modelUrl={M.hr} label="인력소" onClick={() => go("hr", "인력소")} />
@@ -529,7 +552,6 @@ export function GameScene({
           isFactoryWorking={isFactoryWorking}
           onEnterBuilding={go}
           isPaused={isPaused}
-          setAutoCamera={setAutoCamera}
           onInFactory={setInFactory}
           onOpenFactoryModal={!isFactoryWorking ? handleFactoryClick : undefined}
         />
@@ -551,7 +573,6 @@ function refocusCanvas(wrap: HTMLDivElement | null) {
 export function IsometricScene() {
   const [dialogData, setDialogData] = useState<ConfirmData | null>(null);
   const [isFactoryWorking, setIsFactoryWorking] = useState(false);
-  const [autoCamera, setAutoCamera] = useState(true);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
 
   const d = CONFIG.CAMERA.distance;
@@ -588,8 +609,11 @@ export function IsometricScene() {
 
   // 다이얼로그가 닫힐 때 포커스 복원
   const closeDialog = useCallback(() => {
-    setDialogData(null);
-    setTimeout(() => refocusCanvas(canvasWrapRef.current), 80);
+    // 포인터 이벤트(pointerup)가 현재 렌더트리에서 무사히 끝나기를 기다린 뒤 언마운트
+    setTimeout(() => {
+      setDialogData(null);
+      setTimeout(() => refocusCanvas(canvasWrapRef.current), 100);
+    }, 0);
   }, []);
 
   const handleWrapperClick = useCallback(() => {
@@ -597,11 +621,11 @@ export function IsometricScene() {
   }, []);
 
   return (
-    <div className="relative w-full h-screen flex overflow-hidden font-sans">
+    <div className="relative w-full h-screen flex flex-col overflow-hidden font-sans bg-[#0a3d6b]">
       <div
         ref={canvasWrapRef}
         className="flex-1 w-full h-full relative cursor-auto"
-        style={{ fontFamily: "'KerisKeduR', sans-serif" }}
+        style={{ touchAction: "none" }}
         onClick={handleWrapperClick}
       >
         <Canvas
@@ -621,19 +645,20 @@ export function IsometricScene() {
             isFactoryWorking={isFactoryWorking}
             setIsFactoryWorking={setIsFactoryWorking}
             onEnterBuilding={() => { }}
-            setAutoCamera={setAutoCamera}
           />
-          <WorldBounds autoCamera={autoCamera} />
+          {/* 캐릭터 따라가는 카메라 삭제됨 -> 월드 바운드(이동 제한)만 유지 */}
+          <WorldBounds />
           <MapControls
             makeDefault enableRotate={false} enableZoom enablePan
             minZoom={CONFIG.CAMERA.minZoom} maxZoom={CONFIG.CAMERA.maxZoom}
             maxPolarAngle={pA} minPolarAngle={pA}
             minAzimuthAngle={aA} maxAzimuthAngle={aA}
             mouseButtons={{ LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY }}
-            onStart={() => setAutoCamera(false)}
           />
         </Canvas>
         {dialogData && <GlobalDialog data={dialogData} onClose={closeDialog} />}
+        {/* 카메라 트래킹 모드 삭제됨 (UI 토글도 삭제) */}
+
       </div>
     </div>
   );

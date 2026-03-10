@@ -17,12 +17,15 @@ export default function App() {
   }, []);
 
   const closeModal = useCallback(() => {
-    setState((prev) => ({ ...prev, activeModal: null }));
-    // 모달 닫힌 후 canvas 포커스 복원
+    // 클릭(pointerup) 이벤트 처리가 브라우저에서 완전히 끝난 직후에 unmount되도록 0ms 지연
     setTimeout(() => {
-      const canvas = document.querySelector('canvas') as HTMLElement | null;
-      canvas?.focus({ preventScroll: true });
-    }, 80);
+      setState((prev) => ({ ...prev, activeModal: null }));
+      // 모달 닫힌 후 canvas 포커스 복원 (포인터 이벤트 버그 방지)
+      setTimeout(() => {
+        const canvas = document.querySelector('canvas') as HTMLElement | null;
+        canvas?.focus({ preventScroll: true });
+      }, 100);
+    }, 0);
   }, []);
 
   const switchTab = useCallback((tab: ModalTab) => {
@@ -45,12 +48,14 @@ export default function App() {
   }, []);
 
   const closeBuildingPage = useCallback(() => {
-    setState((prev) => ({ ...prev, activeBuildingPage: null }));
-    // 건물 페이지 닫힌 후 canvas 포커스 복원
     setTimeout(() => {
-      const canvas = document.querySelector('canvas') as HTMLElement | null;
-      canvas?.focus({ preventScroll: true });
-    }, 80);
+      setState((prev) => ({ ...prev, activeBuildingPage: null }));
+      // 건물 페이지 닫힌 후 canvas 포커스 복원
+      setTimeout(() => {
+        const canvas = document.querySelector('canvas') as HTMLElement | null;
+        canvas?.focus({ preventScroll: true });
+      }, 100);
+    }, 0);
   }, []);
 
 

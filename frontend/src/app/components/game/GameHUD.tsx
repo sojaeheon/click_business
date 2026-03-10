@@ -1,18 +1,17 @@
-import { Building2, Newspaper, Trophy, Backpack, Bell, Settings, LucideIcon } from "lucide-react";
 import { useGame } from "../../store/gameStore";
 import type { ModalTab } from "../../store/gameStore";
 
 interface HudButton {
   key: ModalTab;
   label: string;
-  icon: LucideIcon;
+  imgSrc: string;
 }
 
 // 왼쪽 세로 버튼: 뉴스, 명예의전당, 인벤토리
 const leftButtons: HudButton[] = [
-  { key: "news",      label: "뉴스",        icon: Newspaper },
-  { key: "incentive", label: "명예의 전당", icon: Trophy    },
-  { key: "inventory", label: "인벤토리",    icon: Backpack  },
+  { key: "news", label: "뉴스", imgSrc: "/ui_icons/news.png" },
+  { key: "incentive", label: "명예의 전당", imgSrc: "/ui_icons/cup_128x128.png" },
+  { key: "inventory", label: "인벤토리", imgSrc: "/ui_icons/inventory.png" },
 ];
 
 export function GameHUD() {
@@ -22,83 +21,107 @@ export function GameHUD() {
   return (
     <div className="absolute inset-0 pointer-events-none">
 
-      {/* ── 상단 바 ── */}
-      <div className="flex items-start p-3 gap-3">
+      {/* ── 폰트는 기본적으로 전체 프로젝트가 sans를 따르도록 하되, HUD 전체에 명시적 적용 ── */}
+      <div className="flex items-start p-4 gap-6 font-sans">
 
-        {/* 왼쪽 상단: 기업 프로필 (크게, 아이콘만) */}
+        {/* 왼쪽 상단: 기업 프로필 */}
         <button
           onClick={() => openModal("profile")}
-          className="pointer-events-auto flex items-center justify-center w-20 h-20 bg-white/90 backdrop-blur-sm rounded-xl border-2 border-gray-300 shadow-lg hover:bg-gray-100 transition-all cursor-pointer active:scale-95 flex-shrink-0"
+          className="pointer-events-auto relative flex flex-col items-center justify-start w-32 h-36 hover:scale-105 transition-transform cursor-pointer active:scale-95 flex-shrink-0"
           title="기업 프로필"
         >
-          <Building2 className="w-10 h-10 text-gray-700" />
+          {/* 기업프로필 배경 (Group 59) */}
+          <div className="relative w-32 h-32 flex items-start justify-center">
+            <img src="/ui_icons/Group 59.png" alt="Profile BG" className="absolute inset-0 w-full h-full object-contain drop-shadow-md" />
+            <img src="/ui_icons/building.png" alt="Building" className="relative w-20 h-20 mt-1 object-contain drop-shadow" />
+          </div>
+          {/* 하단 회사 이름 텍스트 */}
+          <span className="text-white font-bold text-sm tracking-widest drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] -mt-6">
+            딸깍 컴퍼니
+          </span>
         </button>
 
-        {/* 중앙: 잔액 + 재고량 */}
-        <div className="flex-1 flex items-start justify-center">
-          <div className="pointer-events-auto bg-white/90 backdrop-blur-sm rounded-xl border-2 border-gray-300 shadow-lg px-5 py-2 flex items-center gap-3">
-            <div>
-              <div className="text-[10px] text-gray-400">현 잔액</div>
-              <span className="text-lg text-gray-800" style={{ fontWeight: 700 }}>
-                {state.money.toLocaleString()} {state.currency}
+        {/* 중앙: 잔액 + 재고량 (분리 및 디자인 변경) */}
+        <div className="flex-1 flex items-start justify-center gap-10 mt-4 pointer-events-auto">
+
+          {/* 현 잔액 영역 */}
+          <div className="relative flex items-center bg-[#292631] rounded-r-full rounded-l-3xl h-12 min-w-[300px] shadow-lg border border-gray-700">
+            {/* 좌측 튀어나온 둥근 아이콘 (동전) */}
+            <div className="absolute -left-6 top-1/2 -translate-y-1/2 w-16 h-16  flex items-center justify-center z-10">
+              <img src="/ui_icons/Coins.png" alt="Coins" className="w-16 h-16 object-contain drop-shadow" />
+            </div>
+            {/* 텍스트 영역 */}
+            <div className="pl-14 pr-6 w-full flex flex-col items-center justify-center">
+              <span className="text-white font-black text-xl tracking-wider drop-shadow-md">
+                {state.money.toLocaleString()}
               </span>
             </div>
-            <div className="w-px h-8 bg-gray-200" />
-            <div>
-              <div className="text-[10px] text-gray-400 mb-1">재고량</div>
-              <div className="w-28 h-2.5 bg-gray-200 rounded-full overflow-hidden">
+          </div>
+
+          {/* 재고량 영역 */}
+          <div className="relative flex items-center bg-[#292631] rounded-r-full rounded-l-3xl h-12 min-w-[300px] shadow-lg border border-gray-700">
+            {/* 좌측 튀어나온 둥근 아이콘 (별) */}
+            <div className="absolute -left-6 top-1/2 -translate-y-1/2 w-16 h-16 flex items-center justify-center z-10">
+              <img src="/ui_icons/star_128x128_4.png" alt="Star" className="w-16 h-16 object-contain drop-shadow" />
+            </div>
+
+            {/* 진행바 영역 */}
+            <div className="pl-14 pr-4 w-full flex items-center justify-center h-full">
+              <div className="relative w-full h-5">
+                {/* 채워지는 게이지 이미지 마스킹 */}
                 <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${state.inventoryPercent}%`,
-                    background: `linear-gradient(90deg, #fbbf24, #f97316, #ef4444)`,
-                  }}
-                />
-              </div>
-              <div className="text-right text-[10px] text-gray-400 mt-0.5">
-                {state.inventoryPercent.toFixed(0)}%
+                  className="absolute left-[-10%] h-[100%] overflow-hidden transition-all duration-700 ease-out flex justify-start items-center rounded-sm"
+                  style={{ width: `${state.inventoryPercent * 0.9}%` }}
+                >
+                  <img src="/ui_icons/Progressbar_Gold_3.png" alt="Gauge Fill" className="h-full w-[130px] max-w-none object-fill" />
+                </div>
+                {/* 텍스트 표기 (진행바 위) */}
+                <span className="absolute inset-0 flex items-center justify-center text-white font-black text-[12px] drop-shadow-[0_1px_2px_rgba(0,0,0,1)] tracking-widest pointer-events-none">
+                  {state.inventoryPercent.toFixed(0)}%
+                </span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* 오른쪽 상단: 알림 + 설정 (가로) */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* 알림 */}
+        {/* 오른쪽 상단: 알림 + 설정 (비율 1.5배~2배 확대) */}
+        <div className="flex items-center gap-5 flex-shrink-0 pt-2 pr-4">
           <button
             onClick={() => openModal("notification")}
-            className="pointer-events-auto relative w-11 h-11 bg-white/90 backdrop-blur-sm rounded-full border-2 border-gray-300 shadow-lg flex items-center justify-center hover:bg-gray-100 transition-all cursor-pointer"
+            className="pointer-events-auto relative w-20 h-20 hover:scale-110 transition-transform cursor-pointer"
             title="알림"
           >
-            <Bell className="w-5 h-5 text-gray-700" />
+            <img src="/ui_icons/notification.png" alt="Notification" className="w-full h-full object-contain drop-shadow-lg" />
             {unreadNotifications > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] w-4 h-4 flex items-center justify-center rounded-full">
+              <span className="absolute top-1 -right-1 bg-red-600 border-[3px] border-white text-white font-black text-xs w-7 h-7 flex items-center justify-center rounded-full shadow-md">
                 {unreadNotifications}
               </span>
             )}
           </button>
-          {/* 설정 */}
           <button
             onClick={() => openModal("settings")}
-            className="pointer-events-auto w-11 h-11 bg-white/90 backdrop-blur-sm rounded-full border-2 border-gray-300 shadow-lg flex items-center justify-center hover:bg-gray-100 transition-all cursor-pointer"
+            className="pointer-events-auto relative w-20 h-20 hover:scale-110 transition-transform cursor-pointer"
             title="설정"
           >
-            <Settings className="w-5 h-5 text-gray-700" />
+            <img src="/ui_icons/setting.png" alt="Settings" className="w-full h-full object-contain drop-shadow-lg" />
           </button>
         </div>
       </div>
 
-      {/* ── 왼쪽 세로: 뉴스, 명예의전당, 인벤토리 (아이콘 + 라벨) ── */}
-      <div className="absolute left-3 top-1/2 -translate-y-1/2 flex flex-col gap-2 pointer-events-auto">
-        {leftButtons.map(({ key, label, icon: Icon }) => (
+      {/* ── 왼쪽 세로: 앱 아이콘들도 1.5배~2배 확대 ── */}
+      <div className="absolute left-6 top-1/2 -translate-y-1/2 flex flex-col gap-6 pointer-events-auto">
+        {leftButtons.map(({ key, label, imgSrc }) => (
           <button
             key={key}
             onClick={() => openModal(key)}
-            className="flex flex-col items-center gap-0.5 w-16 py-2.5 rounded-xl bg-white/85 backdrop-blur-sm border border-gray-300 shadow hover:bg-gray-100 transition-all cursor-pointer active:scale-95"
+            className="flex flex-col items-center gap-2 w-24 hover:scale-110 transition-transform cursor-pointer active:scale-95 group"
             title={label}
           >
-            <Icon className="w-6 h-6 text-gray-700" />
-            <span className="text-[10px] text-gray-500 leading-tight text-center">{label}</span>
+            {/* 투명 테두리 상자 완전 제거, 순수 이미지만 노출 */}
+            <div className="relative w-20 h-20 flex items-center justify-center transition-transform group-hover:scale-105">
+              <img src={imgSrc} alt={label} className="w-full h-full object-contain drop-shadow-lg" />
+            </div>
+            <span className="text-sm text-white font-bold drop-shadow-[0_2px_3px_rgba(0,0,0,1)] tracking-widest leading-tight text-center">{label}</span>
           </button>
         ))}
       </div>

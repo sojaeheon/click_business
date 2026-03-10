@@ -174,29 +174,44 @@ export function Factory({ position, isWorking, inFactory, onOpenModal, onStoreGo
             <group position={[0, 4, 0]}>
                 <Html center zIndexRange={[10, 0]}>
                     {(isCompleted || isFull) ? (
-                        <span className="text-6xl text-red-500 font-bold" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.18)' }}>❗️</span>
+                        <img src="/ui_icons/warning_128x128.png" alt="Warning" className="w-14 h-14 object-contain animate-bounce drop-shadow-md" />
                     ) : !isWorking ? (
-                        <span className="text-6xl text-yellow-500 font-bold" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.18)' }}>❓</span>
+                        <img src="/ui_icons/warning_128x128.png" alt="Stopped" className="w-14 h-14 object-contain drop-shadow-md opacity-80" style={{ filter: 'grayscale(100%)' }} />
                     ) : showFullGauge ? (
                         <div
-                            className="relative flex items-center justify-center w-28 h-28 rounded-full flex-col bg-white shadow-xl border-4 border-slate-50 cursor-pointer"
+                            className="relative flex flex-col items-center justify-center cursor-pointer min-w-[140px]"
                             onMouseLeave={() => setGaugeHovered(false)}
                         >
-                            <svg className="absolute w-full h-full transform -rotate-90">
-                                <circle cx="52" cy="52" r="44" fill="transparent" stroke="#f1f5f9" strokeWidth="12" />
-                                <circle cx="52" cy="52" r="44" fill="transparent" stroke="#3b82f6" strokeWidth="12"
-                                    strokeDasharray={`${(progress / 100) * 276.4} 276.4`} strokeLinecap="round"
-                                    className="transition-all duration-700 ease-out" />
-                            </svg>
-                            <span className="text-[10px] font-bold text-slate-400 z-10 -mb-1 mt-1">PROGRESS</span>
-                            <span className="text-2xl font-black text-slate-800 z-10 tracking-tighter">{progress}%</span>
+                            <span className="text-white text-[12px] font-black tracking-widest mb-1 drop-shadow-md">{progress}%</span>
+                            <div className="relative w-32 h-6 flex items-center justify-center">
+                                {/* 배경 (빈 게이지) */}
+                                <img src="/ui_icons/Progressbar_Gold.png" alt="Gauge BG" className="absolute inset-0 w-full h-full object-fill drop-shadow" />
+                                {/* 채워지는 게이지 (클리핑 마스크 느낌으로 width 조정) */}
+                                <div
+                                    className="absolute left-[3%] top-[15%] h-[70%] overflow-hidden transition-all duration-700 ease-out flex justify-start items-center"
+                                    style={{ width: `${progress * 0.94}%` }}
+                                >
+                                    <img src="/ui_icons/Progressbar_Gold_3.png" alt="Gauge Fill" className="h-full w-[112px] max-w-none object-fill" />
+                                </div>
+                            </div>
                         </div>
                     ) : (
-                        <div className="cursor-pointer" onMouseEnter={() => setGaugeHovered(true)}>
-                            <div className="w-20 h-3 bg-slate-200/60 rounded-full overflow-hidden shadow">
-                                <div className="h-full bg-blue-500 transition-all duration-700" style={{ width: `${progress}%` }} />
+                        <div
+                            className="relative flex items-center justify-center cursor-pointer min-w-[80px]"
+                            onMouseEnter={() => setGaugeHovered(true)}
+                        >
+                            <div className="relative w-20 h-4 flex items-center justify-center">
+                                {/* 축소된 배경 */}
+                                <img src="/ui_icons/Progressbar_Gold.png" alt="Gauge BG" className="absolute inset-0 w-full h-full object-fill drop-shadow" />
+                                {/* 축소된 채워지는 게이지 */}
+                                <div
+                                    className="absolute left-[3%] top-[15%] h-[70%] overflow-hidden transition-all duration-700 ease-out flex justify-start items-center"
+                                    style={{ width: `${progress * 0.94}%` }}
+                                >
+                                    <img src="/ui_icons/Progressbar_Gold_3.png" alt="Gauge Fill" className="h-full w-[70px] max-w-none object-fill" />
+                                </div>
                             </div>
-                            <div className="text-center text-[9px] text-white/90 font-bold mt-0.5 drop-shadow">{progress}%</div>
+                            <span className="absolute text-white text-[9px] font-black drop-shadow-md">{progress}%</span>
                         </div>
                     )}
                 </Html>
