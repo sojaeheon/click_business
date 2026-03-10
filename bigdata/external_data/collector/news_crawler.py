@@ -129,6 +129,6 @@ for KEYWORD in KEYWORDS:
 
 ### CSV 저장 ###
 df = pd.DataFrame(all_news, columns=["Title", "Source", "Date", "Reporter", "Content", "ImageURL", "URL"])
-df.to_csv("kbs_news_gold_2020_2025.csv", index=False, encoding="utf-8-sig") # 금
-df.to_csv("kbs_news_interest_2020_2025.csv", index=False, encoding="utf-8-sig") # 금리
+df.to_csv("../raw/kbs_news_gold_2020_2025.csv", index=False, encoding="utf-8-sig") # 금
+df.to_csv("../raw/kbs_news_interest_2020_2025.csv", index=False, encoding="utf-8-sig") # 금리
 print("CSV 저장 완료")
