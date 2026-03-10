@@ -31,7 +31,6 @@
 | 파일               | 설명              |
 | ---------------- | --------------- |
 | news_crawler.py  | 뉴스 수집 파일       |
-| news_preprocessing.ipynb | 뉴스 전처리 파일 |
 | requirements.txt | Python 라이브러리 |
 | crawler_env      | Python 가상환경     |
 | README.md | 환경설정 파일 |
