@@ -64,7 +64,7 @@ public class WorkstationController {
         Long userId = Long.parseLong(userDetails.getUsername());
         Company company = getCompanyByUserId(userId);
 
-        workstationService.processProduction(company.getId(), workstationId, request.getOutputItemId());
+        workstationService.processProduction(company.getId(), workstationId);
         return ApiResponse.success("생산 지연 평가가 완료되었습니다.");
     }
 
