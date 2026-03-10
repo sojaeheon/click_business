@@ -5,6 +5,7 @@ import { ModalContainer } from "./components/modals/ModalContainer";
 import { BankPage } from "../pages/buildings/BankPage";
 import { WarehousePage } from "../pages/buildings/WarehousePage";
 import { HRPage } from "../pages/buildings/HRPage";
+import { MinigamePage } from "../pages/buildings/MinigamePage";
 import { GameContext, defaultGameState } from "./store/gameStore";
 import type { GameState, ModalTab, BuildingPage, GameContextType } from "./store/gameStore";
 
@@ -64,9 +65,10 @@ export default function App() {
         return <WarehousePage />;
       case "hr":
         return <HRPage />;
+      case "minigame":
+        return <MinigamePage />;
       case "factory":
       case "market":
-      case "minigame":
         return (
           <div className="absolute inset-0 z-40 bg-gray-100 flex items-center justify-center">
             <div className="text-center">
