@@ -1,5 +1,6 @@
 package com.ssafy.ecosim.domain.user.controller;
 
+import com.ssafy.ecosim.domain.user.dto.request.LoginRequest;
 import com.ssafy.ecosim.domain.user.dto.request.UserRegisterRequest;
 import com.ssafy.ecosim.domain.user.dto.response.LoginResponse;
 import com.ssafy.ecosim.domain.user.dto.response.UserProfileDto;
@@ -29,6 +30,11 @@ public class UserController {
         Long userId = userService.registerUser(request);
         String token = tokenProvider.createToken(userId, request.getEmail());
         return ApiResponse.success(new LoginResponse(token, userId, false));
+    }
+
+    @PostMapping("/login")
+    public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
+        return ApiResponse.success(userService.login(request));
     }
 
     @PostMapping("/guest")

@@ -34,7 +34,8 @@ public class CompanyService {
             throw new IllegalArgumentException("이 유저는 이미 기업을 보유하고 있습니다.");
         });
 
-        Company company = new Company(user, companyName);
+        // 임시로 1L, 2L 할당 (추후 기획에 맞게 수정)
+        Company company = new Company(user, companyName, 1L, 2L);
         Company savedCompany = companyRepository.save(company);
 
         // 기업 생성 시 기본 창고(인벤토리) 자동 지급
