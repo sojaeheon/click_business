@@ -157,14 +157,19 @@ pipeline {
                     }
                 } catch (e) { /* ignore */ }
 
+              def currentStatus = currentBuild.currentResult
+                def statusColor = (currentStatus == 'SUCCESS') ? '#00FF00' : (currentStatus == 'FAILURE' ? '#FF0000' : '#FFA500')
+                
+                // 2. Mattermost 전송 (기본 설정을 무시하고 직접 주소 입력)
                 mattermostSend (
-                    color: color,
-                    channel: 'jetkins',
+                    color: statusColor,
+                    endpoint: "https://meeting.ssafy.com/hooks/64bwh9doxpnbfcndhpezpsp9ic",
+                    channel: 'b109',
                     message: """
-**🚀 파이프라인 결과: ${buildStatus}**
+**🚀 파이프라인 결과: ${currentStatus} (Branch: develop)**
 ${changeLog}
 
-| Stage | status |
+| Stage | Status |
 | :--- | :--- |
 ${stageResults.collect { k, v -> "| ${k} | ${v} |" }.join('\n')}
 
