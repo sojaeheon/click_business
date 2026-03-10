@@ -24,14 +24,6 @@ if ! [ -x "$(command -v docker)" ]; then
     echo "✅ Docker 설치 완료. (주의: 권한 적용을 위해 재접속이 필요할 수 있습니다)"
 fi
 
-# Kind (Kubernetes in Docker) 설치 확인
-if ! [ -x "$(command -v kind)" ]; then
-    echo "📦 Kind를 설치합니다..."
-    [ $(uname -m) = x86_64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-amd64
-    chmod +x ./kind
-    sudo mv ./kind /usr/local/bin/kind
-    echo "✅ Kind 설치 완료."
-fi
 
 # Kubectl 설치 확인
 if ! [ -x "$(command -v kubectl)" ]; then
@@ -45,100 +37,93 @@ fi
 echo "☸️ [2/5] 로컬 Kubernetes 클러스터 준비..."
 
 # Kind 클러스터 생성 (이미 있으면 스킵)
-if ! kind get clusters | grep -q "kind"; then
+if ! sudo kind get clusters | grep -q "kind"; then
     echo "🚀 Kind 클러스터를 생성 중입니다 (약 1~2분 소요)..."
-    kind create cluster --name kind
+    sudo kind create cluster --name kind
 else
     echo "✅ 이미 실행 중인 Kind 클러스터가 있습니다."
 fi
 
 # Jenkins 컨테이너가 K8s API 서버에 접속할 수 있도록 내부 IP 추출 및 Kubeconfig 수정
-KUBECONFIG_RAW=$(kind get kubeconfig --name kind)
+KUBECONFIG_RAW=$(sudo kind get kubeconfig --name kind)
 KIND_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' kind-control-plane)
 
 # Kubeconfig 내의 127.0.0.1:PORT 주소를 컨테이너 간 통신이 가능한 KIND_IP:6443으로 치환
-# (내부 통신 시에는 항상 6443 포트를 사용해야 함)
 KUBECONFIG_ADJUSTED=$(echo "$KUBECONFIG_RAW" | sed -E "s|https://127.0.0.1:[0-9]+|https://$KIND_IP:6443|g")
 
 echo "📂 [3/5] 설정 파일(.env) 업데이트 중..."
 
 if [ ! -f .env ]; then
-    echo "⚠️ .env 파일이 없습니다. 기본 템플릿을 생성합니다."
-    cp .env.example .env 2>/dev/null || touch .env
+    echo "⚠️ .env 파일이 없습니다. 필수 변수를 포함한 기본 템플릿을 생성합니다."
+    cat <<EOF > .env
+JENKINS_ADMIN_ID=admin
+JENKINS_ADMIN_PASSWORD=admin
+GITLAB_USERNAME=your_username
+GITLAB_TOKEN=your_token
+GITLAB_WEBHOOK_TOKEN=your_webhook_token
+DOCKER_HUB_ID=your_docker_hub_id
+DOCKER_HUB_PASSWORD=your_docker_hub_password
+MM_WEBHOOK_URL=your_mattermost_webhook_url
+EOF
+    echo "❗ .env 파일에 실제 값을 채워주세요. (현재는 기본값으로 설정됨)"
 fi
 
-# .env 파일에서 지저분한 K8S 설정 제거 (이제 export로 넘깁니다)
-sed -i '/KUBECONFIG_CONTENT=/d' .env 2>/dev/null || true
-# 혹시 .env 내부에 남아있을 수 있는 줄바꿈 찌꺼기들 제거 (경고 방지)
-# 변수 이름이 아닌 clusters:, contexts: 등으로 시작하는 라인들 삭제
-sed -i '/^clusters:/d' .env 2>/dev/null || true
-sed -i '/^contexts:/d' .env 2>/dev/null || true
-sed -i '/^users:/d' .env 2>/dev/null || true
-sed -i '/^  /d' .env 2>/dev/null || true
+# 퍼블릭 IP 감지 (EC2 IMDSv2 우선, 실패 시 외부 API 사용)
+echo "🔍 EC2 퍼블릭 IP를 감지하는 중..."
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+PUBLIC_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4)
 
-# 변수를 메모리에 올림 (Docker Compose가 이걸 읽어갑니다)
+if [ -z "$PUBLIC_IP" ]; then
+    PUBLIC_IP=$(curl -s ifconfig.me || curl -s checkip.amazonaws.com)
+fi
+
+if [ -z "$PUBLIC_IP" ]; then
+    echo "❌ [주의] 퍼블릭 IP를 자동으로 가져오지 못했습니다. localhost를 사용합니다."
+    PUBLIC_IP="localhost"
+else
+    echo "✅ 감지된 퍼블릭 IP: $PUBLIC_IP"
+fi
+
+# .env 파일 업데이트 (YAML 잔재 및 잘못된 설정 제거)
+sed -i '/JENKINS_URL=/d' .env
+echo "JENKINS_URL=http://$PUBLIC_IP:8080" >> .env
+sed -i '/KUBECONFIG_CONTENT\|clusters:\|contexts:\|users:\|current-context:\|kind:\|apiVersion:/d' .env 2>/dev/null || true
+# 공백으로 시작하는 라인(YAML 인덴트) 삭제
+sed -i '/^[[:space:]]\+/d' .env 2>/dev/null || true
+# 빈 줄 정리
+sed -i '/^$/d' .env 2>/dev/null || true
+echo "" >> .env
+
+# 변수를 메모리에 올림
 export KUBECONFIG_CONTENT="$KUBECONFIG_ADJUSTED"
 
-# ngrok 토큰 확인 경고
-if grep -q "your_ngrok_authtoken_here" .env; then
-    echo "⚠️  잠시만요! .env 파일에 NGROK_AUTHTOKEN을 아직 넣지 않으셨나요?"
-    echo "👉 https://dashboard.ngrok.com/get-started/your-authtoken 에서 토큰을 확인하세요."
-fi
-
-# 사용할 Docker Compose 명령어 확인 (docker compose vs docker-compose)
+# 사용할 Docker Compose 명령어 확인
 if docker compose version >/dev/null 2>&1; then
     DOCKER_COMPOSE_CMD="docker compose"
 else
     DOCKER_COMPOSE_CMD="docker-compose"
 fi
 
-echo "🚀 [4/5] Jenkins 및 ngrok 실행 중 (사용 명령어: $DOCKER_COMPOSE_CMD)..."
+echo "🚀 [4/5] Jenkins 실행 중 (사용 명령어: $DOCKER_COMPOSE_CMD)..."
 
-# 기존에 엉킨 컨테이너가 있다면 강제 종료 및 삭제
-$DOCKER_COMPOSE_CMD down || true
+# 기존 인프라 종료 및 재시작 (ngrok 제외)
+$DOCKER_COMPOSE_CMD -f docker-compose.infra.yaml down || true
+$DOCKER_COMPOSE_CMD -f docker-compose.infra.yaml up -d --build
 
-# 이미지가 없을 때만 빌드하고 실행 (매번 빌드 방지)
-$DOCKER_COMPOSE_CMD up -d
+echo "✅ [5/5] 모든 인프라 구축 완료!"
+echo "===================================================="
+echo "🌐 Jenkins 접속 주소: http://$PUBLIC_IP:8080"
+echo " (참고: 나중에 Nginx 설정을 통해 80/443 포트로 접속 가능하게 변경될 예정입니다.)"
+echo "☸️ Kubernetes: 실행 중 (Kind)"
+echo ""
+echo "📢 GitLab Webhook 등록 주소 (Nginx 설정 전 임시):"
+echo "http://$PUBLIC_IP:8080/project/S14P21B109-Practice-Pipeline"
+echo "===================================================="
 
-echo "⏳ 외부 주소 할당 대기 중 (최대 30초)..."
-NGROK_URL=""
-for i in {1..15}; do
-    # Python을 이용한 안정적인 JSON 파싱
-    RAW_JSON=$(curl -s http://localhost:4040/api/tunnels || echo "{}")
-    NGROK_URL=$(echo "$RAW_JSON" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data['tunnels'][0]['public_url']) if data.get('tunnels') else print('')" 2>/dev/null || echo "")
-    
-    if [ ! -z "$NGROK_URL" ]; then
-        break
-    fi
-    echo "...대기 중 ($i/15)"
-    sleep 2
-done
-
-if [ -z "$NGROK_URL" ]; then
-    echo "❌ [주의] ngrok URL을 자동으로 가져오지 못했습니다."
-    echo "👉 원인 1: NGROK_AUTHTOKEN이 유효하지 않음"
-    echo "👉 원인 2: ngrok 서버 연결 지연"
-    echo "🔍 로그 확인 명령어: docker logs s14p21b109-ngrok-1"
-    echo "🌐 직접 확인: http://localhost:4040/status"
-else
-    echo "✅ [5/5] 모든 인프라 구축 완료!"
-    echo "===================================================="
-    echo "🌐 Jenkins Local: http://localhost:8080"
-    echo "🌐 Jenkins Public: $NGROK_URL"
-    echo "☸️ Kubernetes: 실행 중 (Kind)"
-    echo ""
-    echo "📢 GitLab Webhook 등록 주소:"
-    echo "$NGROK_URL/project/S14P21B109-Practice-Pipeline"
-    echo "===================================================="
-    
-    # 젠킨스 Root URL 설정을 위해 .env 업데이트
-    sed -i '/JENKINS_URL=/d' .env
-    echo "JENKINS_URL=$NGROK_URL" >> .env
-fi
-
-# 설정 변경사항 Jenkins에 즉시 반영
-if [ ! -z "$NGROK_URL" ]; then
+# 설정 변경사항 Jenkins에 즉시 반영 시도
+if [ -f .env ]; then
     source .env
-    # JCasC 설정 리로드 시도 (네트워크 준비 시간에 따라 실패할 수 있음)
+    # JCasC 설정 리로드 (네트워크 준비 시간에 따라 실패할 수 있음)
+    sleep 5
     curl -s -X POST "http://localhost:8080/configuration-as-code/reload" -u "$JENKINS_ADMIN_ID:$JENKINS_ADMIN_PASSWORD" || echo "💡 Jenkins 웹페이지 준비 중... 약 1분 뒤 자동 설정이 완료됩니다."
 fi

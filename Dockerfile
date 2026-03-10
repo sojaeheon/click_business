@@ -32,5 +32,7 @@ RUN jenkins-plugin-cli --plugins \
     kubernetes
 # Dockerfile 에 Git 권한 설정 추가 (매우 중요!)
 RUN git config --global --add safe.directory '*'
+# 4. Jenkins 초기 설정 마법사 비활성화 및 JCasC 경로 설정
+ENV JAVA_OPTS="-Djenkins.install.runSetupWizard=false -Dcasc.jenkins.config=/var/jenkins_home/jenkins.yaml"
 
 USER jenkins
