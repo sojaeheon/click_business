@@ -152,6 +152,16 @@ public class InventoryService {
         }
     }
 
+    public long getItemQuantity(Long companyId, Long itemId) {
+        CompanyInventory inventory = companyInventoryRepository.findByCompanyId(companyId)
+                .orElseThrow(() -> new IllegalArgumentException("창고를 찾을 수 없습니다."));
+
+        return inventory.getSlots().stream()
+                .filter(slot -> slot.getItem() != null && slot.getItem().getId().equals(itemId))
+                .mapToLong(InventorySlot::getQuantity)
+                .sum();
+    }
+
     @Transactional
     public void swapOrMergeSlots(Long companyId, int fromSlotIndex, int toSlotIndex) {
         CompanyInventory inventory = companyInventoryRepository.findByCompanyId(companyId)

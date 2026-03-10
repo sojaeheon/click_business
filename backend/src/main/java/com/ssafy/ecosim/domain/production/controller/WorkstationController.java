@@ -2,11 +2,10 @@ package com.ssafy.ecosim.domain.production.controller;
 
 import com.ssafy.ecosim.domain.company.entity.Company;
 import com.ssafy.ecosim.domain.company.repository.CompanyRepository;
-import com.ssafy.ecosim.domain.production.dto.request.AddMaterialRequest;
 import com.ssafy.ecosim.domain.production.dto.request.ProcessProductionRequest;
+import com.ssafy.ecosim.domain.production.dto.response.WorkstationStatusResponse;
 import com.ssafy.ecosim.domain.production.service.WorkstationService;
 import com.ssafy.ecosim.global.common.ApiResponse;
-import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
@@ -58,17 +57,6 @@ public class WorkstationController {
         return ApiResponse.success("장비가 장착되었습니다.");
     }
 
-    @PostMapping("/{workstationId}/materials")
-    public ApiResponse<String> addMaterial(@AuthenticationPrincipal UserDetails userDetails,
-            @PathVariable Long workstationId,
-            @RequestBody AddMaterialRequest request) {
-        Long userId = Long.parseLong(userDetails.getUsername());
-        Company company = getCompanyByUserId(userId);
-
-        workstationService.addMaterial(company.getId(), workstationId, request.getItemId(), request.getAmount());
-        return ApiResponse.success("재료가 성공적으로 투입되었습니다.");
-    }
-
     @PostMapping("/{workstationId}/process")
     public ApiResponse<String> processProduction(@AuthenticationPrincipal UserDetails userDetails,
             @PathVariable Long workstationId,
@@ -76,7 +64,8 @@ public class WorkstationController {
         Long userId = Long.parseLong(userDetails.getUsername());
         Company company = getCompanyByUserId(userId);
 
-        workstationService.processProduction(company.getId(), workstationId, request.getOutputItemId());
+        workstationService.processProduction(company.getId(), workstationId, request.getInputItemId(),
+                request.getOutputItemId());
         return ApiResponse.success("생산 지연 평가가 완료되었습니다.");
     }
 
@@ -88,5 +77,19 @@ public class WorkstationController {
 
         workstationService.harvestOutput(company.getId(), workstationId);
         return ApiResponse.success("결과물을 성공적으로 수확하였습니다.");
+    }
+
+    @GetMapping("/{workstationId}")
+    public ApiResponse<WorkstationStatusResponse> getWorkstationStatus(@AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable Long workstationId) {
+        Long userId = Long.parseLong(userDetails.getUsername());
+        Company company = getCompanyByUserId(userId);
+
+        // 임시로 요구 재료 1L, 결과물 2L로 세팅 (또는 기존과 같이 1L)
+        workstationService.processProduction(company.getId(), workstationId, 1L, 2L);
+        // 임시 요구 재료 1L를 파라미터로 함께 조회
+        WorkstationStatusResponse response = workstationService.getWorkstationStatus(company.getId(), workstationId,
+                1L);
+        return ApiResponse.success(response);
     }
 }

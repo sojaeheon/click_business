@@ -14,4 +14,6 @@ public interface WorkstationRepository extends JpaRepository<Workstation, Long> 
     boolean existsByCompanyIdAndId(Long companyId, Long workstationId);
 
     List<Workstation> findAllByCompanyId(Long companyId);
+
+    boolean existsByCompanyId(Long companyId);
 }
