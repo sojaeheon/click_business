@@ -6,12 +6,11 @@
 ## 디렉토리 구조
 
 bigdata/
-├── external_data/        # 외부 데이터 수집 및 저장
-│   ├── collector/        # 크롤러 스크립트
-│   │   ├── gold_crawler.py 
-│   │   ├── interest_crawler.py
-│   │   └── news_crawler.py
-│   └── raw/              # 수집된 데이터  
+├── external_data/        # 외부 데이터
+│   ├── collector/        # 데이터 수집 파일
+│   ├── processor/        # 데이터 전처리 파일
+│   ├── loader/           # 데이터 적재 파일
+│   └── raw/              # 원본 데이터
 │       ├── gold.csv
 │       ├── interest.csv
 │       └── news.csv
