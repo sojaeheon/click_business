@@ -105,22 +105,20 @@ export const SHARED_STATE = {
 function WorldBounds({ autoCamera = true }: { autoCamera?: boolean }) {
   const { controls, camera } = useThree();
   useFrame(() => {
-    if (controls) {
-      const limit = CONFIG.CAMERA.boundLimit;
-      // @ts-ignore
-      const t = controls.target;
-      if (t) {
-        // 화면 확대 비율이 최대가 아닐 때 (zoom이 최소값+1 보다 클 때) && 자동 카메라가 켜져있을 때
-        if (autoCamera && camera.zoom > CONFIG.CAMERA.minZoom + 1) {
-          t.lerp(SHARED_STATE.playerPos, 0.1);
-        }
-
-        t.x = THREE.MathUtils.clamp(t.x, -limit, limit);
-        t.z = THREE.MathUtils.clamp(t.z, -limit, limit);
-        // @ts-ignore
-        controls.update();
-      }
+    if (!controls) return;
+    const limit = CONFIG.CAMERA.boundLimit;
+    // @ts-ignore
+    const t = controls.target;
+    if (!t) return;
+    // autoCamera 시 프레임마다 플레이어 위치로 lerp (주시: 쿨다운 없으면 숨체거림)
+    if (autoCamera && camera.zoom > CONFIG.CAMERA.minZoom + 1) {
+      t.lerp(SHARED_STATE.playerPos, 0.05);
     }
+    // 보더 무한스크롤을 bound으로 제한
+    // 주의: controls.update() 호출 ❌ - MapControls가 이미 등록된 frameloop에서 update 처리함
+    //          여기서 다시 update() 하면 드래그/주행 충돌 발생
+    t.x = THREE.MathUtils.clamp(t.x, -limit, limit);
+    t.z = THREE.MathUtils.clamp(t.z, -limit, limit);
   });
   return null;
 }
@@ -233,17 +231,26 @@ function PlayerCharacter({
   debugAnim,
   onAnimList,
   isPaused,
+  setAutoCamera,
+  onOpenFactoryModal,
+  onInFactory,
 }: {
   isFactoryWorking: boolean;
   onEnterBuilding: (name: string, label: string) => void;
   debugAnim?: string | null;
   onAnimList?: (names: string[]) => void;
   isPaused: boolean;
+  setAutoCamera?: (val: boolean) => void;
+  onOpenFactoryModal?: () => void;
+  onInFactory?: (v: boolean) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
-  const posRef = useRef(new THREE.Vector3(0, 0.35, 0));
+  const posRef = useRef(new THREE.Vector3(0, 0, 0));
+  // w/a/s/d + arrow keys 모두 지원
   const keysRef = useRef({ w: false, a: false, s: false, d: false });
   const lastBuildingRef = useRef<string | null>(null);
+  const lastInFactory = useRef(false);
+  const isWorking_ref = useRef(isFactoryWorking);
   const modeRef = useRef<"idle" | "walking" | "working" | "spawning">("spawning");
   const [mode, setMode] = useState<"idle" | "walking" | "working" | "spawning">("spawning");
 
@@ -274,25 +281,34 @@ function PlayerCharacter({
   }, [toolsAnims, moveAnims, generalAnims]);
   const { actions } = useAnimations(allAnimations, groupRef);
 
-  // 키보드 이벤트 (스페이스바 이모트 기능 포함)
+  // 키보드 이벤트 - e.code 기준으로 WASD + 방향키 지원
   useEffect(() => {
+    const setKey = (code: string, val: boolean) => {
+      switch (code) {
+        case 'KeyW': case 'ArrowUp': keysRef.current.w = val; break;
+        case 'KeyA': case 'ArrowLeft': keysRef.current.a = val; break;
+        case 'KeyS': case 'ArrowDown': keysRef.current.s = val; break;
+        case 'KeyD': case 'ArrowRight': keysRef.current.d = val; break;
+      }
+    };
     const onDown = (e: KeyboardEvent) => {
-      if (e.code === "Space" && !e.repeat) setShowMenu(true);
-      const k = e.key.toLowerCase() as keyof typeof keysRef.current;
-      if (k in keysRef.current) keysRef.current[k] = true;
+      if (isPaused) return;
+      if (e.code === 'Space' && !e.repeat) setShowMenu(true);
+      // 방향키 기본동작(페이지 스크롤 등) 차단
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+      setKey(e.code, true);
     };
     const onUp = (e: KeyboardEvent) => {
-      if (e.code === "Space") setShowMenu(false);
-      const k = e.key.toLowerCase() as keyof typeof keysRef.current;
-      if (k in keysRef.current) keysRef.current[k] = false;
+      if (e.code === 'Space') setShowMenu(false);
+      setKey(e.code, false);
     };
-    window.addEventListener("keydown", onDown);
-    window.addEventListener("keyup", onUp);
+    window.addEventListener('keydown', onDown);
+    window.addEventListener('keyup', onUp);
     return () => {
-      window.removeEventListener("keydown", onDown);
-      window.removeEventListener("keyup", onUp);
+      window.removeEventListener('keydown', onDown);
+      window.removeEventListener('keyup', onUp);
     };
-  }, []);
+  }, [isPaused]);
 
   // ─── 초기 Spawn 애니메이션 (페이지 새로고침 시) ─────
   useEffect(() => {
@@ -373,10 +389,9 @@ function PlayerCharacter({
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
-    const speed = 10; // 이동 속도 약간 상향 (모션과 맞춤)
+    const speed = 10;
     const keys = keysRef.current;
 
-    // 아이소메트릭 방향 (카메라 각도 반영)
     const fwd = new THREE.Vector3(-1, 0, -1).normalize();
     const right = new THREE.Vector3(1, 0, -1).normalize();
     const dir = new THREE.Vector3();
@@ -388,12 +403,10 @@ function PlayerCharacter({
     const canMove = !isPaused && mode !== "spawning";
     const isMoving = canMove && dir.length() > 0.01;
 
-    // 움직이면 이모션 강제 취소
-    if (isMoving && emotionAnim) {
-      setEmotionAnim(null);
-    }
+    if (isMoving && emotionAnim) setEmotionAnim(null);
 
     if (isMoving) {
+      if (setAutoCamera) setAutoCamera(true);
       dir.normalize().multiplyScalar(speed * delta);
       posRef.current.add(dir);
       posRef.current.x = THREE.MathUtils.clamp(posRef.current.x, -outerX + 1, outerX - 1);
@@ -402,19 +415,22 @@ function PlayerCharacter({
     }
 
     groupRef.current.position.set(posRef.current.x, 0.35, posRef.current.z);
-
-    // 차와의 충돌 감지를 위해 전역 상태에 위치 공유
     SHARED_STATE.playerPos.copy(groupRef.current.position);
 
-    // 영역 감지
     const px = posRef.current.x;
     const pz = posRef.current.z;
     const halfBW = BW / 2;
 
-    // 작업장 영역 검사
     const inFactory = Math.abs(px - FACTORY_POS[0]) < halfBW && Math.abs(pz - FACTORY_POS[1]) < halfBW;
 
-    // 모드 결정
+    // 작업장 진입 시: 작업 중이 아니면 모달 자동 오픈
+    if (inFactory && !isWorking_ref.current && !lastInFactory.current) {
+      onOpenFactoryModal?.();
+    }
+    isWorking_ref.current = isFactoryWorking;
+    lastInFactory.current = inFactory;
+    onInFactory?.(inFactory);
+
     let newMode: "idle" | "walking" | "working";
     if (inFactory && isFactoryWorking) {
       newMode = "working";
@@ -423,12 +439,8 @@ function PlayerCharacter({
     } else {
       newMode = "idle";
     }
-    if (newMode !== modeRef.current) {
-      modeRef.current = newMode;
-      setMode(newMode);
-    }
+    if (newMode !== modeRef.current) { modeRef.current = newMode; setMode(newMode); }
 
-    // 건물 영역 진입 감지 (작업장 제외)
     let currentBuilding: string | null = null;
     for (const b of BUILDING_AREAS) {
       if (Math.abs(px - b.pos[0]) < halfBW && Math.abs(pz - b.pos[1]) < halfBW) {
@@ -436,7 +448,6 @@ function PlayerCharacter({
         break;
       }
     }
-    // 새로운 건물 영역에 진입하면 다이얼로그
     if (currentBuilding && currentBuilding !== lastBuildingRef.current) {
       const b = BUILDING_AREAS.find(a => a.name === currentBuilding)!;
       onEnterBuilding(b.name, b.label);
@@ -447,7 +458,7 @@ function PlayerCharacter({
   return (
     <group ref={groupRef} scale={WORKER_S * 1.5}>
       <primitive object={clonedBarbarian} />
-      {showMenu && (
+      {showMenu && !isPaused && (
         <Html position={[0, 4, 0]} center zIndexRange={[100, 0]}>
           <div className="relative w-40 h-40 flex items-center justify-center pointer-events-auto">
             {EMOTES.map((em, i) => {
@@ -544,45 +555,48 @@ function GoldBarStack({ stackLevel }: { stackLevel: number }) {
   );
 }
 
-// ─── Factory: 작업장 (isWorking 외부 제어, 금괴 3더미 시스템) ─────────
+// ─── Factory: 작업장 (구역 내/외 표시 분기 + 금괴 저장 시스템) ─────────
+const MAX_GOLD_CAP = 500;
+
 function Factory({
   position,
   isWorking,
+  inFactory,
   onOpenModal,
+  onStoreGold,
 }: {
   position: [number, number, number];
   isWorking: boolean;
+  inFactory: boolean; // 플레이어가 작업장 영역 내에 있으면 true
   onOpenModal: () => void;
+  onStoreGold?: (count: number) => void;
 }) {
   const half = BW / 2;
-  const [progress, setProgress] = useState(0); // 0 ~ 100 API 기반 진행도 (목업)
+  const [progress, setProgress] = useState(0);
+  const [storedCount, setStoredCount] = useState(0);
   const [flyingBars, setFlyingBars] = useState<number[]>([]);
+  const [gaugeHovered, setGaugeHovered] = useState(false);
   const flyIdRef = useRef(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isCompleted = progress >= 100;
+  const isFull = storedCount >= MAX_GOLD_CAP;
 
   const beltEndPos: [number, number, number] = [-0.75 + 2.5, 0.5, 1];
-  // 3개 더미 위치 (바닥에서 Y측 위로 띄움)
   const stackPositions: [number, number, number][] = [
     [half * 0.6, 0.3, -half * 0.7],
     [half * 0.15, 0.3, -half * 0.7],
     [half * 0.6, 0.3, -half * 0.2],
   ];
 
-  // 작업 중일 때 주기적으로 비주얼 금괴 날리기 + 목업용 진행도 상승
   useEffect(() => {
-    if (isWorking && !isCompleted) {
+    if (isWorking && !isCompleted && !isFull) {
       intervalRef.current = setInterval(() => {
         flyIdRef.current += 1;
         setFlyingBars(prev => [...prev, flyIdRef.current]);
-
-        // 목업: 75초간 100채우기 (100%시 정지)
+        setStoredCount(prev => Math.min(prev + 1, MAX_GOLD_CAP));
         setProgress(p => {
-          if (p >= 98) {
-            if (intervalRef.current) clearInterval(intervalRef.current);
-            return 100;
-          }
+          if (p >= 98) { if (intervalRef.current) clearInterval(intervalRef.current); return 100; }
           return p + 2;
         });
       }, 1500);
@@ -590,20 +604,24 @@ function Factory({
       if (intervalRef.current) clearInterval(intervalRef.current);
     }
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [isWorking, isCompleted]);
+  }, [isWorking, isCompleted, isFull]);
 
-  // progress 기반으로 최대 12개 스택을 계산 (더미 3개 각 4형태씩)
-  const totalGold = Math.floor((progress / 100) * MAX_TOTAL);
-
-  // 금괴 도착 시 비행 금괴 ID만 삭제 (총계는 progress 기반 연산)
+  // 금괴 더미: 총 적재 용량(500) 기준으로 시각화
+  const totalGold = Math.floor((storedCount / MAX_GOLD_CAP) * MAX_TOTAL);
   const handleBarArrive = useCallback((barId: number) => {
     setFlyingBars(prev => prev.filter(id => id !== barId));
   }, []);
-
-  // 현재 날아가는 금괴의 목적지 더미 결정
   const levels = getStackLevels(totalGold);
   const nextPileIdx = levels.findIndex(l => l < GOLD_STACK_MODELS.length);
   const targetPile = nextPileIdx >= 0 ? nextPileIdx : MAX_PILES - 1;
+
+  const handleStore = useCallback(() => {
+    if (storedCount > 0) { onStoreGold?.(storedCount); setStoredCount(0); setProgress(0); }
+  }, [storedCount, onStoreGold]);
+
+  // 작업 중일 때만 바/원형 게이지 표시. ? ! 는 항상 표시
+  const showProgressGauge = isWorking && !isCompleted && !isFull;
+  const showFullGauge = showProgressGauge && (inFactory || gaugeHovered);
 
   return (
     <HoverableGroup position={position} onClick={onOpenModal}>
@@ -612,65 +630,77 @@ function Factory({
         <meshStandardMaterial color="#8b7355" />
       </mesh>
 
-      {/* 컨베이어 벨트 */}
       <group scale={BELT_S} position={[0.75, TW * 0.12, 1]} rotation={[0, Math.PI, 0]}>
-        <React.Suspense fallback={
-          <mesh><boxGeometry args={[BW, TW * 0.3, TW * 0.5]} /><meshStandardMaterial color="#555" wireframe /></mesh>
-        }>
+        <React.Suspense fallback={<mesh><boxGeometry args={[BW, TW * 0.3, TW * 0.5]} /><meshStandardMaterial color="#555" wireframe /></mesh>}>
           {/* @ts-ignore */}
-          <ConveyorBelt isAnimating={isWorking && !isCompleted} />
+          <ConveyorBelt isAnimating={isWorking && !isCompleted && !isFull} />
         </React.Suspense>
       </group>
 
-      {/* 금괴 3더미 */}
       {stackPositions.map((pos, i) => (
-        <group key={i} position={pos}>
-          <GoldBarStack stackLevel={levels[i]} />
-        </group>
+        <group key={i} position={pos}><GoldBarStack stackLevel={levels[i]} /></group>
       ))}
 
-      {/* 날아가는 금괴들 */}
-      {flyingBars.map(barId => (
-        <FlyingGoldBar
-          key={barId}
-          startPos={beltEndPos}
-          endPos={stackPositions[targetPile]}
-          onArrive={() => handleBarArrive(barId)}
-        />
-      ))}
-
-      <AreaLabel label="작업장" />
-
-      {/* 진행도 도넛 차트 */}
-      <group position={[0, 4, 0]}>
+      {/* 금괴 더미 위 카운터 */}
+      <group position={[0, 1.8, -half * 0.7]}>
         <Html center zIndexRange={[10, 0]}>
-          <div
-            className="relative flex items-center justify-center w-28 h-28 rounded-full bg-white shadow-xl border-4 border-slate-50 flex-col pointer-events-auto"
-            title={isCompleted ? "작업완료" : "작업 진행중"}
-          >
-            {isCompleted ? (
-              <span className="text-5xl border-emerald-500 text-emerald-500 font-bold mix-blend-multiply pt-1">❗️</span>
-            ) : (
-              <>
-                <svg className="absolute w-full h-full transform -rotate-90">
-                  <circle cx="52" cy="52" r="44" fill="transparent" stroke="#f1f5f9" strokeWidth="12" />
-                  <circle
-                    cx="52" cy="52" r="44" fill="transparent" stroke="#3b82f6" strokeWidth="12"
-                    strokeDasharray={`${(progress / 100) * 276.4} 276.4`}
-                    strokeLinecap="round"
-                    className="transition-all duration-700 ease-out"
-                  />
-                </svg>
-                <span className="text-[10px] font-bold text-slate-400 z-10 -mb-1 mt-1">PROGRESS</span>
-                <span className="text-2xl font-black text-slate-800 z-10 tracking-tighter" style={{ fontFamily: "'KerisKeduR', sans-serif" }}>
-                  {progress}%
-                </span>
-              </>
+          <div className="flex flex-col items-center gap-1">
+            {isFull && <span className="text-2xl animate-bounce">⚠️</span>}
+            <div className="bg-black/70 text-white text-xs font-mono rounded px-2 py-0.5 tracking-widest">
+              {String(storedCount).padStart(3, '0')}/{MAX_GOLD_CAP}
+            </div>
+            {storedCount > 0 && (
+              <button
+                className="mt-1 px-2 py-0.5 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-bold rounded shadow"
+                onClick={(e) => { e.stopPropagation(); handleStore(); }}
+              >📦 창고에 저장</button>
             )}
           </div>
         </Html>
       </group>
-    </HoverableGroup >
+
+      {flyingBars.map(barId => (
+        <FlyingGoldBar key={barId} startPos={beltEndPos} endPos={stackPositions[targetPile]} onArrive={() => handleBarArrive(barId)} />
+      ))}
+
+      <AreaLabel label="작업장" />
+
+      {/* 진행도 UI: 영역 내(원형게이지) / 영역 밖(바 최소화 호버시 원형 확대) */}
+      <group position={[0, 4, 0]}>
+        <Html center zIndexRange={[10, 0]}>
+          {/* ❗ 완료/포화: 항상 표시 */}
+          {(isCompleted || isFull) ? (
+            <span className="text-6xl text-red-500 font-bold" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.18)' }}>❗️</span>
+          ) : !isWorking ? (
+            /* ❓ 미작업: 항상 표시 */
+            <span className="text-6xl text-yellow-500 font-bold" style={{ textShadow: '0 2px 8px rgba(0,0,0,0.18)' }}>❓</span>
+          ) : showFullGauge ? (
+            /* 작업중 + (inFactory || hover) → 원형 게이지 */
+            <div
+              className="relative flex items-center justify-center w-28 h-28 rounded-full flex-col bg-white shadow-xl border-4 border-slate-50 cursor-pointer"
+              onMouseLeave={() => setGaugeHovered(false)}
+            >
+              <svg className="absolute w-full h-full transform -rotate-90">
+                <circle cx="52" cy="52" r="44" fill="transparent" stroke="#f1f5f9" strokeWidth="12" />
+                <circle cx="52" cy="52" r="44" fill="transparent" stroke="#3b82f6" strokeWidth="12"
+                  strokeDasharray={`${(progress / 100) * 276.4} 276.4`} strokeLinecap="round"
+                  className="transition-all duration-700 ease-out" />
+              </svg>
+              <span className="text-[10px] font-bold text-slate-400 z-10 -mb-1 mt-1">PROGRESS</span>
+              <span className="text-2xl font-black text-slate-800 z-10 tracking-tighter">{progress}%</span>
+            </div>
+          ) : (
+            /* 작업중 + 영역 밖 + 미호버 → 작은 바 */
+            <div className="cursor-pointer" onMouseEnter={() => setGaugeHovered(true)}>
+              <div className="w-20 h-3 bg-slate-200/60 rounded-full overflow-hidden shadow">
+                <div className="h-full bg-blue-500 transition-all duration-700" style={{ width: `${progress}%` }} />
+              </div>
+              <div className="text-center text-[9px] text-white/90 font-bold mt-0.5 drop-shadow">{progress}%</div>
+            </div>
+          )}
+        </Html>
+      </group>
+    </HoverableGroup>
   );
 }
 
@@ -692,7 +722,7 @@ function Minigame({ position, onClick }: { position: [number, number, number]; o
   );
 }
 
-// ─── AnimatedCar (충돌 회피 서행 및 우측 차선 교정) ───────────────
+// ─── AnimatedCar (충돌 회피 유턴 및 정중앙 주행) ───────────────
 function AnimatedCar({
   modelKey, path, speed = 4, initialProgress = 0,
 }: {
@@ -703,14 +733,14 @@ function AnimatedCar({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const progressRef = useRef(initialProgress);
-  const currentSpeedRef = useRef(speed);
+  const speedRef = useRef(speed);
+  const cooldownRef = useRef(0);
 
   const curve = useMemo(() => {
     if (!path || path.length < 2) {
       return new THREE.CatmullRomCurve3([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0.1)]);
     }
     const pts = path.map(p => new THREE.Vector3(p[0], 0, p[1]));
-    // catmullrom 곡선, 낮은 tension(장력)을 적용하여 코너에서 크게 바깥으로 돌아 나가지 않도록 조정
     return new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0.1);
   }, [path]);
 
@@ -718,44 +748,42 @@ function AnimatedCar({
     if (!groupRef.current || !path || path.length < 2) return;
 
     const currentPos = groupRef.current.position;
-    const tangent = curve.getTangentAt(progressRef.current);
-    const forwardDir = new THREE.Vector3(tangent.x, 0, tangent.z).normalize();
 
-    // 1. 충돌 회피(양보/정지) 판정: 내 앞(시야 전방 60도)에 차량 등 장애물이 있으면 서행 및 정지
-    let targetSpeed = speed;
-    let collisionDistance = 3.0; // 반경 판정 거리
+    // 1. 충돌 감지 로직 (유턴)
+    let collision = false;
+    let collisionDistance = 2.5;
 
-    // (a) 플레이어 체크
     if (currentPos.distanceTo(SHARED_STATE.playerPos) < collisionDistance) {
-      const toPlayer = SHARED_STATE.playerPos.clone().sub(currentPos).normalize();
-      if (toPlayer.dot(forwardDir) > 0.5) targetSpeed = 0; // 내 앞이면 정지
+      collision = true;
     }
-
-    // (b) 다른 차량 체크
     for (const [otherId, otherPos] of Object.entries(SHARED_STATE.cars)) {
       if (otherId !== modelKey && currentPos.distanceTo(otherPos) < collisionDistance) {
-        const toOther = otherPos.clone().sub(currentPos).normalize();
-        if (toOther.dot(forwardDir) > 0.5) targetSpeed = 0;
+        collision = true;
+        break;
       }
     }
 
-    // 급정거 및 부드러운 가속
-    currentSpeedRef.current = THREE.MathUtils.lerp(currentSpeedRef.current, targetSpeed, 0.1);
+    if (cooldownRef.current > 0) {
+      cooldownRef.current -= delta;
+    } else if (collision) {
+      speedRef.current *= -1; // 유턴
+      cooldownRef.current = 1.0;
+    }
 
     // 2. 이동 및 위치 갱신
     const len = curve.getLength();
-    progressRef.current = (progressRef.current + (currentSpeedRef.current * delta) / len) % 1;
+    progressRef.current = (progressRef.current + (speedRef.current * delta) / len) % 1;
     if (progressRef.current < 0) progressRef.current += 1;
 
     const point = curve.getPointAt(progressRef.current);
+    const tangent = curve.getTangentAt(progressRef.current);
 
-    // (핵심) 우측 차선 오프셋 적용. 접선(진행방향)을 90도 돌린 방향이 내 우측.
-    const rightOffset = new THREE.Vector3(forwardDir.z, 0, -forwardDir.x).multiplyScalar(1.2);
+    groupRef.current.position.set(point.x, 0.65, point.z);
 
-    groupRef.current.position.set(point.x + rightOffset.x, 0.65, point.z + rightOffset.z);
-    groupRef.current.rotation.y = Math.atan2(forwardDir.x, forwardDir.z);
+    const rotationOffset = speedRef.current < 0 ? Math.PI : 0;
+    groupRef.current.rotation.y = Math.atan2(tangent.x, tangent.z) + rotationOffset;
 
-    // 4. 충돌 판정용 공유 상태 갱신
+    // 4. 상태 공유
     SHARED_STATE.cars[modelKey] = groupRef.current.position.clone();
   });
 
@@ -769,7 +797,7 @@ function AnimatedCar({
 }
 
 // ─── MapEnvironment ────────────────────────────────────────────────
-function MapEnvironment({ theme }: { theme: "grass" | "skyblock" | "water" }) {
+function MapEnvironment() {
   const Y = 0;
 
   const hLineX: number[] = [];
@@ -829,25 +857,7 @@ function MapEnvironment({ theme }: { theme: "grass" | "skyblock" | "water" }) {
 
   return (
     <group>
-      {/* 테마별 바닥(자연 잔디, 우주, 파도풀) 렌더링 */}
-      {theme === "grass" && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
-          <planeGeometry args={[300, 300]} />
-          <meshStandardMaterial color="#c8d8a0" />
-        </mesh>
-      )}
-      {theme === "water" && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.4, 0]} receiveShadow>
-          <planeGeometry args={[300, 300]} />
-          <meshStandardMaterial color="#3b82f6" transparent opacity={0.8} />
-        </mesh>
-      )}
-      {theme === "skyblock" && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -50, 0]} receiveShadow>
-          <planeGeometry args={[500, 500]} />
-          <meshBasicMaterial color="#0f172a" />
-        </mesh>
-      )}
+      {/* 바다 배경 평면 (WaterPlane은 GameScene에서 직접 렌더링) */}
 
       {baseTiles.map(([tx, tz], i) => (
         <React.Suspense key={`base-${i}`} fallback={null}>
@@ -889,7 +899,44 @@ function MapEnvironment({ theme }: { theme: "grass" | "skyblock" | "water" }) {
   );
 }
 
-// ─── 6 이동확인 + 작업장 컨트롤 다이얼로그 (Canvas 밖 DOM) ──────────
+// ─── WaterPlane: 로우폴리 파도 애니메이션 ─────────────────────────
+function WaterPlane() {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const geoRef = useRef<THREE.PlaneGeometry>(null);
+  const GRID = 48;
+  const SIZE = 300;
+
+  useFrame(({ clock }) => {
+    const geo = geoRef.current;
+    if (!geo) return;
+    const pos = geo.attributes.position;
+    const t = clock.getElapsedTime();
+    for (let i = 0; i <= GRID; i++) {
+      for (let j = 0; j <= GRID; j++) {
+        const idx = i * (GRID + 1) + j;
+        const x = pos.getX(idx);
+        const z = pos.getY(idx);
+        const wave =
+          Math.sin(x * 0.14 + t * 0.7) * 0.25 +
+          Math.sin(z * 0.11 + t * 1.0) * 0.2 +
+          Math.sin((x + z) * 0.07 + t * 0.5) * 0.12;
+        pos.setZ(idx, wave);
+      }
+    }
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();
+  });
+
+  return (
+    <mesh ref={meshRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.5, 0]}>
+      {/* @ts-ignore */}
+      <planeGeometry ref={geoRef} args={[SIZE, SIZE, GRID, GRID]} />
+      <meshStandardMaterial color="#1a70b0" transparent opacity={0.85} roughness={0.08} metalness={0.15} />
+    </mesh>
+  );
+}
+
+// ─── 6 이동확인 + 작업장 컨트롤 다이얼로그 (Canvas 밖 DOM) ────────────────
 // HTML 요소라서 KerisKeduR 폰트 적용
 interface ConfirmData {
   type: "building" | "factory";
@@ -902,6 +949,7 @@ interface ConfirmData {
 
 function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: () => void }) {
   const R: React.CSSProperties = { fontFamily: "'KerisKeduR', sans-serif" };
+  const [qty, setQty] = useState(1); // 생산 수량 입력
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -912,17 +960,77 @@ function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: () => voi
   }, [onClose]);
 
   if (data.type === "factory") {
+    // 재료 정보 목업 (추후 API 연동)
+    const materialPerUnit = 3; // 목업: 1개 생산에 재료 3개 필요
+    const warehouseStock = 120; // 목업: 창고 재고 수량
+    const totalMaterial = qty * materialPerUnit;
+    const canProduce = Math.floor(warehouseStock / materialPerUnit);
+    const hasEnough = warehouseStock >= totalMaterial;
+
     return (
       <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/40 backdrop-blur-sm" onClick={onClose}>
-        <div className="bg-white rounded-2xl shadow-2xl p-6 flex flex-col items-center gap-4 border border-slate-200" style={{ ...R, minWidth: 260 }} onClick={(e) => e.stopPropagation()}>
-          <div className="text-4xl text-yellow-500">⛏️</div>
-          <h2 className="text-xl font-bold text-red-500">[작업장]</h2>
-          <p className="text-sm text-slate-500">현재 상태: {data.isWorking ? "가동 중 🟢" : "대기 중 ⚪"}</p>
-          <div className="flex gap-3 w-full">
+        <div className="bg-white rounded-2xl shadow-2xl p-6 flex flex-col gap-4 border border-slate-200" style={{ ...R, minWidth: 300 }} onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-3">
+            <span className="text-4xl">⛏️</span>
+            <div>
+              <h2 className="text-xl font-bold text-slate-800">[작업장]</h2>
+              <p className="text-sm text-slate-500">현재 상태: {data.isWorking ? '가동 중 🟢' : '대기 중 ⚪'}</p>
+            </div>
+          </div>
+
+          {/* 생산 수량 입력 */}
+          <div className="bg-slate-50 rounded-xl p-4 flex flex-col gap-3 border border-slate-100">
+            <label className="text-sm font-bold text-slate-700">📦 생산 수량</label>
+            <div className="flex items-center gap-2">
+              <button
+                className="w-8 h-8 rounded-lg bg-slate-200 font-bold text-slate-700 hover:bg-slate-300"
+                onClick={() => setQty(q => Math.max(1, q - 1))}
+              >−</button>
+              <input
+                type="number"
+                min={1}
+                value={qty}
+                onChange={e => setQty(Math.max(1, parseInt(e.target.value) || 1))}
+                className="flex-1 text-center text-lg font-bold border border-slate-200 rounded-lg py-1 bg-white"
+              />
+              <button
+                className="w-8 h-8 rounded-lg bg-slate-200 font-bold text-slate-700 hover:bg-slate-300"
+                onClick={() => setQty(q => q + 1)}
+              >+</button>
+            </div>
+
+            {/* 예상 재료 */}
+            <div className="flex flex-col gap-1.5 pt-1 border-t border-slate-200">
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">🧱 예상 필요 재료</span>
+                <span className={`font-bold ${hasEnough ? 'text-slate-800' : 'text-red-500'}`}>
+                  {totalMaterial}개
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">🏭 창고 재고</span>
+                <span className="font-bold text-slate-800">{warehouseStock}개</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">✅ 생산 가능</span>
+                <span className="font-bold text-emerald-600">{canProduce}개까지</span>
+              </div>
+              {!hasEnough && (
+                <p className="text-xs text-red-500 mt-1 bg-red-50 rounded-lg p-2">
+                  ⚠️ 재료가 부족합니다. {totalMaterial - warehouseStock}개 더 필요해요.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* 다지 */}
+          <div className="flex gap-3">
             {!data.isWorking ? (
               <button
-                className="flex-1 py-3 rounded-xl bg-orange-500 text-white font-bold text-sm hover:bg-orange-600 transition-colors shadow"
-                onClick={() => { data.onStart?.(); onClose(); }}
+                className={`flex-1 py-3 rounded-xl font-bold text-sm shadow transition-colors ${hasEnough ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  }`}
+                disabled={!hasEnough}
+                onClick={() => { if (hasEnough) { data.onStart?.(); onClose(); } }}
               >작업 시작 ▶</button>
             ) : (
               <button
@@ -971,21 +1079,19 @@ export function GameScene({
   isFactoryWorking,
   setIsFactoryWorking,
   onEnterBuilding,
-  debugAnim,
-  onAnimList,
   isPaused,
   onDialog,
+  setAutoCamera,
 }: {
   isFactoryWorking: boolean;
   setIsFactoryWorking: (v: boolean) => void;
   onEnterBuilding: (name: string, label: string) => void;
-  debugAnim?: string | null;
-  onAnimList?: (names: string[]) => void;
   isPaused: boolean;
   onDialog?: (d: ConfirmData) => void;
+  setAutoCamera?: (v: boolean) => void;
 }) {
   const { openBuildingPage } = useGame();
-  const [theme, setTheme] = useState<"grass" | "skyblock" | "water">("grass");
+  const [inFactory, setInFactory] = useState(false);
 
   const go = useCallback((name: string, label: string) => {
     onDialog?.({
@@ -1006,14 +1112,18 @@ export function GameScene({
 
   return (
     <>
-      <color attach="background" args={[theme === "skyblock" ? "#1a202c" : "#e0e5ec"]} />
-      {theme === "skyblock" && <fog attach="fog" args={["#1a202c", 20, 150]} />}
+      {/* 바다 색상/안개 고정 */}
+      <color attach="background" args={['#0a3d6b']} />
+      <fog attach="fog" args={['#0a3d6b', 40, 200]} />
 
       <ambientLight intensity={0.6} />
       <directionalLight position={[20, 30, 10]} intensity={1.2} castShadow shadow-mapSize={[2048, 2048]} />
       <directionalLight position={[-10, 20, -10]} intensity={0.5} color="#abcdef" />
 
-      <MapEnvironment theme={theme} />
+      {/* 파도 애니메이션 평면 */}
+      <WaterPlane />
+
+      <MapEnvironment />
 
       <BuildingTile position={[-BX, 0, -BZ]} modelUrl={M.hr} label="인력소" onClick={() => go("hr", "인력소")} />
       <BuildingTile position={[0, 0, -BZ]} modelUrl={M.bank} label="은행" onClick={() => go("bank", "은행")} />
@@ -1025,34 +1135,24 @@ export function GameScene({
       <Factory
         position={[0, 0, BZ]}
         isWorking={isFactoryWorking}
+        inFactory={inFactory}
         onOpenModal={handleFactoryClick}
+        onStoreGold={(count) => {
+          console.log(`금괴 ${count}개 창고 저장 요청`);
+          alert(`금괴 ${count}개를 창고에 저장했습니다!`);
+        }}
       />
 
-      {/* WASD 플레이어 캐릭터 */}
       <React.Suspense fallback={null}>
         <PlayerCharacter
           isFactoryWorking={isFactoryWorking}
           onEnterBuilding={go}
-          debugAnim={debugAnim}
-          onAnimList={onAnimList}
           isPaused={isPaused}
+          setAutoCamera={setAutoCamera}
+          onInFactory={setInFactory}
+          onOpenFactoryModal={!isFactoryWorking ? handleFactoryClick : undefined}
         />
       </React.Suspense>
-
-      {/* 테마 배경 변경 HTML */}
-      <Html position={[-outerX, 10, -outerZ]} center zIndexRange={[10, 0]}>
-        <div className="absolute top-0 right-0 m-4 flex gap-2 bg-white/80 backdrop-blur rounded-full p-1 shadow">
-          {(["grass", "water", "skyblock"] as const).map(t => (
-            <button
-              key={t}
-              onClick={() => setTheme(t)}
-              className={`px-3 py-1 text-xs font-bold rounded-full transition-colors ${theme === t ? "bg-slate-800 text-white" : "text-slate-500 hover:bg-slate-200"}`}
-            >
-              {t === "grass" ? "🌳 숲" : t === "water" ? "💧 바다" : "☁️ 공중"}
-            </button>
-          ))}
-        </div>
-      </Html>
     </>
   );
 }
@@ -1060,10 +1160,9 @@ export function GameScene({
 // ─── IsometricScene ────────────────────────────────────────────────
 export function IsometricScene() {
   const [dialogData, setDialogData] = useState<ConfirmData | null>(null);
-  const [debugAnim, setDebugAnim] = useState<string | null>(null);
-  const [animNames, setAnimNames] = useState<string[]>([]);
   const [isFactoryWorking, setIsFactoryWorking] = useState(false);
   const [autoCamera, setAutoCamera] = useState(true);
+  const canvasWrapRef = useRef<HTMLDivElement>(null);
 
   const d = CONFIG.CAMERA.distance;
   const pA = CONFIG.CAMERA.polarAngle;
@@ -1072,35 +1171,39 @@ export function IsometricScene() {
   const cy = d * Math.cos(pA);
   const cz = d * Math.sin(pA) * Math.cos(aA);
 
-  return (
-    <div className="relative w-full h-screen bg-slate-100 flex overflow-hidden font-sans">
-      <div className="flex-1 w-full h-full relative cursor-auto" style={{ fontFamily: "'KerisKeduR', sans-serif" }}>
-        {/* 카메라 자동 활성화 버튼 */}
-        {!autoCamera && (
-          <button
-            onClick={() => setAutoCamera(true)}
-            className="absolute top-4 left-4 z-10 px-4 py-2 bg-blue-500 text-white rounded-full shadow-lg font-bold text-sm hover:bg-blue-600 transition-all flex items-center gap-2"
-          >
-            🎯 내 캐릭터 포커스
-          </button>
-        )}
+  // 탭 전환 후 돌아와서 클릭할 때 Canvas 포커스 복원
+  const handleWrapperClick = useCallback(() => {
+    const canvas = canvasWrapRef.current?.querySelector('canvas');
+    if (canvas && document.activeElement !== canvas) canvas.focus();
+  }, []);
 
+  return (
+    <div className="relative w-full h-screen flex overflow-hidden font-sans">
+      <div
+        ref={canvasWrapRef}
+        className="flex-1 w-full h-full relative cursor-auto"
+        style={{ fontFamily: "'KerisKeduR', sans-serif" }}
+        onClick={handleWrapperClick}
+      >
         <Canvas
           flat
           orthographic
           camera={{ position: [cx, cy, cz], zoom: CONFIG.CAMERA.initialZoom }}
           shadows
           gl={{ antialias: true, alpha: true }}
-          onCreated={({ scene }) => { scene.background = new THREE.Color("#d6e8c0"); }}
+          tabIndex={0}
+          onCreated={({ gl }) => {
+            gl.domElement.tabIndex = 0;
+            gl.domElement.focus();
+          }}
         >
           <GameScene
             onDialog={setDialogData}
-            debugAnim={debugAnim}
-            onAnimList={setAnimNames}
             isPaused={!!dialogData}
             isFactoryWorking={isFactoryWorking}
             setIsFactoryWorking={setIsFactoryWorking}
             onEnterBuilding={() => { }}
+            setAutoCamera={setAutoCamera}
           />
           <WorldBounds autoCamera={autoCamera} />
           <MapControls
@@ -1122,22 +1225,6 @@ export function IsometricScene() {
         {dialogData && (
           <GlobalDialog data={dialogData} onClose={() => setDialogData(null)} />
         )}
-
-        {/* 🔧 애니메이션 디버그 패널 (임시) */}
-        <div className="absolute top-4 right-4 z-50 bg-white/90 rounded-xl shadow-lg p-3 flex flex-col gap-2 border border-slate-300" style={{ minWidth: 200 }}>
-          <p className="text-xs font-bold text-slate-600">🎬 애니메이션 테스트</p>
-          <select
-            className="text-sm border rounded-lg p-2 bg-white"
-            value={debugAnim || ""}
-            onChange={(e) => setDebugAnim(e.target.value || null)}
-          >
-            <option value="">자동 (WASD 모드)</option>
-            {animNames.map(name => (
-              <option key={name} value={name}>{name}</option>
-            ))}
-          </select>
-          <p className="text-xs text-slate-400">선택하면 해당 애니메이션 재생</p>
-        </div>
       </div>
     </div>
   );
