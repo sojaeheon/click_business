@@ -17,6 +17,11 @@ export default function App() {
 
   const closeModal = useCallback(() => {
     setState((prev) => ({ ...prev, activeModal: null }));
+    // 모달 닫힌 후 canvas 포커스 복원
+    setTimeout(() => {
+      const canvas = document.querySelector('canvas') as HTMLElement | null;
+      canvas?.focus({ preventScroll: true });
+    }, 80);
   }, []);
 
   const switchTab = useCallback((tab: ModalTab) => {
@@ -40,7 +45,13 @@ export default function App() {
 
   const closeBuildingPage = useCallback(() => {
     setState((prev) => ({ ...prev, activeBuildingPage: null }));
+    // 건물 페이지 닫힌 후 canvas 포커스 복원
+    setTimeout(() => {
+      const canvas = document.querySelector('canvas') as HTMLElement | null;
+      canvas?.focus({ preventScroll: true });
+    }, 80);
   }, []);
+
 
   const contextValue: GameContextType = useMemo(
     () => ({
