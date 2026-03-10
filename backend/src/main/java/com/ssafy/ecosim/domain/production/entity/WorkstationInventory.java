@@ -29,14 +29,10 @@ public class WorkstationInventory {
     @Column(nullable = false)
     private Long quantity;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "slot_type", nullable = false)
-    private SlotType slotType;
 
     @Builder
-    public WorkstationInventory(Workstation workstation, SlotType slotType) {
+    public WorkstationInventory(Workstation workstation) {
         this.workstation = workstation;
-        this.slotType = slotType;
         this.quantity = 0L;
     }
 

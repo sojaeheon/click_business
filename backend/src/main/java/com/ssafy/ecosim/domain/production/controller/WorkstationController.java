@@ -64,8 +64,7 @@ public class WorkstationController {
         Long userId = Long.parseLong(userDetails.getUsername());
         Company company = getCompanyByUserId(userId);
 
-        workstationService.processProduction(company.getId(), workstationId, request.getInputItemId(),
-                request.getOutputItemId());
+        workstationService.processProduction(company.getId(), workstationId, request.getOutputItemId());
         return ApiResponse.success("생산 지연 평가가 완료되었습니다.");
     }
 
@@ -86,10 +85,9 @@ public class WorkstationController {
         Company company = getCompanyByUserId(userId);
 
         // 임시로 요구 재료 1L, 결과물 2L로 세팅 (또는 기존과 같이 1L)
-        workstationService.processProduction(company.getId(), workstationId, 1L, 2L);
+        workstationService.processProduction(company.getId(), workstationId);
         // 임시 요구 재료 1L를 파라미터로 함께 조회
-        WorkstationStatusResponse response = workstationService.getWorkstationStatus(company.getId(), workstationId,
-                1L);
+        WorkstationStatusResponse response = workstationService.getWorkstationStatus(company.getId(), workstationId);
         return ApiResponse.success(response);
     }
 }

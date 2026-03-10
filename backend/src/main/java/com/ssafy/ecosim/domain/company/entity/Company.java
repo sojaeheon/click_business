@@ -25,8 +25,16 @@ public class Company extends BaseEntity {
     @Column(nullable = false, length = 100)
     private String name;
 
-    public Company(User user, String name) {
+    @Column(name = "input_item_id")
+    private Long inputItemId;
+
+    @Column(name = "output_item_id")
+    private Long outputItemId;
+
+    public Company(User user, String name, Long inputItemId, Long outputItemId) {
         this.user = user;
         this.name = name;
+        this.inputItemId = inputItemId;
+        this.outputItemId = outputItemId;
     }
 }
