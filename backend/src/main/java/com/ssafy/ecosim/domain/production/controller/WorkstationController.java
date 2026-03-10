@@ -3,6 +3,7 @@ package com.ssafy.ecosim.domain.production.controller;
 import com.ssafy.ecosim.domain.company.entity.Company;
 import com.ssafy.ecosim.domain.company.repository.CompanyRepository;
 import com.ssafy.ecosim.domain.production.dto.request.ProcessProductionRequest;
+import com.ssafy.ecosim.domain.production.dto.request.ReserveMaterialsRequest;
 import com.ssafy.ecosim.domain.production.dto.response.WorkstationStatusResponse;
 import com.ssafy.ecosim.domain.production.service.WorkstationService;
 import com.ssafy.ecosim.global.common.ApiResponse;
@@ -55,6 +56,17 @@ public class WorkstationController {
 
         workstationService.equipEquipment(company.getId(), workstationId, equipmentId);
         return ApiResponse.success("장비가 장착되었습니다.");
+    }
+
+    @PostMapping("/{workstationId}/reserve")
+    public ApiResponse<String> reserveMaterials(@AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable Long workstationId,
+            @RequestBody ReserveMaterialsRequest request) {
+        Long userId = Long.parseLong(userDetails.getUsername());
+        Company company = getCompanyByUserId(userId);
+
+        workstationService.reserveMaterials(company.getId(), workstationId, request.getQuantity());
+        return ApiResponse.success("재료가 성공적으로 예약되었습니다.");
     }
 
     @PostMapping("/{workstationId}/process")

@@ -31,10 +31,18 @@ public class Company extends BaseEntity {
     @Column(name = "output_item_id")
     private Long outputItemId;
 
+    @Column(name = "production_requirement", nullable = false)
+    private Integer productionRequirement; // 소모되는 재료량
+
+    @Column(name = "production_yield", nullable = false)
+    private Integer productionYield; // 산출되는 결과물량
+
     public Company(User user, String name, Long inputItemId, Long outputItemId) {
         this.user = user;
         this.name = name;
         this.inputItemId = inputItemId;
         this.outputItemId = outputItemId;
+        this.productionRequirement = 1; // 기본값 1
+        this.productionYield = 1; // 기본값 1
     }
 }

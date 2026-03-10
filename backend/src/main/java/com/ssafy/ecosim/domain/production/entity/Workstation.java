@@ -38,12 +38,39 @@ public class Workstation {
     @Column(name = "is_active", nullable = false)
     private Boolean isActive;
 
+    @Column(name = "reserved_quantity", nullable = false)
+    private Long reservedQuantity; // 예약된 재료량
+
+    @Column(name = "produced_quantity", nullable = false)
+    private Long producedQuantity; // 생산 완료된 결과물량
+
     @Builder
     public Workstation(Company company, Integer workstationLevel) {
         this.company = company;
         this.workstationLevel = workstationLevel;
         this.isActive = false;
         this.lastTickTime = LocalDateTime.now();
+        this.reservedQuantity = 0L;
+        this.producedQuantity = 0L;
+    }
+
+    public void addReservedQuantity(Long amount) {
+        this.reservedQuantity += amount;
+    }
+
+    public void consumeReservedQuantity(Long amount) {
+        if (this.reservedQuantity < amount) {
+            throw new IllegalStateException("예약된 재료가 부족합니다.");
+        }
+        this.reservedQuantity -= amount;
+    }
+
+    public void addProducedQuantity(Long amount) {
+        this.producedQuantity += amount;
+    }
+
+    public void clearProducedQuantity() {
+        this.producedQuantity = 0L;
     }
 
     public void equipEquipment(EquipmentInventory equipmentInventory) {

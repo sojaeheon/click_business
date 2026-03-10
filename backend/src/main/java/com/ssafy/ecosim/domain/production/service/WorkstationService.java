@@ -5,12 +5,9 @@ import com.ssafy.ecosim.domain.company.repository.CompanyRepository;
 import com.ssafy.ecosim.domain.inventory.entity.EquipmentInventory;
 import com.ssafy.ecosim.domain.inventory.repository.EquipmentInventoryRepository;
 import com.ssafy.ecosim.domain.production.entity.Workstation;
-import com.ssafy.ecosim.domain.production.entity.WorkstationInventory;
 import com.ssafy.ecosim.domain.production.repository.WorkstationRepository;
-import com.ssafy.ecosim.domain.production.repository.WorkstationInventoryRepository;
 import com.ssafy.ecosim.domain.production.dto.response.WorkstationStatusResponse;
 import com.ssafy.ecosim.domain.inventory.service.InventoryService;
-import com.ssafy.ecosim.domain.item.entity.Item;
 import com.ssafy.ecosim.domain.item.repository.ItemRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -27,7 +24,6 @@ public class WorkstationService {
         private final WorkstationRepository workstationRepository;
         private final EquipmentInventoryRepository equipmentInventoryRepository;
         private final CompanyRepository companyRepository;
-        private final WorkstationInventoryRepository workstationInventoryRepository;
         private final ItemRepository itemRepository;
         private final InventoryService inventoryService;
 
@@ -96,6 +92,28 @@ public class WorkstationService {
         }
 
         /**
+         * 생산을 위한 재료 예약 (창고 -> 워크스테이션 예약석)
+         */
+        @Transactional
+        public void reserveMaterials(Long companyId, Long workstationId, Long quantity) {
+                Workstation workstation = workstationRepository.findByCompanyIdAndId(companyId, workstationId)
+                                .orElseThrow(() -> new IllegalArgumentException("작업장을 찾을 수 없습니다."));
+
+                Company company = workstation.getCompany();
+                Long inputItemId = company.getInputItemId();
+
+                if (inputItemId == null) {
+                        throw new IllegalArgumentException("회사의 생산 재료 설정이 되어있지 않습니다.");
+                }
+
+                // 창고에서 재료 차감
+                inventoryService.removeItem(companyId, inputItemId, quantity);
+
+                // 워크스테이션 예약 수량 증가
+                workstation.addReservedQuantity(quantity);
+        }
+
+        /**
          * 생산 처리 (지연 평가 - Passive Tick)
          * 이 메서드는 상태 조회, 재료 투입 전, 수확 전 등 최신화가 필요할 때 호출됩니다.
          */
@@ -104,26 +122,8 @@ public class WorkstationService {
                 Workstation workstation = workstationRepository.findByCompanyIdAndId(companyId, workstationId)
                                 .orElseThrow(() -> new IllegalArgumentException("작업장을 찾을 수 없습니다."));
 
-                Company company = workstation.getCompany();
-                Long targetInputItemId = company.getInputItemId();
-                Long targetOutputItemId = company.getOutputItemId();
-
-                if (targetOutputItemId == null) {
-                        throw new IllegalArgumentException("회사의 생산 결과물 설정이 되어있지 않습니다.");
-                }
-
                 if (!workstation.getIsActive()) {
                         return; // 가동 중지 상태면 생산하지 않음
-                }
-
-                WorkstationInventory outputInventory = workstationInventoryRepository
-                                .findByWorkstationId(workstationId)
-                                .orElse(null);
-
-                // 만약 OUTPUT 슬롯에 이미 아이템이 있고, 그 아이템이 생산될 결과물과 다르다면 수확을 기다려야 함
-                if (outputInventory != null && outputInventory.getItem() != null
-                                && !outputInventory.getItem().getId().equals(targetOutputItemId)) {
-                        return; // 수확 전이므로 생산 지연 평가 중지
                 }
 
                 LocalDateTime now = LocalDateTime.now();
@@ -134,41 +134,32 @@ public class WorkstationService {
                         return;
                 }
 
-                // 장비에 따른 초당 생산량 결정 (장비가 없으면 레벨당 1개라고 가정하거나 0 처리, 여기선 기본 1개로 처리)
+                // 장산량 결정 (기본 1개)
                 long productionPerSecond = 1L;
                 if (workstation.getEquipmentInventory() != null) {
                         productionPerSecond = workstation.getEquipmentInventory().getLevel() * 1L;
                 }
 
-                long potentialProduction = secondsPassed * productionPerSecond;
-                long actualProduction = 0L;
+                long potentialProduction = secondsPassed * productionPerSecond; // 이번 틱에 가능한 최대 생산 횟수(Laps)
 
-                // 창고에서 필요한 재료량이 있는지 확인
-                if (targetInputItemId != null) {
-                        long availableQuantity = inventoryService.getItemQuantity(companyId, targetInputItemId);
-                        if (availableQuantity > 0) {
-                                // 소모율 1:1이라고 가정
-                                actualProduction = Math.min(potentialProduction, availableQuantity);
-                                inventoryService.removeItem(companyId, targetInputItemId, actualProduction);
-                        }
-                } else {
-                        // 재료가 필요 없는 레시피인 경우 바로 생산
-                        actualProduction = potentialProduction;
-                }
+                Company company = workstation.getCompany();
+                int requirement = company.getProductionRequirement();
+                int yield = company.getProductionYield();
 
-                if (actualProduction > 0) {
-                        // OUTPUT 재고 증가
-                        if (outputInventory == null) {
-                                outputInventory = workstationInventoryRepository.save(
-                                                WorkstationInventory.builder()
-                                                                .workstation(workstation)
-                                                                .build());
-                        }
+                // 예약된 재료로 실제 가능한 생산 횟수(Laps) 계산
+                long availableLaps = workstation.getReservedQuantity() / requirement;
 
-                        Item outputItem = itemRepository.findById(targetOutputItemId)
-                                        .orElseThrow(() -> new IllegalArgumentException("결과물 아이템을 찾을 수 없습니다."));
+                // 실제 진행될 생산 횟수
+                long actualLaps = Math.min(potentialProduction, availableLaps);
 
-                        outputInventory.addMaterial(outputItem, actualProduction);
+                if (actualLaps > 0) {
+                        // 실제 소모될 재료량과 생성될 산출물량 계산
+                        long consumedMaterial = actualLaps * requirement;
+                        long producedYield = actualLaps * yield;
+
+                        // 예약량 차감 및 생산완료량 증가
+                        workstation.consumeReservedQuantity(consumedMaterial);
+                        workstation.addProducedQuantity(producedYield);
                 }
 
                 // 최신화 완료 후 시간 동기화
@@ -180,26 +171,26 @@ public class WorkstationService {
          */
         @Transactional
         public void harvestOutput(Long companyId, Long workstationId) {
-                if (!workstationRepository.existsByCompanyIdAndId(companyId, workstationId)) {
-                        throw new IllegalArgumentException("작업장을 찾을 수 없습니다.");
-                }
+                Workstation workstation = workstationRepository.findByCompanyIdAndId(companyId, workstationId)
+                                .orElseThrow(() -> new IllegalArgumentException("작업장을 찾을 수 없습니다."));
 
-                WorkstationInventory outputInventory = workstationInventoryRepository
-                                .findByWorkstationId(workstationId)
-                                .orElseThrow(() -> new IllegalArgumentException("수확할 결과물이 없습니다."));
-
-                if (outputInventory.getQuantity() <= 0 || outputInventory.getItem() == null) {
+                Long harvestQuantity = workstation.getProducedQuantity();
+                if (harvestQuantity <= 0) {
                         throw new IllegalStateException("수확할 아이템이 없습니다.");
                 }
 
-                Long harvestItemId = outputInventory.getItem().getId();
-                Long harvestQuantity = outputInventory.getQuantity();
+                Company company = workstation.getCompany();
+                Long harvestItemId = company.getOutputItemId();
+
+                if (harvestItemId == null) {
+                        throw new IllegalArgumentException("회사의 생산 결과물 설정이 되어있지 않습니다.");
+                }
 
                 // 플레이어 인벤토리에 추가
                 inventoryService.addItem(companyId, harvestItemId, harvestQuantity);
 
                 // 출력 슬롯 비우기
-                outputInventory.consumeMaterial(harvestQuantity);
+                workstation.clearProducedQuantity();
         }
 
         /**
@@ -211,15 +202,14 @@ public class WorkstationService {
 
                 Company company = workstation.getCompany();
                 Long inputItemId = company.getInputItemId();
-
-                WorkstationInventory outputInventory = workstationInventoryRepository
-                                .findByWorkstationId(workstationId)
-                                .orElse(null);
+                Long outputItemId = company.getOutputItemId();
 
                 WorkstationStatusResponse.WorkstationStatusResponseBuilder builder = WorkstationStatusResponse.builder()
                                 .workstationId(workstation.getId())
                                 .level(workstation.getWorkstationLevel())
-                                .isActive(workstation.getIsActive());
+                                .isActive(workstation.getIsActive())
+                                .reservedQuantity(workstation.getReservedQuantity())
+                                .producedQuantity(workstation.getProducedQuantity());
 
                 // 공장의 내 인벤토리에서 재료(input 아이템) 보유량 총합을 조회하여 추가
                 if (inputItemId != null) {
@@ -231,10 +221,13 @@ public class WorkstationService {
                         });
                 }
 
-                if (outputInventory != null && outputInventory.getItem() != null) {
-                        builder.outputItemId(outputInventory.getItem().getId())
-                                        .outputItemName(outputInventory.getItem().getName())
-                                        .outputQuantity(outputInventory.getQuantity());
+                // 결과물 정보 추가
+                if (outputItemId != null) {
+                        itemRepository.findById(outputItemId).ifPresent(item -> {
+                                builder.outputItemId(item.getId())
+                                                .outputItemName(item.getName())
+                                                .outputQuantity(workstation.getProducedQuantity());
+                        });
                 }
 
                 if (workstation.getEquipmentInventory() != null

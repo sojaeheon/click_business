@@ -9,6 +9,8 @@ public class WorkstationStatusResponse {
     private Long workstationId;
     private Integer level;
     private Boolean isActive;
+    private Long reservedQuantity;
+    private Long producedQuantity;
 
     // Input info
     private Long inputItemId;
