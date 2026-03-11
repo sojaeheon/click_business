@@ -3,10 +3,28 @@ FROM apache/spark:3.5.2
 
 USER root
 
-# Python 환경 구성
+# Python 환경 설치
 RUN apt-get update && \
     apt-get install -y python3 python3-pip && \
     rm -rf /var/lib/apt/lists/*
 
-# 작업 디렉토리
+# Kafka 관련 환경 설치
+RUN wget -P /opt/spark/jars \
+https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.2/spark-sql-kafka-0-10_2.12-3.5.2.jar
+
+RUN wget -P /opt/spark/jars \
+https://repo1.maven.org/maven2/org/apache/spark/spark-token-provider-kafka-0-10_2.12/3.5.2/spark-token-provider-kafka-0-10_2.12-3.5.2.jar
+
+RUN wget -P /opt/spark/jars \
+https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.5.1/kafka-clients-3.5.1.jar
+
+RUN wget -P /opt/spark/jars \
+https://repo1.maven.org/maven2/org/apache/commons/commons-pool2/2.11.1/commons-pool2-2.11.1.jar
+
+# Spark 환경변수 설정
+ENV PYSPARK_PYTHON=python3
+ENV PYSPARK_DRIVER_PYTHON=python3
+ENV PATH="/opt/spark/bin:${PATH}"
+
+# Spark 작업 디렉토리
 WORKDIR /opt/spark-apps

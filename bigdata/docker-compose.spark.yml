@@ -6,6 +6,9 @@ services:
       dockerfile: ./spark/Dockerfile.spark
     container_name: spark-master
 
+    volumes:
+      - ./spark/jobs:/opt/spark-apps
+
     command: >
       /opt/spark/bin/spark-class
       org.apache.spark.deploy.master.Master
@@ -27,6 +30,9 @@ services:
     depends_on:
       - spark-master
 
+    volumes:
+      - ./spark/jobs:/opt/spark-apps
+
     command: >
       /opt/spark/bin/spark-class
       org.apache.spark.deploy.worker.Worker
@@ -41,4 +47,7 @@ services:
 
 networks:
   ecosim-network:
-    driver: bridge
+    # bridge 네트워크
+    # 컨테이너끼리 이름 기반 통신 가능
+    # driver: bridge
+    external: true
