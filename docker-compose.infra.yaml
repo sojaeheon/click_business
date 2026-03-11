@@ -7,10 +7,8 @@ services:
     user: root
     container_name: jenkins-server
     restart: always
-    # network_mode: "host" 대신 브리지 모드를 사용하여 Nginx와 안정적으로 통신합니다.
-    ports:
-      - "8080:8080"
-      - "50000:50000"
+    # K8s(Kind) 관리를 위해 호스트 네트워크 모드를 사용합니다.
+    network_mode: "host"
     env_file:
       - .env
     volumes:
@@ -31,5 +29,4 @@ services:
       - DOCKER_HUB_PASSWORD
       - JENKINS_URL
       - KUBECONFIG_CONTENT
-    networks:
-      - ecosim-network
+    # host 모드에서는 별도의 networks나 ports 설정이 무시되거나 불필요합니다.
