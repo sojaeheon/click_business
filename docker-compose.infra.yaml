@@ -7,10 +7,10 @@ services:
     user: root
     container_name: jenkins-server
     restart: always
-    network_mode: "host"
-    # ports:
-    #   - "8080:8080"
-    #   - "50000:50000"
+    # network_mode: "host" 대신 브리지 모드를 사용하여 Nginx와 안정적으로 통신합니다.
+    ports:
+      - "8080:8080"
+      - "50000:50000"
     env_file:
       - .env
     volumes:
@@ -19,6 +19,7 @@ services:
       - ./jenkins.yaml:/var/jenkins_home/jenkins.yaml
     environment:
       - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+      - JENKINS_OPTS=--prefix=/jenkins
       - CASC_JENKINS_CONFIG=/var/jenkins_home/jenkins.yaml
       - MM_WEBHOOK_URL
       - JENKINS_ADMIN_ID
@@ -30,9 +31,5 @@ services:
       - DOCKER_HUB_PASSWORD
       - JENKINS_URL
       - KUBECONFIG_CONTENT
-    # networks:
-    #   - ecosim-network
-
-# networks:
-#   ecosim-network:
-#     driver: bridge
+    networks:
+      - ecosim-network
