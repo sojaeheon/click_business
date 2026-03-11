@@ -1,0 +1,12 @@
+# Spark 공식 이미지
+FROM apache/spark:3.5.2
+
+USER root
+
+# Python 환경 구성
+RUN apt-get update && \
+    apt-get install -y python3 python3-pip && \
+    rm -rf /var/lib/apt/lists/*
+
+# 작업 디렉토리
+WORKDIR /opt/spark-apps
