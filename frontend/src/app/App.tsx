@@ -1,16 +1,38 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, Suspense, lazy, useEffect } from "react";
 import { IsometricScene } from "./components/game/IsometricScene";
 import { GameHUD } from "./components/game/GameHUD";
 import { ModalContainer } from "./components/modals/ModalContainer";
-import { BankPage } from "../pages/buildings/BankPage";
-import { WarehousePage } from "../pages/buildings/WarehousePage";
-import { HRPage } from "../pages/buildings/HRPage";
-import { MinigamePage } from "../pages/buildings/MinigamePage";
+const BankPage = lazy(() => import("../pages/buildings/BankPage").then(module => ({ default: module.BankPage })));
+const WarehousePage = lazy(() => import("../pages/buildings/WarehousePage").then(module => ({ default: module.WarehousePage })));
+const HRPage = lazy(() => import("../pages/buildings/HRPage").then(module => ({ default: module.HRPage })));
+const MinigamePage = lazy(() => import("../pages/buildings/MinigamePage").then(module => ({ default: module.MinigamePage })));
+const MarketPage = lazy(() => import("../pages/buildings/MarketPage").then(module => ({ default: module.MarketPage })));
 import { GameContext, defaultGameState } from "./store/gameStore";
 import type { GameState, ModalTab, BuildingPage, GameContextType } from "./store/gameStore";
+import { CompanyAPI } from "../api/gameApi";
 
 export default function App() {
   const [state, setState] = useState<GameState>(defaultGameState);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const response = await CompanyAPI.getStatus(1);
+        if (response.data) {
+          setState((prev) => ({
+            ...prev,
+            ...response.data
+          }));
+        }
+      } catch (error) {
+        console.error("Failed to load initial game status", error);
+      } finally {
+        setIsInitialLoad(false);
+      }
+    };
+    fetchStatus();
+  }, []);
 
   const openModal = useCallback((tab: ModalTab) => {
     setState((prev) => ({ ...prev, activeModal: tab }));
@@ -32,10 +54,10 @@ export default function App() {
     setState((prev) => ({ ...prev, activeModal: tab }));
   }, []);
 
-  const dismissNotification = useCallback((id: string) => {
+  const dismissAlert = useCallback((id: string) => {
     setState((prev) => ({
       ...prev,
-      notifications: prev.notifications.filter((n) => n.id !== id),
+      alerts: prev.alerts.filter((n) => n.id !== id),
     }));
   }, []);
 
@@ -62,15 +84,16 @@ export default function App() {
   const contextValue: GameContextType = useMemo(
     () => ({
       state,
+      setGameState: setState,
       openModal,
       closeModal,
       switchTab,
-      dismissNotification,
+      dismissAlert,
       selectBuilding,
       openBuildingPage,
       closeBuildingPage,
     }),
-    [state, openModal, closeModal, switchTab, dismissNotification, selectBuilding, openBuildingPage, closeBuildingPage]
+    [state, openModal, closeModal, switchTab, dismissAlert, selectBuilding, openBuildingPage, closeBuildingPage]
   );
 
   const renderBuildingPage = () => {
@@ -83,28 +106,21 @@ export default function App() {
         return <HRPage />;
       case "minigame":
         return <MinigamePage />;
-      case "factory":
       case "market":
-        return (
-          <div className="absolute inset-0 z-40 bg-gray-100 flex items-center justify-center">
-            <div className="text-center">
-              <p className="text-2xl text-gray-600 mb-4">
-                {state.activeBuildingPage === "factory" ? "공장" : state.activeBuildingPage === "market" ? "마켓" : "미니게임"}
-              </p>
-              <p className="text-gray-400 mb-6">준비 중입니다...</p>
-              <button
-                onClick={closeBuildingPage}
-                className="px-6 py-3 bg-gray-800 text-white rounded-xl hover:bg-gray-700 transition-colors cursor-pointer"
-              >
-                돌아가기
-              </button>
-            </div>
-          </div>
-        );
+        return <MarketPage />;
       default:
         return null;
     }
   };
+
+  if (isInitialLoad) {
+    return (
+      <div className="w-screen h-screen flex flex-col items-center justify-center bg-gray-100 relative">
+        <div className="w-12 h-12 border-4 border-gray-400 border-t-gray-800 rounded-full animate-spin mb-4"></div>
+        <p className="text-gray-800 font-bold tracking-widest text-lg">회사 데이터를 불러오는 중입니다...</p>
+      </div>
+    );
+  }
 
   return (
     <GameContext.Provider value={contextValue}>
@@ -121,7 +137,18 @@ export default function App() {
         <ModalContainer />
 
         {/* Building Page Layer */}
-        {renderBuildingPage()}
+        {state.activeBuildingPage && (
+          <Suspense fallback={
+            <div className="absolute inset-0 z-40 bg-gray-100/80 backdrop-blur-sm flex items-center justify-center">
+              <div className="flex flex-col items-center">
+                <div className="w-10 h-10 border-4 border-gray-400 border-t-gray-800 rounded-full animate-spin"></div>
+                <p className="mt-4 text-gray-700 font-bold tracking-wide">로딩 중...</p>
+              </div>
+            </div>
+          }>
+            {renderBuildingPage()}
+          </Suspense>
+        )}
       </div>
     </GameContext.Provider>
   );

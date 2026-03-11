@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { Lock, ShoppingBag, HelpCircle, X } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Lock, ShoppingBag, HelpCircle, X, Loader2 } from "lucide-react";
+import { InventoryAPI } from "../../../api/gameApi";
 
 interface InventorySlot {
   id: number;
@@ -8,16 +9,10 @@ interface InventorySlot {
   locked?: boolean;
 }
 
-// 임시 인벤토리 슬롯 데이터 (백엔드 연동 시 교체)
-const defaultSlots: InventorySlot[] = [
-  { id: 1, name: "일꾼A", level: 2 },
-  { id: 2 },
-  { id: 3 },
-  { id: 4, locked: true },
-];
-
 export function InventoryModal() {
-  const [slots, setSlots] = useState<InventorySlot[]>(defaultSlots);
+  const [slots, setSlots] = useState<InventorySlot[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [expandTickets, setExpandTickets] = useState(1); // 테스트용: 보유 확장권 1개
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const [showHelp, setShowHelp] = useState(false);
@@ -36,13 +31,37 @@ export function InventoryModal() {
     setSelectedSlot(selectedSlot === slot.id ? null : slot.id);
   };
 
-  // 슬롯 확장 (잠금 해제)
-  const handleUnlockSlot = (slotId: number) => {
+  // 초기 데이터 불러오기
+  useEffect(() => {
+    let isMounted = true;
+    InventoryAPI.getInventory(1) // 임시 companyId: 1
+      .then((res) => {
+        if (!isMounted) return;
+        setSlots(res.data);
+        setError(false);
+      })
+      .catch((err) => {
+        console.error("인벤토리 조회 오류:", err);
+        if (isMounted) setError(true);
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+    return () => { isMounted = false; };
+  }, []);
+
+  // 슬롯 확장 (잠금 해제) - API 연동 추가
+  const handleUnlockSlot = async (slotId: number) => {
     if (expandTickets <= 0) return;
-    setExpandTickets((t) => t - 1);
-    setSlots((prev) =>
-      prev.map((slot) => (slot.id === slotId ? { ...slot, locked: false } : slot))
-    );
+    try {
+      await InventoryAPI.unlockSlot({ companyId: 1, slotId });
+      setExpandTickets((t) => t - 1);
+      setSlots((prev) =>
+        prev.map((slot) => (slot.id === slotId ? { ...slot, locked: false } : slot))
+      );
+    } catch (err: any) {
+      alert(err?.response?.data?.message || "슬롯 확장에 실패했습니다.");
+    }
   };
 
   return (
@@ -62,18 +81,24 @@ export function InventoryModal() {
       </div>
 
       <div className="flex gap-4 flex-1 mt-2">
-        {/* 왼쪽: 현재 장착된 일꾼 화면 */}
-        <div className="w-1/2 bg-white rounded-xl border-2 border-gray-300 flex flex-col items-center justify-center p-6 relative">
+        {/* 왼쪽: 현재 장착된 일꾼 화면 - 세련된 스테이지 디자인 */}
+        <div className="w-1/2 bg-gradient-to-b from-blue-50/50 to-indigo-50/80 rounded-2xl border border-white shadow-[inset_0_2px_15px_rgba(255,255,255,0.8),0_10px_20px_-10px_rgba(0,0,0,0.1)] flex flex-col items-center justify-center p-6 relative overflow-hidden">
           {/* 캐릭터 렌더링 영역 */}
           {equippedSlot ? (
-            <div className="flex flex-col items-center animate-fade-in">
-              <span className="text-9xl mb-4 drop-shadow-md">🧑‍🔧</span>
-              {/* 캐릭터 발판 모양 (디자인 참고) */}
-              <div className="relative w-48 h-12">
-                <div className="absolute inset-0 bg-gray-200 rounded-lg shadow-inner border-2 border-gray-300 transform perspective-100 rotate-x-12 scale-x-110"></div>
+            <div className="flex flex-col items-center animate-fade-in relative z-10 w-full">
+              {/* 후광 이펙트 */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-blue-300/40 blur-3xl rounded-full" />
+              
+              <span className="text-9xl mb-4 drop-shadow-[0_15px_15px_rgba(0,0,0,0.25)] relative z-10 hover:-translate-y-3 transition-transform duration-500 cursor-pointer">🧑‍🔧</span>
+              
+              {/* 캐릭터 발판 모양 (홀로그램 발판) */}
+              <div className="relative w-56 h-14 mt-4">
+                <div className="absolute inset-0 bg-blue-400/20 rounded-[100%] border border-blue-300/50 transform perspective-500 rotate-x-60 shadow-[0_0_20px_rgba(59,130,246,0.3)]"></div>
+                <div className="absolute inset-2 bg-blue-300/30 rounded-[100%] border border-blue-200/50 blur-sm"></div>
+                
                 {/* 텍스트 라벨 (Lv.2 일꾼) */}
-                <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-white border-2 border-gray-400 rounded px-6 py-1 whitespace-nowrap shadow-sm">
-                  <span className="font-bold text-gray-800 text-lg">
+                <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm border border-white shadow-lg rounded-full px-6 py-1.5 whitespace-nowrap z-20 transition-all hover:scale-105">
+                  <span className="font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600 text-lg">
                     Lv.{equippedSlot.level} {equippedSlot.name}
                   </span>
                 </div>
@@ -81,8 +106,8 @@ export function InventoryModal() {
             </div>
           ) : (
             <div className="flex flex-col items-center opacity-40">
-              <span className="text-8xl mb-4">👤</span>
-              <div className="bg-gray-100 border-2 border-dashed border-gray-300 rounded px-5 py-1">
+              <span className="text-8xl mb-4 grayscale">👤</span>
+              <div className="bg-white/50 border border-dashed border-gray-400 rounded-full px-5 py-1 text-gray-500 font-bold">
                 장착 안됨
               </div>
             </div>
@@ -91,6 +116,17 @@ export function InventoryModal() {
 
         {/* 오른쪽: 인벤토리 슬롯 (2x2 그리드) */}
         <div className="w-1/2 bg-white rounded-xl border-2 border-gray-300 p-4 flex flex-col">
+          {loading ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-gray-500">
+              <Loader2 className="w-8 h-8 animate-spin mb-2" />
+              <p className="text-sm font-semibold">인벤토리 불러오는 중...</p>
+            </div>
+          ) : error ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-rose-500">
+              <p className="font-bold">통신 오류 발생</p>
+              <p className="text-sm">서버 또는 목업 연결을 확인하세요.</p>
+            </div>
+          ) : (
           <div className="grid grid-cols-2 gap-4 h-full">
             {slots.map((slot) => {
               const isExpandable = slot.locked && expandTickets > 0;
@@ -105,36 +141,36 @@ export function InventoryModal() {
                       handleUnlockSlot(slot.id);
                     }
                   }}
-                  className={`relative rounded-xl border-2 flex flex-col items-center justify-center transition-all h-full min-h-[140px]
+                  className={`relative rounded-2xl flex flex-col items-center justify-center transition-all duration-300 h-full min-h-[140px] transform group
                     ${slot.locked
                       ? isExpandable
-                        ? "bg-gray-50 border-gray-300 hover:border-yellow-400 hover:bg-yellow-50 cursor-pointer opacity-100"
-                        : "bg-gray-100 border-gray-200 opacity-50 cursor-not-allowed"
+                        ? "bg-slate-50 border border-slate-200 hover:border-yellow-400 hover:bg-yellow-50 hover:shadow-yellow-100/50 hover:shadow-lg cursor-pointer opacity-100 hover:-translate-y-1"
+                        : "bg-slate-100/50 border border-slate-200 opacity-60 cursor-not-allowed"
                       : slot.name
                         ? isSelected
-                          ? "bg-blue-50 border-blue-400 cursor-pointer shadow-md"
-                          : "bg-white border-gray-300 hover:border-gray-400 shadow-sm cursor-pointer"
-                        : "bg-gray-50 border-gray-300 hover:border-gray-400 cursor-pointer"
+                          ? "bg-gradient-to-br from-blue-50 to-indigo-100 border border-blue-300 shadow-[0_5px_15px_rgba(59,130,246,0.2)] cursor-pointer ring-2 ring-blue-400 ring-offset-2 scale-105"
+                          : "bg-white border border-gray-200 hover:border-blue-300 hover:shadow-lg cursor-pointer hover:-translate-y-1 shadow-sm"
+                        : "bg-gray-50/80 border border-dashed border-gray-300 hover:border-gray-400 hover:bg-white cursor-pointer"
                     }`}
                 >
                   {/* 슬롯 번호 좌측 상단 (카드형 디자인) */}
-                  <span className="absolute top-2 left-3 text-sm font-semibold text-gray-500">
-                    {slot.id}
+                  <span className="absolute top-2 left-3 text-sm font-bold text-gray-400/80 tracking-widest">
+                    #{slot.id}
                   </span>
 
                   {slot.locked ? (
                     <div className="flex flex-col items-center text-gray-400">
-                      <Lock className="w-10 h-10 mb-1" />
+                      <Lock className={`w-10 h-10 mb-1 transition-transform ${isExpandable && "group-hover:scale-110 group-hover:text-yellow-600"}`} />
                     </div>
                   ) : slot.name ? (
-                    <div className="flex flex-col items-center">
-                      <span className="text-5xl mb-2 drop-shadow-sm">🧑‍🔧</span>
-                      <span className="text-sm font-bold text-gray-700 bg-gray-100 px-3 py-0.5 rounded-full">
+                    <div className="flex flex-col items-center relative z-10 mt-2">
+                      <span className="text-5xl mb-2 drop-shadow-md transition-transform group-hover:scale-110">🧑‍🔧</span>
+                      <span className={`text-sm font-bold px-3 py-1 rounded-full shadow-sm ${isSelected ? "bg-blue-500 text-white" : "text-gray-700 bg-white border border-gray-100"}`}>
                         Lv.{slot.level} {slot.name}
                       </span>
                     </div>
                   ) : (
-                    <span className="text-xs text-gray-300">비어있음</span>
+                    <span className="text-xs text-gray-400 font-medium">비어있음</span>
                   )}
 
                   {/* 자물쇠 슬롯 하단의 0/1 표시 */}
@@ -147,6 +183,7 @@ export function InventoryModal() {
               );
             })}
           </div>
+          )}
         </div>
       </div>
 

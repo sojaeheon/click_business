@@ -1,10 +1,10 @@
 import { createContext, useContext } from "react";
 
-export type ModalTab = "profile" | "news" | "politics" | "incentive" | "inventory" | "notification" | "settings" | null;
+export type ModalTab = "profile" | "news" | "newsDetail" | "ranking" | "inventory" | "alert" | "settings" | null;
 
-export type BuildingPage = "hr" | "bank" | "warehouse" | "minigame" | "factory" | "market" | null;
+export type BuildingPage = "hr" | "bank" | "warehouse" | "minigame" | "workstation" | "market" | null;
 
-export interface Notification {
+export interface Alert {
   id: string;
   message: string;
   detail?: string;
@@ -55,7 +55,7 @@ export interface GameState {
   inventoryUsed: number;
   inventoryMax: number;
   inventoryPercent: number;
-  notifications: Notification[];
+  alerts: Alert[];
   news: NewsItem[];
   activeModal: ModalTab;
   selectedBuilding: string | null;
@@ -77,7 +77,7 @@ export const defaultGameState: GameState = {
   inventoryUsed: 32,
   inventoryMax: 50,
   inventoryPercent: 89.6,
-  notifications: [
+  alerts: [
     { id: "n1", message: "철광석 매입 완료", detail: "2,500원 30개 완료", timeAgo: "방금 전", read: false },
     { id: "n2", message: "철수 괴 판매", detail: "시장가 판매 완료", timeAgo: "5분 전", read: false },
     { id: "n3", message: "재료 부족 - 작업 중단", detail: "철광석 재고 부족", timeAgo: "2시간 전", read: false },
@@ -116,10 +116,11 @@ export const defaultGameState: GameState = {
 
 export interface GameContextType {
   state: GameState;
+  setGameState: React.Dispatch<React.SetStateAction<GameState>>;
   openModal: (tab: ModalTab) => void;
   closeModal: () => void;
   switchTab: (tab: ModalTab) => void;
-  dismissNotification: (id: string) => void;
+  dismissAlert: (id: string) => void;
   selectBuilding: (building: string | null) => void;
   openBuildingPage: (page: BuildingPage) => void;
   closeBuildingPage: () => void;

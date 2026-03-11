@@ -10,13 +10,13 @@ interface HudButton {
 // 왼쪽 세로 버튼: 뉴스, 명예의전당, 인벤토리
 const leftButtons: HudButton[] = [
   { key: "news", label: "뉴스", imgSrc: "/ui_icons/news.png" },
-  { key: "incentive", label: "명예의 전당", imgSrc: "/ui_icons/cup_128x128.png" },
+  { key: "ranking", label: "명예의 전당", imgSrc: "/ui_icons/cup_128x128.png" },
   { key: "inventory", label: "인벤토리", imgSrc: "/ui_icons/inventory.png" },
 ];
 
 export function GameHUD() {
   const { state, openModal } = useGame();
-  const unreadNotifications = state.notifications.filter((n) => !n.read).length;
+  const unreadAlerts = state.alerts.filter((n) => !n.read).length;
 
   return (
     <div className="absolute inset-0 pointer-events-none">
@@ -87,14 +87,14 @@ export function GameHUD() {
         {/* 오른쪽 상단: 알림 + 설정 (비율 1.5배~2배 확대) */}
         <div className="flex items-center gap-5 flex-shrink-0 pt-2 pr-4">
           <button
-            onClick={() => openModal("notification")}
+            onClick={() => openModal("alert")}
             className="pointer-events-auto relative w-20 h-20 hover:scale-110 transition-transform cursor-pointer"
             title="알림"
           >
             <img src="/ui_icons/notification.png" alt="Notification" className="w-full h-full object-contain drop-shadow-lg" />
-            {unreadNotifications > 0 && (
+            {unreadAlerts > 0 && (
               <span className="absolute top-1 -right-1 bg-red-600 border-[3px] border-white text-white font-black text-xs w-7 h-7 flex items-center justify-center rounded-full shadow-md">
-                {unreadNotifications}
+                {unreadAlerts}
               </span>
             )}
           </button>

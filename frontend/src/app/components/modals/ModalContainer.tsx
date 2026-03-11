@@ -3,9 +3,9 @@ import { useGame } from "../../store/gameStore";
 import type { ModalTab } from "../../store/gameStore";
 import { CompanyProfile } from "./CompanyProfile";
 import { NewsModal } from "./NewsModal";
-import { IncentiveModal } from "./IncentiveModal";
+import { RankingModal } from "./RankingModal";
 import { InventoryModal } from "./InventoryModal";
-import { NotificationModal } from "./NotificationModal";
+import { AlertModal } from "./AlertModal";
 import { SettingsModal } from "./SettingsModal";
 
 interface TabConfig {
@@ -18,9 +18,9 @@ interface TabConfig {
 const tabs: TabConfig[] = [
   { key: "profile",      label: "기업 프로필", icon: Building2  },
   { key: "news",         label: "뉴스",        icon: Newspaper  },
-  { key: "incentive",    label: "명예의 전당", icon: Trophy     },
+  { key: "ranking",    label: "명예의 전당", icon: Trophy     },
   { key: "inventory",    label: "인벤토리",    icon: Backpack   },
-  { key: "notification", label: "알림",        icon: Bell       },
+  { key: "alert", label: "알림",        icon: Bell       },
   { key: "settings",     label: "설정",        icon: Settings   },
 ];
 
@@ -28,9 +28,9 @@ function ModalTabContent({ tab }: { tab: ModalTab }) {
   switch (tab) {
     case "profile":      return <CompanyProfile />;
     case "news":         return <NewsModal />;
-    case "incentive":    return <IncentiveModal />;
+    case "ranking":      return <RankingModal />;
     case "inventory":    return <InventoryModal />;
-    case "notification": return <NotificationModal />;
+    case "alert": return <AlertModal />;
     case "settings":     return <SettingsModal />;
     default:             return null;
   }

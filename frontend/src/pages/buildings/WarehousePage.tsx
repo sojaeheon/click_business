@@ -16,52 +16,35 @@ function ShelfItem({
   const isMaterial = type === "material";
 
   return (
-    <div className="flex flex-col items-center">
-      {/* Box visual */}
+    <div className="flex flex-col items-center group cursor-pointer">
+      {/* Box visual - Glassmorphism & Soft gradients */}
       <div
-        className={`relative ${compact ? "w-20 h-16" : "w-28 h-24"} border-2 border-gray-400 rounded-lg flex items-center justify-center overflow-hidden`}
+        className={`relative ${compact ? "w-24 h-20" : "w-32 h-28"} rounded-2xl flex flex-col items-center justify-center overflow-hidden transition-all duration-300 transform group-hover:-translate-y-2 group-hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.3)] shadow-lg ring-1 ring-white/40`}
         style={{
           background: isMaterial
-            ? "linear-gradient(135deg, #e8dcc8 0%, #d4c4a8 50%, #c8b898 100%)"
-            : "linear-gradient(135deg, #f0e8d8 0%, #e8dcc8 100%)",
+            ? "linear-gradient(135deg, rgba(234, 179, 8, 0.15) 0%, rgba(202, 138, 4, 0.25) 100%)"
+            : "linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(37, 99, 235, 0.25) 100%)",
+          backdropFilter: "blur(12px)",
         }}
       >
-        {/* Diagonal lines for material boxes */}
-        {isMaterial && (
-          <>
-            <div
-              className="absolute inset-0 opacity-20"
-              style={{
-                background:
-                  "repeating-linear-gradient(45deg, transparent, transparent 8px, #999 8px, #999 9px)",
-              }}
-            />
-          </>
-        )}
+        <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+
+        <Package 
+          className={`w-1/2 h-1/2 drop-shadow-md transition-transform group-hover:scale-110 ${isMaterial ? "text-yellow-600" : "text-blue-500"}`}
+        />
+
         {/* Label bubble */}
-        <div className="relative z-10 bg-white/80 backdrop-blur-sm rounded-full px-2 py-0.5 border border-gray-300">
-          <span className="text-xs text-gray-700" style={{ fontWeight: 600 }}>
+        <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-md rounded-full px-2 py-0.5 border border-white/50 shadow-sm z-10">
+          <span className="text-[10px] text-gray-800 font-bold mix-blend-multiply">
             {name}
           </span>
         </div>
-        {/* Wavy line for product */}
-        {!isMaterial && (
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2">
-            <svg width="40" height="8" viewBox="0 0 40 8">
-              <path
-                d="M0 4 Q5 0 10 4 Q15 8 20 4 Q25 0 30 4 Q35 8 40 4"
-                fill="none"
-                stroke="#999"
-                strokeWidth="1.5"
-              />
-            </svg>
-          </div>
-        )}
       </div>
+      
       {/* Quantity label */}
-      <div className="mt-1 bg-white border-2 border-gray-400 rounded-lg px-3 py-1 text-center">
-        <span className="text-sm text-gray-800" style={{ fontWeight: 700 }}>
-          {quantity}
+      <div className="mt-3 bg-white/90 backdrop-blur border border-white/50 shadow-md rounded-xl px-4 py-1.5 text-center transform transition-all group-hover:scale-105">
+        <span className="text-sm text-gray-800 font-black tracking-wide">
+          {quantity.toLocaleString()} 개
         </span>
       </div>
     </div>
@@ -121,17 +104,14 @@ export function WarehousePage() {
       </div>
 
       {/* Shelves */}
-      <div className="flex-1 p-6 flex flex-col justify-center max-w-3xl mx-auto w-full">
-        {/* Shelf structure */}
-        <div className="relative">
-          {/* Shelf frame - vertical pillars */}
-          <div className="absolute left-0 top-0 bottom-0 w-3 bg-gradient-to-r from-[#8B7355] to-[#A0896C] rounded-l" />
-          <div className="absolute right-0 top-0 bottom-0 w-3 bg-gradient-to-l from-[#8B7355] to-[#A0896C] rounded-r" />
-
-          <div className="px-8">
+      <div className="flex-1 p-6 flex flex-col justify-center max-w-4xl mx-auto w-full">
+        {/* Shelf structure - Modern Glass/wood mix */}
+        <div className="relative bg-white/40 backdrop-blur-2xl rounded-3xl p-8 border border-white/50 shadow-2xl">
+          <div className="px-4">
             {/* Top shelf - Materials */}
-            <div className="border-b-4 border-[#8B7355] pb-4 pt-4">
-              <div className="flex items-end justify-center gap-6">
+            <div className="mb-8">
+              <h3 className="text-gray-500 font-bold mb-4 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-yellow-500"></div> 원자재</h3>
+              <div className="flex flex-wrap items-end justify-start gap-8">
                 {materials.map((item) => (
                   <ShelfItem
                     key={item.id}
@@ -145,8 +125,9 @@ export function WarehousePage() {
             </div>
 
             {/* Bottom shelf - Products */}
-            <div className="border-b-4 border-[#8B7355] pb-4 pt-6">
-              <div className="flex items-end justify-center gap-6">
+            <div className="pt-4 border-t border-gray-300/50">
+              <h3 className="text-gray-500 font-bold mb-4 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-blue-500"></div> 생산품</h3>
+              <div className="flex flex-wrap items-end justify-start gap-8">
                 {products.map((item) => (
                   <ShelfItem
                     key={item.id}

@@ -3,6 +3,7 @@ import { Lock, ArrowLeft } from "lucide-react";
 import { Canvas } from "@react-three/fiber";
 import { useGLTF, Stage } from "@react-three/drei";
 import { useGame } from "../../app/store/gameStore";
+import { MinigameAPI } from "../../api/gameApi";
 
 export function MinigamePage() {
   const { closeBuildingPage } = useGame();
@@ -13,10 +14,15 @@ export function MinigamePage() {
     return <primitive object={scene} />;
   }
 
+  const TOTAL_CLICKS = 100;
   const [gameState, setGameState] = useState<"locked" | "playing" | "success" | "failure">("locked");
-  const [timeLeft, setTimeLeft] = useState(60);
-  const [clicksLeft, setClicksLeft] = useState(50);
+  const [timeLeft, setTimeLeft] = useState(30);
+  const [clicksLeft, setClicksLeft] = useState(TOTAL_CLICKS);
   const [shake, setShake] = useState(0);
+  const [clickEffects, setClickEffects] = useState<{ id: number; x: number; y: number }[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const isFever = gameState === "playing" && clicksLeft > 0 && clicksLeft <= TOTAL_CLICKS / 2;
 
   // 타이머 로직
   useEffect(() => {
@@ -35,41 +41,83 @@ export function MinigamePage() {
     return () => clearInterval(timer);
   }, [gameState, timeLeft]);
 
-  const handleUnlock = () => {
-    // 💡 [백엔드 연동: 재화 차감 로직]
-    setGameState("playing");
-    setTimeLeft(60);
-    setClicksLeft(50);
+  const handleUnlock = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+    try {
+      await MinigameAPI.unlockGame({ companyId: 1, amount: 1000 });
+      setGameState("playing");
+      setTimeLeft(30);
+      setClicksLeft(TOTAL_CLICKS);
+    } catch (e) {
+      console.error(e);
+      alert("게임 입장에 실패했습니다. 재화를 확인해주세요.");
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleRetry = () => {
     setGameState("locked");
-    setTimeLeft(60);
-    setClicksLeft(50);
+    setTimeLeft(30);
+    setClicksLeft(TOTAL_CLICKS);
   };
 
-  const handleClickBuilding = () => {
+  const handleClickBuilding = (e: React.MouseEvent) => {
     if (gameState !== "playing") return;
 
     // 약간의 쉐이크 이펙트 트리거
-    setShake(Math.random() * 4 - 2);
+    const shakeIntensity = isFever ? 10 : 3;
+    setShake(Math.random() * shakeIntensity - shakeIntensity / 2);
+
+    // 클릭 파티클 추가
+    const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const newEffect = { id: Date.now(), x, y };
+    setClickEffects((prev) => [...prev, newEffect]);
+
+    setTimeout(() => {
+      setClickEffects((prev) => prev.filter((ef) => ef.id !== newEffect.id));
+    }, 500);
 
     setClicksLeft((prev) => {
-      const next = Math.max(0, prev - 1);
-      if (next === 0) {
+      // 피버모드면 한 번 클릭 시 2~3 랜덤 감소, 아니면 1 감소
+      const damage = isFever ? Math.floor(Math.random() * 2) + 2 : 1;
+      const next = Math.max(0, prev - damage);
+      if (next === 0 && prev > 0) {
         setGameState("success");
+        MinigameAPI.claimReward({ companyId: 1, clicks: TOTAL_CLICKS, isFever }).catch(console.error);
       }
       return next;
     });
 
-    // 짧은 시간 후 쉐이크 초기화
+    // 짧은 시간 후 개별 쉐이크 초기화 (피버의 경우 CSS 애니메이션 유지됨)
     setTimeout(() => setShake(0), 100);
   };
 
-  const damagePercent = ((50 - clicksLeft) / 50) * 100;
+  const damagePercent = ((TOTAL_CLICKS - clicksLeft) / TOTAL_CLICKS) * 100;
 
   return (
-    <div className="absolute inset-0 z-40 bg-gray-50 flex flex-col font-sans select-none overflow-hidden">
+    <div className={`absolute inset-0 z-40 flex flex-col font-sans select-none overflow-hidden transition-colors duration-500 ${isFever ? 'bg-red-950' : 'bg-gray-50'}`}>
+      
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes feverBgShake {
+          0%, 100% { transform: translate(0, 0); }
+          25% { transform: translate(3px, 3px); }
+          50% { transform: translate(-3px, -3px); }
+          75% { transform: translate(-3px, 3px); }
+        }
+        @keyframes textGlowPulse {
+          0%, 100% { text-shadow: 0 0 10px #ef4444, 0 0 20px #ef4444; transform: scale(1) translateX(-50%); }
+          50% { text-shadow: 0 0 20px #ef4444, 0 0 40px #ef4444, 0 0 60px #ef4444; transform: scale(1.1) translateX(-45%); }
+        }
+        @keyframes damageFloat {
+          0% { opacity: 1; transform: translateY(0) scale(1); }
+          100% { opacity: 0; transform: translateY(-50px) scale(1.5); }
+        }
+      `}} />
+
       {/* 상단 뒤로가기 (UX 편의상 추가) */}
       <div className="absolute top-6 left-6 z-[60]">
         <button
@@ -99,15 +147,25 @@ export function MinigamePage() {
       )}
 
       {/* 항상 표시되는 게임 메인 화면 (잠금 시 회색빛 & 블러 처리) */}
-      <div className={`flex-1 flex flex-col items-center justify-center relative z-0 transition-opacity duration-500 ${gameState === "locked" ? "opacity-30 grayscale blur-sm pointer-events-none" : ""}`}>
+      <div className={`flex-1 flex flex-col items-center justify-center relative z-0 transition-all duration-500 ${gameState === "locked" ? "opacity-30 grayscale blur-sm pointer-events-none" : ""} ${isFever ? "animate-[feverBgShake_0.1s_linear_infinite]" : ""}`}>
           
+          {/* 피버 텍스트 오버레이 */}
+          {isFever && (
+            <div 
+              className="absolute top-[15%] left-1/2 text-8xl font-black text-white italic z-10 pointer-events-none tracking-widest"
+              style={{ animation: 'textGlowPulse 0.5s ease-in-out infinite' }}
+            >
+              FEVER!
+            </div>
+          )}
+
           {/* 타이머 및 클릭수 */}
-          <div className="absolute top-6 right-6 flex flex-col gap-3 items-end">
-            <div className="px-8 py-3 bg-white border-[3px] border-gray-800 rounded-full font-black text-xl shadow-md text-gray-800">
+          <div className="absolute top-6 right-6 flex flex-col gap-3 items-end z-20">
+            <div className={`px-8 py-3 outline-none border-[3px] rounded-full font-black text-xl shadow-md transition-colors ${isFever ? 'bg-red-600 border-red-800 text-white' : 'bg-white border-gray-800 text-gray-800'}`}>
               남은 시간 : {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, "0")}
             </div>
-            <div className="px-8 py-3 bg-white border-[3px] border-gray-800 rounded-full font-black text-xl shadow-md text-gray-800">
-              남은 클릭 수 : {clicksLeft}회
+            <div className={`px-8 py-3 border-[3px] rounded-full font-black text-xl shadow-md transition-colors ${isFever ? 'bg-orange-500 border-orange-700 text-white' : 'bg-white border-gray-800 text-gray-800'}`}>
+              HP : {clicksLeft} / {TOTAL_CLICKS}
             </div>
           </div>
 
@@ -117,9 +175,24 @@ export function MinigamePage() {
             className="relative transition-transform cursor-pointer outline-none"
             style={{
               transform: `scale(${1 - damagePercent * 0.001}) rotate(${shake}deg)`, // 전체 크기 줄어들고 쉐이크 이펙트
-              filter: `brightness(${100 - damagePercent / 3}%)`,
+              filter: `brightness(${isFever ? 60 - damagePercent / 3 : 100 - damagePercent / 3}%) sepia(${isFever ? 0.8 : 0}) hue-rotate(${isFever ? -50 : 0}deg) saturate(${isFever ? 3 : 1})`,
             }}
           >
+            {/* 타격 이펙트 오버레이 */}
+            {clickEffects.map((ef) => (
+              <span 
+                key={ef.id} 
+                className={`absolute z-50 text-4xl font-black pointer-events-none drop-shadow-md ${isFever ? 'text-yellow-300' : 'text-red-500'}`}
+                style={{ 
+                  left: ef.x - 20, 
+                  top: ef.y - 20,
+                  animation: 'damageFloat 0.5s ease-out forwards'
+                }}
+              >
+                {isFever ? "🔥" : "💥"}
+              </span>
+            ))}
+
             {/* 3D 캔버스 영역 (차량 크기를 대폭 키움) */}
             <div className="w-[600px] h-[600px] relative flex items-center justify-center pointer-events-none active:scale-95 transition-transform">
               <Canvas shadows dpr={[1, 2]} camera={{ fov: 45 }}>

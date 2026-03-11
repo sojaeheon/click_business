@@ -1,4 +1,4 @@
-import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import axios from 'axios';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
 
@@ -9,7 +9,7 @@ export const apiClient = axios.create({
 });
 
 // ── Request Interceptor: accessToken 헤더 주입 ──────────────
-apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+apiClient.interceptors.request.use((config: any) => {
     const token = localStorage.getItem('accessToken');
     if (token) config.headers.Authorization = `Bearer ${token}`;
     return config;
@@ -20,9 +20,9 @@ let isRefreshing = false;
 let refreshQueue: Array<(token: string) => void> = [];
 
 apiClient.interceptors.response.use(
-    (res) => res,
-    async (error: AxiosError) => {
-        const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+    (res: any) => res,
+    async (error: any) => {
+        const originalRequest = error.config as any;
 
         if (error.response?.status === 401 && !originalRequest._retry) {
             if (isRefreshing) {

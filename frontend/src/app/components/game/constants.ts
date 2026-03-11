@@ -96,7 +96,7 @@ export const BUILDING_AREAS = [
     { name: "market", label: "마켓", pos: [BX, BZ] as [number, number] },
     { name: "minigame", label: "미니게임", pos: [-BX, BZ] as [number, number] },
 ];
-export const FACTORY_POS = [0, BZ] as const;
+export const WORKSTATION_POS = [0, BZ] as const;
 
 // ─── 건물→페이지 라우팅 ──────────────────────────────────────────
 export const buildingToPage: Record<string, BuildingPage> = {
