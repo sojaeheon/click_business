@@ -61,7 +61,8 @@ services:
 
       # Kafka가 외부 client에게 광고하는 주소
       # Spring Boot가 localhost:9092로 접속
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      # KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
 
 
       # Kafka가 실제로 바인딩해서 듣는 주소
@@ -85,4 +86,5 @@ networks:
   ecosim-network:
     # bridge 네트워크
     # 컨테이너끼리 이름 기반 통신 가능
-    driver: bridge
+    # driver: bridge
+    external: true
