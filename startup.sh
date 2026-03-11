@@ -86,7 +86,7 @@ fi
 
 # .env 파일 업데이트 (YAML 잔재 및 잘못된 설정 제거)
 sed -i '/JENKINS_URL=/d' .env
-echo "JENKINS_URL=http://$PUBLIC_IP:8080" >> .env
+echo "JENKINS_URL=http://$PUBLIC_IP/jenkins" >> .env
 sed -i '/KUBECONFIG_CONTENT\|clusters:\|contexts:\|users:\|current-context:\|kind:\|apiVersion:/d' .env 2>/dev/null || true
 # 공백으로 시작하는 라인(YAML 인덴트) 삭제
 sed -i '/^[[:space:]]\+/d' .env 2>/dev/null || true
