@@ -80,3 +80,5 @@ tmp/
 
 rule.md
 /postgres_data/
+
+hadoop.env

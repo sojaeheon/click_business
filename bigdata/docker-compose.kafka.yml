@@ -87,4 +87,6 @@ networks:
     # bridge 네트워크
     # 컨테이너끼리 이름 기반 통신 가능
     # driver: bridge
+    name: ecosim-network
     external: true
+    

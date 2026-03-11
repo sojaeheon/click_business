@@ -16,4 +16,5 @@ services:
 
 networks:
   ecosim-network:
+    name: ecosim-network
     driver: bridge
