@@ -57,9 +57,9 @@ public class DummyOrderEventPublisher implements OrderEventPublisher {
         double score = event.getPrice() + timeWeight; 
 
         if ("BUY".equals(event.getOrderType().name())) {
-            orderBookManager.addBid(event.getItemId(), entity.getId(), score);
+            orderBookManager.addBuy(event.getItemId(), entity.getId(), score);
         } else {
-            orderBookManager.addAsk(event.getItemId(), entity.getId(), score);
+            orderBookManager.addSell(event.getItemId(), entity.getId(), score);
         }
 
         System.out.printf("[KAFKA DUMMY] DB/Redis load complete: %s Price: %d, Qty: %d (Item: %d)\n", 

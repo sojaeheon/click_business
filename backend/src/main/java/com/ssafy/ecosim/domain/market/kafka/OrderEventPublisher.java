@@ -9,15 +9,8 @@ import com.ssafy.ecosim.domain.market.dto.event.TradeEventDto;
  */
 public interface OrderEventPublisher {
     
-    // TODO: TradeEventDto 등 체결 정보를 담은 DTO가 확정되면 파라미터로 추가해야 합니다.
-    // 예: void publishTradeEvent(TradeEventDto event);
-    
     /**
-     * 주문 체결 이벤트를 발행합니다.
-     * @param orderId 체결된 주문의 고유 식별자 (임시)
-     */
-    /**
-     * 주문 체결 이벤트를 발행합니다.
+     * 체결 이벤트를 발행합니다.
      * @param event 체결 상세 정보(영수증)를 담은 DTO
      */
     void publishTradeEvent(TradeEventDto event);

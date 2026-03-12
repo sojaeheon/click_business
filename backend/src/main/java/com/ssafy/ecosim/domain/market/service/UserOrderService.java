@@ -16,7 +16,7 @@ public class UserOrderService {
      * 프론트엔드에서 유저가 요청하는 실제 주문을 받아 검증하고 카프카로 발행합니다.
      */
     public void createOrder(Long userId, Long companyId, UserOrderRequestDto request) {
-        
+
         // 1. 유효성 검증 로직 (보유 자산 체크)
         // TODO: 향후 User, Company, Inventory 도메인 Repository 주입 후 실제 DB 조회 로직으로 교체
         validateOrderPossibility(userId, companyId, request);
@@ -44,15 +44,15 @@ public class UserOrderService {
             case BUY:
                 // 매수의 경우: 회사 잔고(Cash) >= (price * quantity) 인지 확인
                 // TODO: Company entity 에서 회사 캐시 조회하여 비교
-                long totalOrderPrice = request.getPrice() * request.getTotalQuantity();
-                // if (company.getCash() < totalOrderPrice) throw new InsufficientBalanceException();
+                // if (company.getCash() < request.getPrice() * request.getTotalQuantity())
+                // throw new InsufficientBalanceException();
                 break;
-                
+
             case SELL:
                 // 매도의 경우: 유저가 속한 회사의 인벤토리에 해당 아이템 잔량이 충분한지 확인
                 // TODO: Inventory 레포지토리에서 물품 수량 조회하여 비교
-                long requiredItemCount = request.getTotalQuantity();
-                // if (inventory.getQuantity(request.getItemId()) < requiredItemCount) throw new InsufficientItemException();
+                // if (inventory.getQuantity(request.getItemId()) < request.getTotalQuantity())
+                // throw new InsufficientItemException();
                 break;
         }
     }

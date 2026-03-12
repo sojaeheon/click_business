@@ -3,6 +3,7 @@ package com.ssafy.ecosim.domain.market.service;
 import com.ssafy.ecosim.domain.market.entity.OrderType;
 import com.ssafy.ecosim.domain.market.kafka.OrderEventPublisher;
 import com.ssafy.ecosim.domain.market.dto.event.OrderCreationEventDto;
+import com.ssafy.ecosim.domain.market.repository.redis.OrderBookManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -21,18 +22,23 @@ public class BotOrderScheduler {
     private final OrderEventPublisher eventPublisher;
     // 추후 시장가 조회를 위해 추가
     private final RedisTemplate<String, Object> redisTemplate;
+    // Market Sweep 시 반대편 호가창의 총 잔량 조회를 위해 추가
+    private final OrderBookManager orderBookManager;
 
     // 사이클 관리
     private static final int CYCLE_SECONDS = 600; // 10분 = 외부 지표 1일
     private int currentTick = 0;
     private boolean isFirstDay = true; // 최초 시작 시 거대 매물벽 보장용
 
-    // 오늘의 가상지표 (우리의 현재가에 곱해질 목표 금액들)
-    private double targetOpenPrice;
-    private double targetHighPrice;
-    private double targetLowPrice;
-    private double targetClosePrice;
+    // 오늘의 가상지표 (우리의 현재가에 곱해질 '목표 변동률')
+    private double targetOpenFluct;
+    private double targetHighFluct;
+    private double targetLowFluct;
+    private double targetCloseFluct;
     private boolean isHighFirst; // 고가를 먼저 찍을 것인가?
+
+    // 600틱 동안의 타겟 '변동률'을 미리 계산해두는 메모리 배열
+    private final double[] tickTargetFluctuations = new double[CYCLE_SECONDS];
 
     // 초당 생성량 (30~50건)
     private static final int MIN_TPS = 30;
@@ -40,16 +46,21 @@ public class BotOrderScheduler {
 
     private static final Integer ITEM_ID_GOLD = 1;
 
-    // @Scheduled(fixedRate = 1000) // 1초마다 정확히 실행
+    @Scheduled(fixedRate = 1000) // 1초마다 정확히 실행
     public void generateVirtualOrderTick() {
         if (currentTick == 0) {
             initNewDayCycle();
         }
 
-        // 1. 현재 틱(Tick)에 맞는 목표 시장가 선형 보간(Interpolation) 계산
-        double currentTargetPrice = calculateInterpolatedPrice(currentTick);
+        // 1. 현재 시장가(Redis Ticker) 실시간 조회
+        long currentMarketPrice = getCurrentMarketPrice(ITEM_ID_GOLD);
 
-        // 2. 가상 봇 갯수 설정 (TPS)
+        // 2. 메모리에 미리 계산된 현재 틱의 '목표 변동률' 가져와서 타겟가 계산 (이후 Tick Size 보정)
+        double currentTargetFluct = tickTargetFluctuations[currentTick];
+        double rawTargetPrice = currentMarketPrice * (1 + currentTargetFluct);
+        long currentTargetPrice = applyTickSize(rawTargetPrice);
+
+        // 3. 가상 봇 갯수 설정 (TPS)
         int botCount = ThreadLocalRandom.current().nextInt(MIN_TPS, MAX_TPS + 1);
 
         // 최초 시작 시드(Seed) 주문: 유동성 형성을 위해 엄청난 주문 쏟아내기
@@ -59,19 +70,31 @@ public class BotOrderScheduler {
         }
 
         for (int i = 0; i < botCount; i++) {
-            // 3. 목표가 근처로 가격 흩뿌리기 (Spread) - 위아래 0.1% 내외 랜덤 변동
-            // 유저 피드백 반영: 정확한 타겟 가격에 도달하도록 루프의 첫 번째 주문(i==0)은 Spread 없이 100% 목표가로 관통!
-            double spreadRatio = 1.0;
-            if (i > 0) {
-                spreadRatio += ThreadLocalRandom.current().nextDouble(-0.001, 0.001);
-            }
-            long orderPrice = Math.round(currentTargetPrice * spreadRatio);
-
-            // 4. 소량의 수량 쪼개기 (개미 봇인 척 1~10개씩 주문)
-            long orderQty = ThreadLocalRandom.current().nextLong(1, 11);
-
-            // 5. 양방향 마켓 메이킹 (BUY, SELL 무작위 섞기)
+            // 3. 방향 먼저 결정 (수량 및 가격 계산에 모두 필요)
             OrderType type = ThreadLocalRandom.current().nextBoolean() ? OrderType.BUY : OrderType.SELL;
+
+            boolean priceGoingUp = currentTargetPrice > currentMarketPrice;
+            boolean isSweeperBot = priceGoingUp ? type == OrderType.BUY : type == OrderType.SELL;
+
+            // 4. 주문 가격 결정 (방향 인식 배치)
+            // - 스윕 방향 봇: 타겟가 ± 소폭 랜덤 스프레드 → 기존 벽을 직접 뚫음
+            // - 반대 방향 봇(유동성 공급): 타겟가에서 1~3 Tick 더 바깥(안전지대)에 배치
+            //   → 스윕이 진행 중인 구간을 방해하지 않고 자연스러운 원거리 호가 형성
+            long orderPrice;
+            if (isSweeperBot) {
+                // 스윕 봇: ±0.1% 소폭 스프레드
+                double spreadRatio = 1.0 + ThreadLocalRandom.current().nextDouble(-0.001, 0.001);
+                orderPrice = applyTickSize(currentTargetPrice * spreadRatio);
+            } else {
+                // 유동성 봇: 타겟가 바깥 1~3 Tick 위치에 호가 배치 (벽 방해 없음)
+                long tickSize = 100L;
+                long tickOffset = ThreadLocalRandom.current().nextLong(1, 4) * tickSize; // 1~3 Tick 이격
+                // 가격 오르는 중 → SELL 유동성 봇은 타겟가보다 위에 / 내리는 중 → BUY 유동성 봇은 타겟가보다 아래에
+                orderPrice = priceGoingUp ? currentTargetPrice + tickOffset : currentTargetPrice - tickOffset;
+            }
+
+            // 5. 수량: 스윕 봇은 잔량 기반 균등 분배, 유동성 봇은 소량
+            long orderQty = calculateSweepQtyPerBot(currentMarketPrice, currentTargetPrice, botCount, type, i);
 
             // 여러 가상 기관(회사)들이 참여하는 것처럼 보이기 위해 500번 ~ 999번 사이의 랜덤 회사 ID 부여
             long randomCompanyId = ThreadLocalRandom.current().nextLong(500, 1000);
@@ -94,6 +117,47 @@ public class BotOrderScheduler {
         if (currentTick >= CYCLE_SECONDS) {
             currentTick = 0;
         }
+    }
+
+    /**
+     * Market Sweep 수량 계산기: 반대편 호가창에서 현재가~목표가 구간의 총 잔량을 봇 수로 균등 분배합니다.
+     * 스윕이 필요 없는 봇에게는 자연스러운 소량 주문(1~10개)을 배정합니다.
+     *
+     * @param currentPrice 현재 시장가
+     * @param targetPrice  이번 틱의 목표가
+     * @param botCount     이번 틱에 생성되는 봇 수
+     * @param botOrderType 이 봇이 생성하는 주문 타입
+     * @param botIndex     봇 인덱스 (0 이상)
+     * @return 이 봇이 처리할 수량
+     */
+    private long calculateSweepQtyPerBot(long currentPrice, long targetPrice, int botCount, OrderType botOrderType, int botIndex) {
+        boolean priceGoingUp = targetPrice > currentPrice;
+
+        // 가격이 오르려면 매도(SELL) 물량을 매수(BUY)로 흡수해야 하고, 내리려면 그 반대
+        boolean isSweeperOrder = priceGoingUp ? botOrderType == OrderType.BUY : botOrderType == OrderType.SELL;
+
+        // 스윕 역할을 하지 않는 반대방향 봇은 그냥 소량 랜덤 주문으로 유동성 공급
+        if (!isSweeperOrder) {
+            return ThreadLocalRandom.current().nextLong(1, 11);
+        }
+
+        // 반대편 호가창에서 현재가~목표가 사이의 총 미체결 물량 조회
+        // 가격이 오를 때는 SELL 호가창에서, 내릴 때는 BUY 호가창에서 장벽 수량 파악
+        String oppositeType = priceGoingUp ? "SELL" : "BUY";
+        double minScore = Math.min(currentPrice, targetPrice);
+        double maxScore = Math.max(currentPrice, targetPrice);
+        long totalSweepVolume = orderBookManager.getVolumeInScoreRange(ITEM_ID_GOLD, oppositeType, minScore, maxScore);
+
+        if (totalSweepVolume <= 0) {
+            // 장벽이 없으면 소량 주문으로도 충분
+            return ThreadLocalRandom.current().nextLong(1, 11);
+        }
+
+        // 스윕용 봇 수(BUY or SELL 봇만 스윕하므로 절반 정도)로 총 잔량을 균등 분배
+        // 각 봇이 처리할 물량 = 전체 스윕 물량 / 스윕 봇 수 (최소 1개는 보장)
+        int sweepBotCount = Math.max(1, botCount / 2);
+        long qtyPerBot = Math.max(1, totalSweepVolume / sweepBotCount);
+        return qtyPerBot;
     }
 
     /**
@@ -121,39 +185,43 @@ public class BotOrderScheduler {
         double lowFluct = mockOpenLowFluctRate;
         double closeFluct = mockFluctRate; // 종가 기준 등락률
 
-        // 우리 시장가에 등락률을 곱해 타겟 절대 금액 설정 (유저 개입으로 시장가가 변해도 비율만큼 따라감)
-        targetOpenPrice = Math.round(currentMarketPrice * (1 + openFluct));
-        targetHighPrice = Math.round(currentMarketPrice * (1 + highFluct));
-        targetLowPrice = Math.round(currentMarketPrice * (1 + lowFluct));
-        targetClosePrice = Math.round(currentMarketPrice * (1 + closeFluct));
+        // 외부 지표에 따른 오늘의 목표 등락률(Fluctuation) 세팅 (절대 금액은 매 틱마다 실시간 시장가에 곱해서 산출)
+        targetOpenFluct = openFluct;
+        targetHighFluct = highFluct;
+        targetLowFluct = lowFluct;
+        targetCloseFluct = closeFluct;
 
         // 패턴 결정 (50% 확률로 하루 동안 고가를 먼저 찍음)
         isHighFirst = ThreadLocalRandom.current().nextBoolean();
 
-        log.info("[Virtual Index Cycle Started] Base: {}, Open: {}, High: {}, Low: {}, Close: {} (High first? {})",
-                currentMarketPrice, (long) targetOpenPrice, (long) targetHighPrice, (long) targetLowPrice,
-                (long) targetClosePrice, isHighFirst);
+        log.info("[Virtual Index Cycle Started] Base: {} | Fluct (O/H/L/C): {} / {} / {} / {} (High first? {})",
+                currentMarketPrice, targetOpenFluct, targetHighFluct, targetLowFluct, targetCloseFluct, isHighFirst);
+
+        // 장 시작 시점에, 하루치 600틱에 대한 '타겟 변동률'을 1차 함수(선형 보간)로 미리 계산하여 배열에 저장
+        for (int i = 0; i < CYCLE_SECONDS; i++) {
+            tickTargetFluctuations[i] = calculateInterpolatedFluct(i);
+        }
     }
 
     /**
-     * 현재 초(0~599)에 해당하는 1차 함수(선형 보간) 타겟 가격을 부드럽게 계산합니다.
+     * 현재 초(0~599)에 해당하는 1차 함수(선형 보간) 타겟 변동률을 부드럽게 계산합니다.
      */
-    private double calculateInterpolatedPrice(int tick) {
+    private double calculateInterpolatedFluct(int tick) {
         if (tick < 200) {
             // Phase 1: 시가 -> 고가/저가 (0 ~ 199초) - 200초 분량
-            double start = targetOpenPrice;
-            double end = isHighFirst ? targetHighPrice : targetLowPrice;
+            double start = targetOpenFluct;
+            double end = isHighFirst ? targetHighFluct : targetLowFluct;
             return interpolate(start, end, tick, 200);
         } else if (tick < 400) {
             // Phase 2: 고가/저가 -> 저가/고가 (200 ~ 399초) - 200초 분량
-            double start = isHighFirst ? targetHighPrice : targetLowPrice;
-            double end = isHighFirst ? targetLowPrice : targetHighPrice;
+            double start = isHighFirst ? targetHighFluct : targetLowFluct;
+            double end = isHighFirst ? targetLowFluct : targetHighFluct;
             return interpolate(start, end, tick - 200, 200);
         } else {
             // Phase 3: 저가/고가 -> 종가 (400 ~ 599초) - 200초 분량
             // 마지막 599초일 때 정확히 100% 도달(종가가 됨)하도록 분모를 199로 설정
-            double start = isHighFirst ? targetLowPrice : targetHighPrice;
-            double end = targetClosePrice;
+            double start = isHighFirst ? targetLowFluct : targetHighFluct;
+            double end = targetCloseFluct;
             return interpolate(start, end, tick - 400, 199);
         }
     }
@@ -178,6 +246,14 @@ public class BotOrderScheduler {
         // 4. 베이스 가격에 (노이즈 * 허용치) 를 곱해서 최종 요동치는 가격 계산
         // progress 비율이 100%(마지막 틱)가 되면 remainingRatio가 0이 되어 노이즈가 완벽히 증발함
         return basePrice * (1.0 + (noiseFluct * remainingRatio));
+    }
+
+    /**
+     * 호가 단위를 100원 범위 등으로 강제 절사(보정)하여 호가 파편화를 막는 로직
+     */
+    private long applyTickSize(double rawPrice) {
+        long tickSize = 100L; // 추후 아이템 가격대에 따라 동적으로 가져올 수도 있음
+        return Math.round(rawPrice / tickSize) * tickSize;
     }
 
     /**
