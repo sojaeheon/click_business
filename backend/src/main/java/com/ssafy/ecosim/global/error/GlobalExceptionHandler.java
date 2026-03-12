@@ -26,9 +26,9 @@ public class GlobalExceptionHandler {
         return ApiResponse.error("잘못된 요청 데이터입니다.", errors);
     }
 
-    @ExceptionHandler(IllegalArgumentException.class)
+    @ExceptionHandler({ IllegalArgumentException.class, IllegalStateException.class })
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ApiResponse<String> handleIllegalArgumentException(IllegalArgumentException ex) {
+    public ApiResponse<String> handleBadRequestExceptions(RuntimeException ex) {
         return ApiResponse.error(ex.getMessage());
     }
 }

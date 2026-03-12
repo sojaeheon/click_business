@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<configuration>
+
+  <!--
+  Hadoop 전체 기본 파일 시스템 설정
+  hdfs dfs 명령이나 Spark가 HDFS 접근 시 기본 주소
+  -->
+  <property>
+    <name>fs.defaultFS</name>
+    <value>hdfs://namenode:9000</value>
+  </property>
+
+</configuration>
