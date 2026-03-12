@@ -62,6 +62,7 @@ export const M = {
     carStationwagon: `${ENV}car_stationwagon.gltf`,
     carTaxi: `${ENV}car_taxi.gltf`,
     minigame: `${ENV}minecraft_pickaxe.gltf`,
+    ocean: `${ENV}ocean_lowpoly.glb`,
 };
 
 // ─── 자동차 경로 ─────────────────────────────────────────────────

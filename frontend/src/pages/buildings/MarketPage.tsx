@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { ArrowLeft, ShoppingCart, TrendingUp, TrendingDown, Activity } from "lucide-react";
 import { useGame } from "../../app/store/gameStore";
-import { MarketAPI } from "../../api/gameApi"; 
+import { MarketAPI } from "../../api/gameApi";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import Aurora from "../../app/components/ui/Aurora";
 
 type MarketMode = "buy" | "sell" | null;
 
@@ -21,36 +20,36 @@ const generateMockChartData = () => {
 export function MarketPage() {
   const { closeBuildingPage } = useGame();
   const [mode, setMode] = useState<MarketMode>(null);
-  
+
   const [price, setPrice] = useState<number>(0);
   const [quantity, setQuantity] = useState<number>(0);
   const [showPopup, setShowPopup] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errImg, setErrImg] = useState(false);
 
-  const [chartData, setChartData] = useState<{time: string, price: number}[]>(generateMockChartData());
+  const [chartData, setChartData] = useState<{ time: string, price: number }[]>(generateMockChartData());
   const [marketTrend, setMarketTrend] = useState<"up" | "down" | "neutral">("neutral");
 
   useEffect(() => {
-    if (!mode) return; 
-    
+    if (!mode) return;
+
     const interval = setInterval(() => {
       setChartData(prev => {
         const lastPrice = prev[prev.length - 1].price;
-        const change = (Math.random() - 0.5) * 300; 
+        const change = (Math.random() - 0.5) * 300;
         const newPrice = Math.max(100, Math.floor(lastPrice + change));
-        
+
         if (change > 100) setMarketTrend("up");
         else if (change < -100) setMarketTrend("down");
         else setMarketTrend("neutral");
 
-        const newData = [...prev.slice(1), { 
-          time: new Date().toLocaleTimeString('en-US', { hour12: false, minute: '2-digit', second:'2-digit' }), 
-          price: newPrice 
+        const newData = [...prev.slice(1), {
+          time: new Date().toLocaleTimeString('en-US', { hour12: false, minute: '2-digit', second: '2-digit' }),
+          price: newPrice
         }];
         return newData;
       });
-      
+
       setTimeout(() => setMarketTrend("neutral"), 800);
     }, 2500);
 
@@ -61,7 +60,7 @@ export function MarketPage() {
 
   const handleConfirm = async () => {
     if (quantity <= 0 || price <= 0 || !mode) return;
-    
+
     setIsProcessing(true);
     try {
       await MarketAPI.createOrder({
@@ -71,7 +70,7 @@ export function MarketPage() {
         price: price,
         qty: quantity
       });
-      
+
       setShowPopup(true);
       setTimeout(() => {
         setShowPopup(false);
@@ -90,32 +89,28 @@ export function MarketPage() {
   const isUpTrend = chartData[chartData.length - 1].price >= chartData[0].price;
 
   return (
-    <div className="absolute inset-0 z-40 bg-black flex flex-col pt-8 overflow-hidden relative transition-colors duration-700 ease-out">
-      <div className="absolute inset-0 z-0 opacity-80">
-        <Aurora colorStops={marketTrend === "up" ? ["#ff6b6b", "#f06595", "#cc5de8"] : marketTrend === "down" ? ["#339af0", "#22b8cf", "#20c997"] : ["#7cff67", "#B19EEF", "#5227FF"]} blend={0.5} amplitude={1.0} speed={1} />
-      </div>
-
+    <div className={`absolute inset-0 z-40 flex flex-col pt-8 transition-colors duration-700 ease-out ${marketTrend === "up" ? "bg-rose-50" : marketTrend === "down" ? "bg-blue-50" : "bg-[#f5f0e8]" // fallback background color if needed
+      }`}
+      style={{
+        backgroundImage: "url('/images/market.png')",
+        backgroundSize: 'contain',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'center',
+        // Market trend determines the base color, overridden by the url. 
+        // We'll let the transition-colors class handle the base background.
+      }}
+    >
       {/* Header (Back button only) */}
       <div className="absolute top-6 left-6 z-50">
         <button
           onClick={() => { mode ? setMode(null) : closeBuildingPage() }}
-          className="w-14 h-14 rounded-2xl bg-white border-2 border-slate-300 flex items-center justify-center hover:bg-slate-50 transition-all shadow-sm hover:scale-105 active:scale-95 cursor-pointer overflow-hidden relative"
+          className="w-12 h-12 rounded-full bg-white border-2 border-slate-300 flex items-center justify-center hover:bg-slate-50 transition-all shadow-sm hover:scale-105 active:scale-95 cursor-pointer"
         >
-          <img
-            src="/ui_icons/Button_Square_Sky.png"
-            alt="back-bg"
-            className="absolute inset-0 w-full h-full object-cover"
-          />
-          <img
-            src="/ui_icons/Icon_Return.png"
-            alt="back"
-            className="absolute inset-0 w-8 h-8 m-auto object-contain z-10"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
-              (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
-            }}
-          />
-          <ArrowLeft className="absolute inset-0 m-auto w-8 h-8 text-slate-700 hidden z-10" />
+          {!errImg ? (
+            <img src="/ui_icons/Button_Exit_Blue.png" alt="back" className="w-10 h-10 object-contain" onError={() => setErrImg(true)} />
+          ) : (
+            <ArrowLeft className="w-6 h-6 text-slate-700" />
+          )}
         </button>
       </div>
 
@@ -165,43 +160,42 @@ export function MarketPage() {
                   </span>
                 </div>
               </div>
-              
+
               <div className="flex-1 w-full relative">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={chartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
                     <defs>
                       <linearGradient id="colorPriceUp" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.4}/>
-                        <stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
                       </linearGradient>
                       <linearGradient id="colorPriceDown" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4}/>
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <XAxis dataKey="time" stroke="#cbd5e1" tick={{ fill: '#94a3b8', fontSize: 12 }} />
                     <YAxis domain={['auto', 'auto']} stroke="#cbd5e1" tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                    <Tooltip 
+                    <Tooltip
                       contentStyle={{ borderRadius: '12px', border: '2px solid #e2e8f0', fontWeight: 'bold', color: '#334155' }}
                       itemStyle={{ color: isUpTrend ? '#f43f5e' : '#3b82f6' }}
                     />
-                    <Area 
-                      type="monotone" 
-                      dataKey="price" 
-                      stroke={isUpTrend ? "#f43f5e" : "#3b82f6"} 
+                    <Area
+                      type="monotone"
+                      dataKey="price"
+                      stroke={isUpTrend ? "#f43f5e" : "#3b82f6"}
                       strokeWidth={4}
-                      fillOpacity={1} 
-                      fill={isUpTrend ? "url(#colorPriceUp)" : "url(#colorPriceDown)"} 
+                      fillOpacity={1}
+                      fill={isUpTrend ? "url(#colorPriceUp)" : "url(#colorPriceDown)"}
                       animationDuration={300}
                     />
                   </AreaChart>
                 </ResponsiveContainer>
 
-                <div className={`absolute top-4 left-4 px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest border-2 transition-opacity duration-300 ${
-                  marketTrend === "up" ? "bg-rose-100 text-rose-500 border-rose-200 opacity-100" : 
-                  marketTrend === "down" ? "bg-blue-100 text-blue-500 border-blue-200 opacity-100" : 
-                  "opacity-0"
-                }`}>
+                <div className={`absolute top-4 left-4 px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest border-2 transition-opacity duration-300 ${marketTrend === "up" ? "bg-rose-100 text-rose-500 border-rose-200 opacity-100" :
+                    marketTrend === "down" ? "bg-blue-100 text-blue-500 border-blue-200 opacity-100" :
+                      "opacity-0"
+                  }`}>
                   {marketTrend === "up" ? "급등 중!" : "급락 중!"}
                 </div>
               </div>
@@ -222,9 +216,8 @@ export function MarketPage() {
                       value={price || ""}
                       onChange={(e) => setPrice(Number(e.target.value))}
                       placeholder="가격을 입력하세요"
-                      className={`w-full bg-slate-50 border-2 rounded-xl pl-10 pr-4 py-4 text-right text-2xl font-black focus:outline-none transition-colors ${
-                        mode === "buy" ? "border-slate-200 focus:border-rose-400 text-rose-600" : "border-slate-200 focus:border-blue-400 text-blue-600"
-                      }`}
+                      className={`w-full bg-slate-50 border-2 rounded-xl pl-10 pr-4 py-4 text-right text-2xl font-black focus:outline-none transition-colors ${mode === "buy" ? "border-slate-200 focus:border-rose-400 text-rose-600" : "border-slate-200 focus:border-blue-400 text-blue-600"
+                        }`}
                     />
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg">₵</span>
                   </div>
@@ -259,13 +252,12 @@ export function MarketPage() {
               <button
                 onClick={handleConfirm}
                 disabled={price <= 0 || quantity <= 0 || isProcessing}
-                className={`w-full py-5 rounded-2xl font-black text-xl transition-all transform active:scale-95 flex items-center justify-center gap-3 shadow-lg mt-8 cursor-pointer ${
-                  price > 0 && quantity > 0 && !isProcessing
+                className={`w-full py-5 rounded-2xl font-black text-xl transition-all transform active:scale-95 flex items-center justify-center gap-3 shadow-lg mt-8 cursor-pointer ${price > 0 && quantity > 0 && !isProcessing
                     ? mode === "buy"
                       ? "bg-rose-500 hover:bg-rose-600 text-white shadow-rose-200"
                       : "bg-blue-500 hover:bg-blue-600 text-white shadow-blue-200"
                     : "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
-                }`}
+                  }`}
               >
                 <ShoppingCart className="w-6 h-6" />
                 {isProcessing ? "처리중..." : "주문 접수"}
@@ -279,9 +271,8 @@ export function MarketPage() {
       {showPopup && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-sm transition-opacity duration-300">
           <div className="bg-white rounded-[2rem] p-10 shadow-2xl transform text-center w-full max-w-sm border-4 border-slate-200 flex flex-col items-center">
-            <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-6 shadow-inner ${
-              mode === "buy" ? "bg-rose-100 border-4 border-rose-200" : "bg-blue-100 border-4 border-blue-200"
-            }`}>
+            <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-6 shadow-inner ${mode === "buy" ? "bg-rose-100 border-4 border-rose-200" : "bg-blue-100 border-4 border-blue-200"
+              }`}>
               <ShoppingCart className={`w-10 h-10 ${mode === "buy" ? "text-rose-500" : "text-blue-500"}`} />
             </div>
             <h2 className="text-3xl font-black text-slate-800 mb-3 tracking-wide">주문 생성 완료</h2>
@@ -292,5 +283,10 @@ export function MarketPage() {
         </div>
       )}
     </div>
+  );
+}
+        </div >
+      )}
+    </div >
   );
 }

@@ -21,7 +21,7 @@ import { Workstation } from "./Workstation";
 function Ocean() {
   const group = useRef<THREE.Group>(null);
   const { scene, animations } = useGLTF(M.ocean);
-  
+
   // 독립적인 애니메이션을 위해 클론 생성
   const clonedScene = useMemo(() => {
     const clone = SkeletonUtils.clone(scene);
@@ -33,8 +33,8 @@ function Ocean() {
         if (mat) {
           mat.roughness = 0.2;
           mat.metalness = 0.1;
-          // 만약 모델이 너무 하얗게 보인다면 살짝 푸른 빛을 강제로 줄 수도 있습니다.
-          // mat.color.set("#a5e1f9"); 
+          // 바다 색상을 명시적인 파란색 계열로 설정하여 가시성 확보
+          mat.color.set("#4dabf7"); 
         }
       }
     });
@@ -52,7 +52,8 @@ function Ocean() {
   }, [actions]);
 
   return (
-    <group ref={group} position={[0, -0.4, 0]} scale={15}>
+    <group ref={group} position={[0, -2, 0]} scale={50}>
+
       <primitive object={clonedScene} />
     </group>
   );
@@ -111,27 +112,29 @@ function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: () => voi
     return (
       <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50 backdrop-blur-sm" onClick={() => !isCollecting && onClose()}>
         {particles.map((p) => (
-           <React.Fragment key={p.id}>
-             <style dangerouslySetInnerHTML={{__html: `
+          <React.Fragment key={p.id}>
+            <style dangerouslySetInnerHTML={{
+              __html: `
                @keyframes particleFly_${p.id} {
                  0% { transform: scale(0) translate(0, 0); opacity: 0; }
                  20% { transform: scale(1.5) translate(${p.tx}px, ${p.ty}px); opacity: 1; }
                  100% { transform: scale(0.5) translate(400px, -400px); opacity: 0; }
                }
              `}} />
-             <div 
-               className="fixed w-8 h-8 bg-amber-400 rounded-full shadow-[0_0_20px_rgba(251,191,36,0.8)] pointer-events-none z-[100] flex items-center justify-center text-xl"
-               style={{ 
-                 left: p.x, top: p.y, 
-                 animation: `particleFly_${p.id} 1s cubic-bezier(0.25, 1, 0.5, 1) forwards`,
-                 animationDelay: p.delay + "s"
-               }}
-             >
-               ⭐️
-             </div>
-           </React.Fragment>
+            <div
+              className="fixed w-8 h-8 bg-amber-400 rounded-full shadow-[0_0_20px_rgba(251,191,36,0.8)] pointer-events-none z-[100] flex items-center justify-center text-xl"
+              style={{
+                left: p.x, top: p.y,
+                animation: `particleFly_${p.id} 1s cubic-bezier(0.25, 1, 0.5, 1) forwards`,
+                animationDelay: p.delay + "s"
+              }}
+            >
+              ⭐️
+            </div>
+          </React.Fragment>
         ))}
-        <style dangerouslySetInnerHTML={{__html: `
+        <style dangerouslySetInnerHTML={{
+          __html: `
           @keyframes spinSlow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         `}} />
 
@@ -178,12 +181,12 @@ function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: () => voi
             </div>
           ) : (
             <div className="bg-orange-50 rounded-2xl p-8 flex flex-col items-center justify-center border-2 border-orange-200 gap-4">
-               <div className="relative w-24 h-24 flex items-center justify-center">
-                 <div className="absolute inset-0 border-8 border-orange-200 rounded-full" />
-                 <div className="absolute inset-0 border-8 border-transparent border-t-orange-500 rounded-full animate-spin" />
-                 <span className="text-4xl relative z-10 animate-bounce">🎁</span>
-               </div>
-               <span className="text-orange-600 font-black tracking-widest text-lg">생산이 완료되었습니다!</span>
+              <div className="relative w-24 h-24 flex items-center justify-center">
+                <div className="absolute inset-0 border-8 border-orange-200 rounded-full" />
+                <div className="absolute inset-0 border-8 border-transparent border-t-orange-500 rounded-full animate-spin" />
+                <span className="text-4xl relative z-10 animate-bounce">🎁</span>
+              </div>
+              <span className="text-orange-600 font-black tracking-widest text-lg">생산이 완료되었습니다!</span>
             </div>
           )}
 
@@ -210,19 +213,11 @@ function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: () => voi
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
-    // 키보드 방향키를 누르면 바로 닫힘
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-
     if (data.type !== "building" || !data.action) return;
-    
+
     let frameId: number;
     let start = performance.now();
-    const duration = 2000; 
+    const duration = 2000;
 
     const animate = (time: number) => {
       let passed = time - start;
@@ -237,10 +232,7 @@ function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: () => voi
     };
     frameId = requestAnimationFrame(animate);
 
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      cancelAnimationFrame(frameId);
-    };
+    return () => cancelAnimationFrame(frameId);
   }, [data, onClose]);
 
   const handleImmediateEnter = () => {
@@ -252,7 +244,7 @@ function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: () => voi
   return (
     <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-[2rem] shadow-2xl p-8 flex flex-col items-center gap-6 min-w-[320px] border-4 border-slate-200 relative overflow-hidden" style={R} onClick={(e) => e.stopPropagation()}>
-        
+
         {/* 상단 프로그레스 바 영역 */}
         <div className="absolute top-0 left-0 right-0 h-3 bg-slate-100">
           <div className="h-full bg-indigo-500 transition-all duration-75 ease-linear" style={{ width: `${progress}%` }} />
@@ -266,9 +258,9 @@ function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: () => voi
           <p className="text-xl font-black text-slate-800 text-center leading-relaxed">
             <span className="text-indigo-600 text-2xl">[{data.label}]</span> 입장을 보실 수 있습니다.
           </p>
-          <p className="text-sm text-slate-500 font-bold animate-pulse">2초 후 자동 입장됩니다. 움직여서 취소 가능합니다.</p>
+          <p className="text-sm text-slate-500 font-bold animate-pulse">잠시 후 자동으로 입장합니다...</p>
         </div>
-        
+
         <div className="flex w-full mt-2 gap-3">
           <button className="flex-1 py-4 rounded-xl bg-slate-100 text-slate-600 border-2 border-slate-200 font-black text-lg hover:bg-slate-200 active:scale-95 cursor-pointer transition-colors" onClick={onClose}>취소 (나가기)</button>
           <button className="flex-1 py-4 rounded-xl bg-indigo-500 text-white font-black text-lg hover:bg-indigo-600 active:scale-95 cursor-pointer shadow-lg transition-colors" onClick={handleImmediateEnter}>즉시 입장</button>
@@ -482,46 +474,36 @@ function AnimatedCar({
   const groupRef = useRef<THREE.Group>(null);
   const progressRef = useRef(initialProgress);
   const speedRef = useRef(speed);
-  const [bounce, setBounce] = useState(0);
+  const cooldownRef = useRef(0);
 
   const curve = useMemo(() => {
     if (!path || path.length < 2) return new THREE.CatmullRomCurve3([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0.1)]);
     const pts = path.map(p => new THREE.Vector3(p[0], 0, p[1]));
-    return new THREE.CatmullRomCurve3(pts, false, "catmullrom", 0.1);
+    return new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0.1);
   }, [path]);
 
   useFrame((_, delta) => {
     if (!groupRef.current || !path || path.length < 2) return;
     const currentPos = groupRef.current.position;
-
-    // 플레이어와 거리
-    const dist = currentPos.distanceTo(SHARED_STATE.playerPos);
-
-    if (dist < 3.0) {
-      if (bounce === 0) setBounce(1); // 점프 액션 트리거
+    let collision = false;
+    const collisionDistance = 2.5;
+    if (currentPos.distanceTo(SHARED_STATE.playerPos) < collisionDistance) collision = true;
+    for (const [otherId, otherPos] of Object.entries(SHARED_STATE.cars)) {
+      if (otherId !== modelKey && currentPos.distanceTo(otherPos) < collisionDistance) { collision = true; break; }
     }
-
-    if (bounce > 0) {
-      setBounce(b => b - delta * 4);
+    if (cooldownRef.current > 0) {
+      cooldownRef.current -= delta;
+    } else if (collision) {
+      speedRef.current *= -1;
+      cooldownRef.current = 1.0;
     }
-    const bounceY = Math.max(0, Math.sin(bounce * Math.PI) * 1.5);
-
     const len = curve.getLength();
     progressRef.current = (progressRef.current + (speedRef.current * delta) / len) % 1;
     if (progressRef.current < 0) progressRef.current += 1;
-    
-    // speed가 매우 빠를때 에러방지
     const point = curve.getPointAt(progressRef.current);
-    // 방향
-    let nextCheck = progressRef.current + 0.01;
-    if (nextCheck > 1) nextCheck -= 1;
-    const nextPoint = curve.getPointAt(nextCheck);
-    
-    groupRef.current.position.set(point.x, 0.65 + bounceY, point.z);
-    
-    const angle = Math.atan2(nextPoint.x - point.x, nextPoint.z - point.z);
-    groupRef.current.rotation.y = angle + (Math.PI / 2); // 정면을 보게 약간 조정
-    
+    const tangent = curve.getTangentAt(progressRef.current);
+    groupRef.current.position.set(point.x, 0.65, point.z);
+    groupRef.current.rotation.y = Math.atan2(tangent.x, tangent.z) + (speedRef.current < 0 ? Math.PI : 0);
     SHARED_STATE.cars[modelKey] = groupRef.current.position.clone();
   });
 
@@ -694,13 +676,13 @@ export function GameScene({
 
       <MapEnvironment />
 
-      {/* 마우스 클릭 액션은 없어지고 오직 캐릭터 접근으로만 여리도록 함 */}
-      <BuildingTile position={[-BX, 0, -BZ]} modelUrl={M.hr} label="인력소" />
-      <BuildingTile position={[0, 0, -BZ]} modelUrl={M.bank} label="은행" />
-      <BuildingTile position={[BX, 0, -BZ]} modelUrl={M.warehouse} label="창고" />
-      <BuildingTile position={[BX, 0, BZ]} modelUrl={M.market} label="마켓" />
+      {/* onClick 플롭스로 마우스 클릭으로 대화창 열기 */}
+      <BuildingTile position={[-BX, 0, -BZ]} modelUrl={M.hr} label="인력소" onClick={() => go("hr", "인력소")} />
+      <BuildingTile position={[0, 0, -BZ]} modelUrl={M.bank} label="은행" onClick={() => go("bank", "은행")} />
+      <BuildingTile position={[BX, 0, -BZ]} modelUrl={M.warehouse} label="창고" onClick={() => go("warehouse", "창고")} />
+      <BuildingTile position={[BX, 0, BZ]} modelUrl={M.market} label="마켓" onClick={() => go("market", "마켓")} />
 
-      <Minigame position={[-BX, 0, BZ]} />
+      <Minigame position={[-BX, 0, BZ]} onClick={() => go("minigame", "미니게임")} />
 
       <Workstation
         position={[0, 0, BZ]}

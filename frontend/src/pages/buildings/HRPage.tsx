@@ -4,8 +4,6 @@ import { useGame } from "../../app/store/gameStore";
 import { Canvas } from "@react-three/fiber";
 import { Html, useGLTF, useAnimations, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
-import { SkeletonUtils } from "three-stdlib";
-import Aurora from "../../app/components/ui/Aurora";
 
 // --- Types ---
 interface WorkerItem {
@@ -25,41 +23,46 @@ const MOCK_INVENTORY: WorkerItem[] = [
   { id: 5, name: "도적", model: "/models/characters/Rogue.glb", level: 2, owned: 1, maxOwned: 2 },
 ];
 
-export function BackBtn({ onClick }: { onClick: () => void }) {
+function BackBtn({ onClick }: { onClick: () => void }) {
   const [err, setErr] = useState(false);
   return (
-    <button onClick={onClick} className="absolute top-6 left-6 z-50 w-14 h-14 rounded-2xl bg-white border-2 border-slate-300 flex items-center justify-center hover:bg-slate-50 shadow-sm cursor-pointer hover:scale-105 active:scale-95 transition-all overflow-hidden">
+    <button onClick={onClick} className="absolute top-6 left-6 z-50 w-12 h-12 rounded-full bg-white border-2 border-slate-300 flex items-center justify-center hover:bg-slate-50 shadow-sm cursor-pointer hover:scale-105 active:scale-95 transition-all">
       {!err ? (
-        <div className="relative w-full h-full">
-          <img src="/ui_icons/Button_Square_Sky.png" alt="back-bg" className="absolute inset-0 w-full h-full object-cover" />
-          <img src="/ui_icons/Icon_Return.png" alt="back" className="absolute inset-0 w-8 h-8 m-auto object-contain z-10" onError={() => setErr(true)} />
-        </div>
+        <img src="/ui_icons/Button_Exit_Blue.png" alt="back" className="w-10 h-10 object-contain" onError={() => setErr(true)} />
       ) : (
-        <ArrowLeft className="w-8 h-8 text-slate-700" />
+        <ArrowLeft className="w-6 h-6 text-slate-700" />
       )}
     </button>
   );
 }
 
 // --- 3D Components ---
+function IsometricRoom() {
+  return (
+    <group position={[0, -0.05, 0]}>
+      {/* 바닥 타일 */}
+      <mesh receiveShadow position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[12, 12]} />
+        <meshStandardMaterial color="#fcdbcb" />
+      </mesh>
+      {/* 왼쪽 벽 */}
+      <mesh receiveShadow position={[-6, 4, 0]} rotation={[0, Math.PI / 2, 0]}>
+        <planeGeometry args={[12, 8]} />
+        <meshStandardMaterial color="#f0d1b3" />
+      </mesh>
+      {/* 뒤쪽 벽 */}
+      <mesh receiveShadow position={[0, 4, -6]}>
+        <planeGeometry args={[12, 8]} />
+        <meshStandardMaterial color="#fde5d0" />
+      </mesh>
+    </group>
+  );
+}
 
 function CharacterModel({ url }: { url: string }) {
   const { scene } = useGLTF(url);
-  const clone = React.useMemo(() => SkeletonUtils.clone(scene), [scene]);
+  const clone = React.useMemo(() => scene.clone(), [scene]);
   return <primitive object={clone} scale={1.8} position={[0, 0, 0]} rotation={[0, Math.PI / 4, 0]} />;
-}
-
-// 아이템 창(인벤토리)에 들어갈 작은 3D 뷰어
-function InventoryCanvasItem({ modelUrl }: { modelUrl: string }) {
-  const { scene } = useGLTF(modelUrl);
-  const clone = React.useMemo(() => SkeletonUtils.clone(scene), [scene]);
-  return (
-    <Canvas camera={{ position: [0, 2, 5], fov: 40 }} gl={{ alpha: true }} style={{ width: '100%', height: '100px', pointerEvents: 'none' }}>
-      <ambientLight intensity={1.5} />
-      <directionalLight position={[5, 10, 5]} intensity={1.5} />
-      <primitive object={clone} position={[0, -0.8, 0]} rotation={[0, Math.PI / 4, 0]} scale={2.5} />
-    </Canvas>
-  );
 }
 
 function Lever({ onPull }: { onPull: () => void }) {
@@ -95,7 +98,7 @@ function Lever({ onPull }: { onPull: () => void }) {
 }
 
 export function HRPage() {
-  const { state, closeBuildingPage } = useGame();
+  const { closeBuildingPage } = useGame();
 
   const [selectedWorker, setSelectedWorker] = useState<WorkerItem | null>(null);
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
@@ -129,10 +132,16 @@ export function HRPage() {
   };
 
   return (
-    <div className="absolute inset-0 z-40 flex flex-col pt-8 bg-black overflow-hidden relative">
-      <div className="absolute inset-0 z-0">
-        <Aurora colorStops={["#7cff67", "#B19EEF", "#5227FF"]} blend={0.5} amplitude={1.0} speed={1} />
-      </div>
+    <div
+      className="absolute inset-0 z-40 flex flex-col pt-8"
+      style={{
+        backgroundImage: "url('/images/HR.png')",
+        backgroundSize: 'cover',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'center',
+        backgroundColor: '#cddeed' // 여백을 채워줄 파란 하늘 비슷한 색
+      }}
+    >
       <BackBtn onClick={closeBuildingPage} />
 
       {upgradeMessage && (
@@ -142,122 +151,120 @@ export function HRPage() {
       )}
 
       <div className="flex-1 w-full relative">
-        {/* ortho 그래픽 카메라 및 위치 조절하여 정중앙에 아이소메트릭으로 꽉차게 설정 */}
-        <Canvas shadows orthographic camera={{ position: [20, 20, 20], zoom: 55 }}>
+        <Canvas shadows camera={{ position: [0, 6, 14], fov: 40 }}>
           <ambientLight intensity={1.2} />
           <directionalLight position={[10, 15, 10]} intensity={1.8} castShadow shadow-bias={-0.001} />
 
-          {/* 중앙에 위치하도록 group 조정 */}
-          <group position={[0, -2, 0]}>
-            <group position={[0, 0, 0]}>
-              <primitive object={platformScene.clone()} scale={1.8} />
+          <IsometricRoom />
 
-              {/* 캐릭터 정보 표지판 (좌측 구석으로 분리하여 배치) */}
-              <Html position={[-6, 4, 4]} center zIndexRange={[100, 0]}>
-                <div className="flex flex-col items-center pointer-events-none w-64 transform scale-110">
-                  <div className="bg-[#5c4033] border-4 border-[#3e2723] rounded-lg p-3 w-full text-center shadow-xl relative flex flex-col gap-1 items-center">
-                    <div className="absolute top-2 left-2 w-3 h-3 rounded-full bg-amber-900 shadow-inner" />
-                    <div className="absolute top-2 right-2 w-3 h-3 rounded-full bg-amber-900 shadow-inner" />
-                    <h2 className="text-white font-black text-2xl mb-1 drop-shadow-md">
-                      {selectedWorker ? `${selectedWorker.name} Lv.${selectedWorker.level}` : "캐릭터 미선택"}
-                    </h2>
-                    {selectedWorker && (
-                      <>
-                        <div className="bg-white/20 px-3 py-1 rounded text-white text-sm font-bold shadow-inner">
-                          보유 {selectedWorker.owned}/{selectedWorker.maxOwned}
-                        </div>
-                        <div className="text-yellow-400 font-bold mt-2 text-sm bg-black/40 w-full py-1.5 rounded drop-shadow">
-                          강화 후 기대: Lv.{selectedWorker.level + 1}
-                        </div>
-                      </>
-                    )}
-                  </div>
+          {/* 중앙 인물 + 플랫폼 영역 */}
+          <group position={[-2, 0, -1]}>
+            <primitive object={platformScene.clone()} scale={1.8} />
 
+            <Html position={[0, 4.0, 0]} center zIndexRange={[100, 0]}>
+              <div className="flex flex-col items-center pointer-events-none w-64 transform -translate-y-4">
+                <div className="flex justify-between w-48 mb-[-1px]">
+                  <div className="w-1.5 h-12 bg-amber-800 border-l border-amber-950 shadow-md" />
+                  <div className="w-1.5 h-12 bg-amber-800 border-l border-amber-950 shadow-md" />
                 </div>
-              </Html>
+                <div className="bg-[#5c4033] border-4 border-[#3e2723] rounded-lg p-3 w-full text-center shadow-xl relative flex flex-col gap-1 items-center">
+                  <div className="absolute top-2 left-2 w-3 h-3 rounded-full bg-amber-900 shadow-inner" />
+                  <div className="absolute top-2 right-2 w-3 h-3 rounded-full bg-amber-900 shadow-inner" />
+                  <h2 className="text-white font-black text-2xl mb-1 drop-shadow-md">
+                    {selectedWorker ? `${selectedWorker.name} Lv.${selectedWorker.level}` : "캐릭터 미선택"}
+                  </h2>
+                  {selectedWorker && (
+                    <>
+                      <div className="bg-white/20 px-3 py-1 rounded text-white text-sm font-bold shadow-inner">
+                        보유 {selectedWorker.owned}/{selectedWorker.maxOwned}
+                      </div>
+                      <div className="text-yellow-400 font-bold mt-2 text-sm bg-black/40 w-full py-1.5 rounded drop-shadow">
+                        강화 후 기대: Lv.{selectedWorker.level + 1}
+                      </div>
+                    </>
+                  )}
+                </div>
 
-              <group position={[0, 0.45, 0]}>
-                {selectedWorker ? (
-                  <group onClick={(e) => { e.stopPropagation(); setIsInventoryOpen(true); }} onPointerOver={() => document.body.style.cursor = 'pointer'} onPointerOut={() => document.body.style.cursor = 'auto'}>
-                    <CharacterModel url={selectedWorker.model} />
-                  </group>
-                ) : (
-                  <Html position={[0, 1.0, 0]} center>
-                    <button
-                      onClick={() => setIsInventoryOpen(true)}
-                      className="w-20 h-20 bg-amber-200/50 backdrop-blur-sm rounded-full border-[6px] border-amber-400 flex items-center justify-center hover:bg-amber-300/80 hover:scale-110 transition-all cursor-pointer shadow-[0_0_20px_rgba(251,191,36,0.5)] group"
-                    >
-                      <Plus className="w-10 h-10 text-amber-700 group-hover:rotate-90 transition-transform" strokeWidth={3} />
-                    </button>
-                  </Html>
-                )}
-              </group>
+                <div className="flex justify-between w-48 mb-[-1px]">
+                  <div className="w-1.5 h-6 bg-amber-800 border-l border-amber-950 shadow-md" />
+                  <div className="w-1.5 h-6 bg-amber-800 border-l border-amber-950 shadow-md" />
+                </div>
+                <div className="bg-[#4e342e] border-4 border-[#3e2723] rounded-lg w-56 text-center shadow-xl pt-3 pb-2 px-1 relative flex flex-col items-center">
+                  <div className="absolute -top-1 left-2 w-2 h-2 rounded-full bg-slate-900/60 shadow-inner" />
+                  <div className="absolute -top-1 right-2 w-2 h-2 rounded-full bg-slate-900/60 shadow-inner" />
+                  <div className="text-emerald-400 text-3xl font-black mb-1 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">성공 확률: 70%</div>
+                  <div className="text-slate-300 text-[11px] bg-black/50 rounded px-2 py-1.5 leading-tight font-bold w-[90%] mx-auto shadow-inner">
+                    실패 확률<br /><span className="text-yellow-400">유지 15%</span> / <span className="text-orange-400">하락 10%</span> / <span className="text-rose-500">파괴 5%</span>
+                  </div>
+                </div>
+              </div>
+            </Html>
+
+            <group position={[0, 0.45, 0]}>
+              {selectedWorker ? (
+                <group onClick={(e) => { e.stopPropagation(); setIsInventoryOpen(true); }} onPointerOver={() => document.body.style.cursor = 'pointer'} onPointerOut={() => document.body.style.cursor = 'auto'}>
+                  <CharacterModel url={selectedWorker.model} />
+                </group>
+              ) : (
+                <Html position={[0, 1.0, 0]} center>
+                  <button
+                    onClick={() => setIsInventoryOpen(true)}
+                    className="w-20 h-20 bg-amber-200/50 backdrop-blur-sm rounded-full border-[6px] border-amber-400 flex items-center justify-center hover:bg-amber-300/80 hover:scale-110 transition-all cursor-pointer shadow-[0_0_20px_rgba(251,191,36,0.5)] group"
+                  >
+                    <Plus className="w-10 h-10 text-amber-700 group-hover:rotate-90 transition-transform" strokeWidth={3} />
+                  </button>
+                </Html>
+              )}
             </group>
           </group>
 
-          {/* 레버 클릭 가능하도록 위치 조정 */}
           <Lever onPull={handleLeverPull} />
+
+          <OrbitControls
+            enableZoom={false}
+            enablePan={false}
+            maxPolarAngle={Math.PI / 2 + 0.1}
+            minPolarAngle={Math.PI / 3}
+            minAzimuthAngle={-0.3}
+            maxAzimuthAngle={0.3}
+          />
         </Canvas>
       </div>
 
       {isInventoryOpen && (
-        <div className="absolute inset-y-0 right-0 w-[550px] bg-slate-900/95 backdrop-blur-xl shadow-[-20px_0_50px_rgba(0,0,0,0.4)] p-6 z-50 flex flex-col border-l-4 border-slate-700 animate-[slideInRight_0.3s_ease-out]">
-          <div className="flex justify-between items-center mb-6 pb-4 border-b-2 border-slate-700">
-            <h2 className="text-2xl font-black text-white">보유 아이템 / 캐릭터</h2>
-            <button onClick={() => setIsInventoryOpen(false)} className="w-12 h-12 rounded-full hover:bg-slate-700 flex items-center justify-center font-bold text-slate-300 text-xl cursor-pointer">X</button>
+        <div className="absolute inset-y-0 right-0 w-[400px] bg-white/95 backdrop-blur-xl shadow-[-20px_0_50px_rgba(0,0,0,0.2)] p-6 z-50 flex flex-col border-l-4 border-slate-200 animate-[slideInRight_0.3s_ease-out]">
+          <div className="flex justify-between items-center mb-6 pb-4 border-b-2 border-slate-200">
+            <h2 className="text-2xl font-black text-slate-800">보유 인력 (인벤토리)</h2>
+            <button onClick={() => setIsInventoryOpen(false)} className="w-12 h-12 rounded-full hover:bg-slate-100 flex items-center justify-center font-bold text-slate-500 text-xl cursor-pointer">X</button>
           </div>
 
-          <div className="flex-1 overflow-y-auto grid grid-cols-2 gap-4 auto-rows-max pr-2 custom-scrollbar">
-            {state.warehouseItems.map((item, index) => {
-              // 캐릭터/인력 아이템 식별을 위해 MOCK_INVENTORY 매핑 (실제 데이터 도입 시 로직 변경)
-              const mappedWorker = MOCK_INVENTORY[index % MOCK_INVENTORY.length];
-              const isWorker = item.type !== "material"; // material이 아니면 캐릭터로 간주(게임 로직에 따라 다름)
-
-              const canSelect = isWorker && item.quantity > 0;
-              const displayInfo = isWorker ? mappedWorker : null;
-
-              return (
-                <div
-                  key={item.id}
-                  onClick={() => {
-                    if (canSelect && displayInfo) {
-                      setSelectedWorker({ ...displayInfo, name: item.name });
-                      setIsInventoryOpen(false);
-                    }
-                  }}
-                  className={`relative flex flex-col rounded-2xl border-4 overflow-hidden transition-all ${canSelect
-                    ? "bg-slate-800 border-amber-500 hover:border-yellow-400 hover:shadow-[0_0_15px_rgba(251,191,36,0.5)] hover:-translate-y-1 cursor-pointer"
-                    : "bg-slate-800 border-slate-600 opacity-60 cursor-not-allowed grayscale"
-                    }`}
-                >
-                  {/* 카트라이더 식 3D/이미지 뷰어 컨테이너 */}
-                  <div className="w-full h-[120px] bg-gradient-to-b from-slate-700 to-slate-800 flex items-center justify-center relative overflow-hidden">
-                    {displayInfo ? (
-                      <InventoryCanvasItem modelUrl={displayInfo.model} />
-                    ) : (
-                      <span className="text-5xl opacity-40">📦</span>
-                    )}
-                    <span className="absolute top-2 right-3 text-xs font-black text-white/50 bg-black/40 px-2 py-0.5 rounded-full z-10">
-                      ID: {item.id}
-                    </span>
-                  </div>
-
-                  {/* 정보 영역 */}
-                  <div className="p-3 bg-slate-900 border-t-2 border-slate-700 flex flex-col">
-                    <h3 className="text-lg font-black text-white truncate text-center mb-1">{item.name}</h3>
-                    {displayInfo && (
-                      <p className="text-xs font-bold text-amber-500 text-center mb-2">Lv. {displayInfo.level}</p>
-                    )}
-                    <div className="flex justify-between items-center bg-black/50 rounded px-3 py-1.5 mt-auto">
-                      <span className="text-[10px] text-slate-400 font-bold uppercase">Owned</span>
-                      <span className={`text-sm font-black ${item.quantity > 0 ? "text-emerald-400" : "text-rose-500"}`}>
-                        {item.quantity} <span className="text-slate-500 text-[10px]">/{item.maxQuantity}</span>
-                      </span>
-                    </div>
-                  </div>
+          <div className="flex-1 overflow-y-auto flex flex-col gap-4 pr-2">
+            {MOCK_INVENTORY.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => {
+                  if (item.owned > 0) {
+                    setSelectedWorker(item);
+                    setIsInventoryOpen(false);
+                  }
+                }}
+                className={`w-full text-left rounded-3xl border-[4px] p-5 flex justify-between items-center transition-all ${item.owned > 0
+                    ? "bg-white border-slate-200 hover:border-amber-400 hover:shadow-xl hover:-translate-y-1 cursor-pointer"
+                    : "bg-slate-50 border-slate-200 opacity-50 cursor-not-allowed grayscale"
+                  }`}
+              >
+                <div>
+                  <h3 className="text-xl font-black text-slate-800">{item.name}</h3>
+                  <p className="text-md font-bold text-amber-600 mt-1">Lv. {item.level}</p>
                 </div>
-              );
-            })}
+                <div className="flex flex-col items-end">
+                  <span className="text-xs text-slate-400 font-bold mb-1">보유량</span>
+                  <span className={`text-2xl font-black ${item.owned > 0 ? "text-slate-800" : "text-rose-500"}`}>
+                    {item.owned} / {item.maxOwned}
+                  </span>
+                </div>
+              </button>
+            ))}
           </div>
         </div>
       )}

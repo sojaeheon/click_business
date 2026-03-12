@@ -1,4 +1,3 @@
-/// <reference types="@react-three/fiber" />
 // @ts-ignore
 import { ConveyorBelt } from "../models/Animated_conveyer_belt";
 import React, { useRef, useState, useEffect, useCallback } from "react";
@@ -12,7 +11,6 @@ import {
     BW, BELT_S, TW, TILE_S,
 } from "./constants";
 
-// ─── 각 더미의 레벨 계산 ────────────────────────────────────────
 function getStackLevels(totalCount: number): number[] {
     const levels: number[] = [];
     let remaining = Math.min(totalCount, MAX_TOTAL);
@@ -24,7 +22,6 @@ function getStackLevels(totalCount: number): number[] {
     return levels;
 }
 
-// ─── GoldBarStack: 더미 단계별 모델 ────────────────────────────
 function GoldBarStack({ stackLevel }: { stackLevel: number }) {
     if (stackLevel <= 0) return null;
     const idx = Math.min(stackLevel - 1, GOLD_STACK_MODELS.length - 1);
@@ -35,7 +32,6 @@ function GoldBarStack({ stackLevel }: { stackLevel: number }) {
     );
 }
 
-// ─── FlyingGoldBar: 벨트에서 더미로 날아가는 금괴 ───────────────
 function FlyingGoldBar({ startPos, endPos, onArrive }: {
     startPos: [number, number, number];
     endPos: [number, number, number];
@@ -67,16 +63,15 @@ function FlyingGoldBar({ startPos, endPos, onArrive }: {
     );
 }
 
-// ─── Workstation: 작업장 메인 컴포넌트 ─────────────────────────────
 interface WorkstationProps {
     position: [number, number, number];
     isWorking: boolean;
     inWorkstation: boolean;
-    onOpenModal: () => void;
     onStoreGold?: (count: number) => void;
+    onClick?: () => void;
 }
 
-export function Workstation({ position, isWorking, inWorkstation, onOpenModal, onStoreGold }: WorkstationProps) {
+export function Workstation({ position, isWorking, inWorkstation, onStoreGold, onClick }: WorkstationProps) {
     const half = BW / 2;
     const [progress, setProgress] = useState(0);
     const [storedCount, setStoredCount] = useState(0);
@@ -112,7 +107,6 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
         return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
     }, [isWorking, isCompleted, isFull]);
 
-    // 금괴 더미: 총 적재 용량(500) 기준으로 시각화
     const totalGold = Math.floor((storedCount / MAX_GOLD_CAP) * MAX_TOTAL);
     const handleBarArrive = useCallback((barId: number) => {
         setFlyingBars(prev => prev.filter(id => id !== barId));
@@ -129,7 +123,7 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
     const showFullGauge = showProgressGauge && (inWorkstation || gaugeHovered);
 
     return (
-        <HoverableGroup position={position} onClick={onOpenModal}>
+        <HoverableGroup position={position} onClick={onClick}>
             <mesh position={[0, -0.04, 0]} receiveShadow>
                 <boxGeometry args={[BW, 0.08, BW]} />
                 <meshStandardMaterial color="#8b7355" />
@@ -149,16 +143,16 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
             {/* 금괴 더미 위 카운터 */}
             <group position={[0, 1.8, -half * 0.7]}>
                 <Html center zIndexRange={[10, 0]}>
-                    <div className="flex flex-col items-center gap-1">
+                    <div className="flex flex-col items-center gap-1 mt-10">
                         {isFull && <span className="text-2xl animate-bounce">⚠️</span>}
                         <div className="bg-black/70 text-white text-xs font-mono rounded px-2 py-0.5 tracking-widest">
                             {String(storedCount).padStart(3, '0')}/{MAX_GOLD_CAP}
                         </div>
                         {storedCount > 0 && (
                             <button
-                                className="mt-1 px-2 py-0.5 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-bold rounded shadow"
+                                className="mt-1 px-2 py-1 bg-emerald-500 hover:bg-emerald-600 text-white text-[12px] font-bold rounded shadow cursor-pointer active:scale-95"
                                 onClick={(e) => { e.stopPropagation(); handleStore(); }}
-                            >📦 창고에 저장</button>
+                            >📦 창고 저장</button>
                         )}
                     </div>
                 </Html>
@@ -176,7 +170,9 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
                     {(isCompleted || isFull) ? (
                         <img src="/ui_icons/warning_128x128.png" alt="Warning" className="w-14 h-14 object-contain animate-bounce drop-shadow-md" />
                     ) : !isWorking ? (
-                        <img src="/ui_icons/warning_128x128.png" alt="Stopped" className="w-14 h-14 object-contain drop-shadow-md opacity-80" style={{ filter: 'grayscale(100%)' }} />
+                        <div className="opacity-80 scale-75 filter grayscale">
+                            <span className="text-4xl shadow-md p-2 bg-slate-200 rounded-full">💤</span>
+                        </div>
                     ) : showFullGauge ? (
                         <div
                             className="relative flex flex-col items-center justify-center cursor-pointer min-w-[140px]"
@@ -186,7 +182,7 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
                             <div className="relative w-32 h-6 flex items-center justify-center">
                                 {/* 배경 (빈 게이지) */}
                                 <img src="/ui_icons/Progressbar_Gold.png" alt="Gauge BG" className="absolute inset-0 w-full h-full object-fill drop-shadow" />
-                                {/* 채워지는 게이지 (클리핑 마스크 느낌으로 width 조정) */}
+                                {/* 채워지는 게이지 */}
                                 <div
                                     className="absolute left-[3%] top-[15%] h-[70%] overflow-hidden transition-all duration-700 ease-out flex justify-start items-center"
                                     style={{ width: `${progress * 0.94}%` }}

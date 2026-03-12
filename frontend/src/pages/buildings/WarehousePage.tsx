@@ -1,7 +1,6 @@
 import React, { useState } from "react";
-import { ArrowLeft, Package } from "lucide-react";
+import { ArrowLeft, Plus, Minus, Package } from "lucide-react";
 import { useGame } from "../../app/store/gameStore";
-import Aurora from "../../app/components/ui/Aurora";
 
 function ShelfItem({
   name,
@@ -61,32 +60,32 @@ export function WarehousePage() {
   const products = warehouseItems.filter((i) => i.type === "product");
 
   return (
-    <div className="absolute inset-0 z-40 bg-black flex flex-col pt-8 overflow-hidden relative">
-      <div className="absolute inset-0 z-0 opacity-80">
-        <Aurora colorStops={["#7cff67", "#B19EEF", "#5227FF"]} blend={0.5} amplitude={1.0} speed={1} />
-      </div>
-
+    <div
+      className="absolute inset-0 z-40 bg-[#f5f0e8] flex flex-col pt-8"
+      style={{
+        backgroundImage: "url('/images/warehouse.머ㅗ')",
+        backgroundSize: 'contain',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'center',
+        backgroundColor: '#cee7be' // 적당한 배경색
+      }}
+    >
       {/* Header - 뒤로가기 버튼만 */}
       <div className="absolute top-6 left-6 z-50">
         <button
           onClick={closeBuildingPage}
-          className="w-14 h-14 rounded-2xl bg-white border-2 border-slate-300 flex items-center justify-center hover:bg-slate-50 transition-all shadow-sm hover:scale-105 active:scale-95 cursor-pointer overflow-hidden relative"
+          className="w-12 h-12 rounded-full bg-white border-2 border-slate-300 flex items-center justify-center hover:bg-slate-50 transition-all shadow-sm hover:scale-105 active:scale-95 cursor-pointer"
         >
           <img
-            src="/ui_icons/Button_Square_Sky.png"
-            alt="back-bg"
-            className="absolute inset-0 w-full h-full object-cover"
-          />
-          <img
-            src="/ui_icons/Icon_Return.png"
+            src="/ui_icons/Button_Exit_Blue.png"
             alt="back"
-            className="absolute inset-0 w-8 h-8 m-auto object-contain z-10"
+            className="w-10 h-10 object-contain"
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = 'none';
               (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
             }}
           />
-          <ArrowLeft className="absolute inset-0 m-auto w-8 h-8 text-slate-700 hidden z-10" />
+          <ArrowLeft className="w-6 h-6 text-slate-700 hidden" />
         </button>
       </div>
 
