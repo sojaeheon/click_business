@@ -6,7 +6,7 @@
 ```
 Client
    ↓
-Backend API
+Backend Service API
    ↓
 Kafka (order.made)
    ↓
@@ -28,15 +28,17 @@ DB / HDFS
 
 ## Partition Key
 
-| Topic | Key |
-|------|-----|
-| order.made | item |
-| order.matched | item |
+| Topic | Key | Reason |
+|------|------|------|
+| order.made | item | 동일 아이템 주문의 순서를 보장하기 위함 |
+| order.matched | item | 동일 아이템 거래 순서를 유지하기 위함 |
 
 ## Event Schema
-### Topic <order.made>
+### Topic : order.made
 | Field | Type | Required | Description |
 |------|------|------|-------------|
+| event_id | string (UUID) | Y | 이벤트 고유 ID |
+| event_time | timestamp | Y | 이벤트 발생 시각 |
 | event_type | enum | Y | ORDER_CREATED / ORDER_CANCELLED |
 | market_order_id | long | Y | 주문 ID |
 | item | string | Y | 거래 아이템 |
@@ -50,9 +52,12 @@ DB / HDFS
 | created_at | timestamp | Y | 주문 생성 시각 |
 | updated_at | timestamp | Y | 주문 수정 시각 |
 
-#### Event <ORDER_CREATED> : 주문 생성 시 발생하는 이벤트
+#### Event : ORDER_CREATED
+주문 생성 시 발생하는 이벤트
 ```json
 {
+  "event_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "event_time": "2026-03-06T10:00:00Z",
   "event_type": "ORDER_CREATED",
   "market_order_id": 123,
   "item": "GOLD_ORE",
@@ -68,9 +73,12 @@ DB / HDFS
 }
 ```
 
-#### Event <ORDER_CANCELLED> : 주문 취소 시 발생하는 이벤트
+#### Event : ORDER_CANCELLED
+주문 취소 시 발생하는 이벤트
 ```json
 {
+  "event_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "event_time": "2026-03-06T10:00:00Z",
   "event_type": "ORDER_CANCELLED",
   "market_order_id": 123,
   "item": "GOLD_ORE",
@@ -86,7 +94,6 @@ DB / HDFS
 }
 ```
 
-
 ## 디렉토리 구조
 ### backend
 ```
@@ -95,7 +102,7 @@ DB / HDFS
 ├─ domain
 │  └─ market
 │     └─ kafka
-│        ├─ MarketEventPublisher.java       # Kafka Producer
+│        ├─ OrderMadeEventProducer.java     # Kafka Producer
 │        ├─ OrderMadeEvent.java             # 주문 생성 이벤트
 │        └─ OrderMatchedEvent.java          # 주문 체결 이벤트
 │
