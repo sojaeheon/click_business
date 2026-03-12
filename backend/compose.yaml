@@ -1,13 +1,16 @@
-version: '3.8'
-
 services:
-  redis:
-    image: redis:alpine
-    container_name: ecosim-redis
+  # 애플리케이션 (Spring Boot)
+  backend:
+    build: .
+    container_name: ecosim-backend
+    restart: always
     ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
+      - "8000:8000"
+    env_file:
+      - .env 
+    networks:
+      - ecosim-network
 
-volumes:
-  redis_data:
+networks:
+  ecosim-network:
+    name: ecosim-network
