@@ -8,13 +8,13 @@ Client
    ↓
 Backend Service API
    ↓
-Kafka (order.made)
+Kafka (order.event)
    ↓
 Redis
    ↓
 Matching Engine
    ↓
-Kafka (order.matched)
+Kafka (trade.event)
    ↓
 DB / HDFS
 ```
@@ -23,15 +23,15 @@ DB / HDFS
 
 | Topic | Description |
 |------|-------------|
-| order.made | 주문 생성 및 취소 이벤트 |
-| order.matched | 주문 체결 이벤트 |
+| order.event | 주문 생성 및 취소 이벤트 |
+| trade.event | 주문 체결 이벤트 |
 
 ## Partition Key
 
 | Topic | Key | Reason |
 |------|------|------|
-| order.made | item | 동일 아이템 주문의 순서를 보장하기 위함 |
-| order.matched | item | 동일 아이템 거래 순서를 유지하기 위함 |
+| order.event | item | 동일 아이템 주문의 순서를 보장하기 위함 |
+| trade.event | item | 동일 아이템 거래 순서를 유지하기 위함 |
 
 ## Event Schema
 ### Topic : order.made
@@ -102,9 +102,11 @@ DB / HDFS
 ├─ domain
 │  └─ market
 │     └─ kafka
-│        ├─ OrderMadeEventProducer.java     # Kafka Producer
-│        ├─ OrderMadeEvent.java             # 주문 생성 이벤트
-│        └─ OrderMatchedEvent.java          # 주문 체결 이벤트
+│        ├─ OrderEventDto.java                # 주문 생성 이벤트
+│        ├─ OrderEventProducer.java           # Kafka Producer
+│        ├─ KafkaOrderEventPublisher.java     # Kafka Producer
+│        ├─ OrderEventProducer.java           # Kafka Producer
+│        └─ TradeEventDto.java          # 주문 체결 이벤트
 │
 └─ global
    └─ config

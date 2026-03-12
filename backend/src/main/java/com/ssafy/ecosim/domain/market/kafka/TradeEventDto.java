@@ -17,7 +17,7 @@ import java.time.Instant;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class TradeEvent {
+public class TradeEventDto {
 
     /** 이벤트 고유 ID (중복 처리용) */
     @JsonProperty("event_id")
