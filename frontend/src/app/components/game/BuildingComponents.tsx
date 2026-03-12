@@ -24,16 +24,15 @@ export function AreaLabel({ label }: { label: string }) {
 
 // ─── BuildingTile: 건물 베이스 타일 ────────────────────────────
 export function BuildingTile({
-    position, modelUrl, label, onClick, buildingScale = BLDG_S,
+    position, modelUrl, label, buildingScale = BLDG_S,
 }: {
     position: [number, number, number];
     modelUrl: string;
     label: string;
-    onClick?: () => void;
     buildingScale?: number;
 }) {
     return (
-        <HoverableGroup position={position} onClick={onClick}>
+        <HoverableGroup position={position}>
             <React.Suspense fallback={
                 <mesh position={[0, 1, 0]}><boxGeometry args={[BW, BW, BW]} /><meshStandardMaterial color="#aaa" wireframe /></mesh>
             }>
@@ -45,9 +44,9 @@ export function BuildingTile({
 }
 
 // ─── Minigame: 미니게임 타일 ────────────────────────────────────
-export function Minigame({ position, onClick }: { position: [number, number, number]; onClick?: () => void }) {
+export function Minigame({ position }: { position: [number, number, number] }) {
     return (
-        <HoverableGroup position={position} onClick={onClick}>
+        <HoverableGroup position={position}>
             <mesh position={[0, -0.04, 0]} receiveShadow>
                 <boxGeometry args={[BW, 0.08, BW]} />
                 <meshStandardMaterial color="#6a8f5a" />

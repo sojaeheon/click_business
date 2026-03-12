@@ -7,7 +7,6 @@ import { SkeletonUtils } from "three-stdlib";
 import { useGame } from "../../store/gameStore";
 import { WorkstationAPI } from "../../../api/gameApi";
 
-// ─── 분리된 모듈 imports ─────────────────────────────────────────
 import {
   TILE_S, BX, BZ, BW, ROAD_STEP, ROAD_S,
   outerX, outerZ, vRoadX1, vRoadX2,
@@ -19,11 +18,46 @@ import { WorldBounds } from "./SceneHelpers";
 import { AreaLabel, BuildingTile, Minigame } from "./BuildingComponents";
 import { Workstation } from "./Workstation";
 
-// ─── ConveyorBelt is only used in Workstation.tsx; no local import needed ──
-// @ts-ignore
-// (ConveyorBelt imported in Workstation.tsx)
+function Ocean() {
+  const group = useRef<THREE.Group>(null);
+  const { scene, animations } = useGLTF(M.ocean);
+  
+  // 독립적인 애니메이션을 위해 클론 생성
+  const clonedScene = useMemo(() => {
+    const clone = SkeletonUtils.clone(scene);
+    clone.traverse((child: any) => {
+      if (child.isMesh) {
+        child.receiveShadow = true;
+        const mat = child.material as THREE.MeshStandardMaterial;
+        // 바다 모델이 흰색일 경우 EnvModel에서 갈색으로 바뀌는 현상을 재질 조정을 통해 방지
+        if (mat) {
+          mat.roughness = 0.2;
+          mat.metalness = 0.1;
+          // 만약 모델이 너무 하얗게 보인다면 살짝 푸른 빛을 강제로 줄 수도 있습니다.
+          // mat.color.set("#a5e1f9"); 
+        }
+      }
+    });
+    return clone;
+  }, [scene]);
 
-// ─── 다이얼로그 타입 ────────────────────────────────────────────
+  const { actions } = useAnimations(animations, group);
+
+  useEffect(() => {
+    if (actions) {
+      Object.values(actions).forEach((action) => {
+        action?.reset().fadeIn(0.5).play();
+      });
+    }
+  }, [actions]);
+
+  return (
+    <group ref={group} position={[0, -0.4, 0]} scale={15}>
+      <primitive object={clonedScene} />
+    </group>
+  );
+}
+
 interface ConfirmData {
   type: "building" | "workstation";
   label: string;
@@ -33,7 +67,6 @@ interface ConfirmData {
   onStop?: () => void;
 }
 
-// ─── GlobalDialog: Canvas 밖 DOM 디아로그 ───────────────────────
 function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: () => void }) {
   const R: React.CSSProperties = { fontFamily: "'KerisKeduR', sans-serif" };
   const { state } = useGame();
@@ -77,8 +110,6 @@ function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: () => voi
 
     return (
       <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50 backdrop-blur-sm" onClick={() => !isCollecting && onClose()}>
-        
-        {/* Particle Styles & Elements */}
         {particles.map((p) => (
            <React.Fragment key={p.id}>
              <style dangerouslySetInnerHTML={{__html: `
@@ -89,7 +120,7 @@ function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: () => voi
                }
              `}} />
              <div 
-               className="fixed w-8 h-8 bg-yellow-400 rounded-full shadow-[0_0_20px_rgba(250,204,21,0.8)] pointer-events-none z-[100] flex items-center justify-center text-xl"
+               className="fixed w-8 h-8 bg-amber-400 rounded-full shadow-[0_0_20px_rgba(251,191,36,0.8)] pointer-events-none z-[100] flex items-center justify-center text-xl"
                style={{ 
                  left: p.x, top: p.y, 
                  animation: `particleFly_${p.id} 1s cubic-bezier(0.25, 1, 0.5, 1) forwards`,
@@ -121,13 +152,13 @@ function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: () => voi
             <div className="bg-slate-50 rounded-2xl p-6 flex flex-col gap-4 border-2 border-slate-100">
               <label className="text-sm font-bold text-slate-500 uppercase tracking-widest">생산 수량 설정</label>
               <div className="flex items-center gap-4">
-                <button className="w-12 h-12 rounded-xl bg-white border-2 border-slate-200 font-black text-slate-700 hover:bg-slate-50 hover:border-slate-300 active:scale-95 transition-all text-xl shadow-sm" onClick={() => setQty(q => Math.max(1, q - 1))}>−</button>
+                <button className="w-12 h-12 rounded-xl bg-white border-2 border-slate-200 font-black text-slate-700 hover:bg-slate-50 active:scale-95 transition-all text-xl shadow-sm cursor-pointer" onClick={() => setQty(q => Math.max(1, q - 1))}>−</button>
                 <input
                   type="number" min={1} value={qty}
                   onChange={e => setQty(Math.max(1, parseInt(e.target.value) || 1))}
                   className="flex-1 text-center text-3xl font-black border-2 border-slate-200 rounded-xl py-2 bg-white text-slate-800 focus:outline-none focus:border-indigo-400"
                 />
-                <button className="w-12 h-12 rounded-xl bg-white border-2 border-slate-200 font-black text-slate-700 hover:bg-slate-50 hover:border-slate-300 active:scale-95 transition-all text-xl shadow-sm" onClick={() => setQty(q => q + 1)}>+</button>
+                <button className="w-12 h-12 rounded-xl bg-white border-2 border-slate-200 font-black text-slate-700 hover:bg-slate-50 active:scale-95 transition-all text-xl shadow-sm cursor-pointer" onClick={() => setQty(q => q + 1)}>+</button>
               </div>
               <div className="flex flex-col gap-2 pt-4 border-t-2 border-slate-200 mt-2">
                 <div className="flex justify-between text-sm font-bold">
@@ -159,42 +190,94 @@ function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: () => voi
           <div className="flex gap-3 mt-2">
             {!data.isWorking ? (
               <button
-                className={`flex-1 py-4 rounded-xl font-black text-lg transition-all active:scale-95 shadow-lg ${hasEnough ? 'bg-indigo-500 hover:bg-indigo-600 text-white shadow-indigo-200' : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}`}
+                className={`flex-1 py-4 rounded-xl font-black text-lg transition-all shadow-lg ${hasEnough ? 'bg-indigo-500 hover:bg-indigo-600 active:scale-95 text-white shadow-indigo-200 cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}`}
                 disabled={!hasEnough}
                 onClick={() => { if (hasEnough) { data.onStart?.(qty); onClose(); } }}
               >작업 시작 ▶</button>
             ) : (
               <button
-                className="flex-1 py-4 rounded-xl bg-gradient-to-r from-emerald-400 to-emerald-500 text-white font-black text-lg hover:from-emerald-500 hover:to-emerald-600 transition-all shadow-lg shadow-emerald-200 active:scale-95"
+                className="flex-1 py-4 rounded-xl bg-gradient-to-r from-emerald-400 to-emerald-500 text-white font-black text-lg hover:from-emerald-500 active:scale-95 cursor-pointer shadow-lg shadow-emerald-200"
                 onClick={handleCollect}
               >결과물 수령</button>
             )}
-            <button className="px-6 py-4 rounded-xl bg-slate-100 text-slate-500 border-2 border-slate-200 font-black hover:bg-slate-200 hover:text-slate-700 transition-colors" onClick={() => !isCollecting && onClose()}>닫기</button>
+            <button className="px-6 py-4 rounded-xl bg-slate-100 text-slate-500 border-2 border-slate-200 font-black hover:bg-slate-200 cursor-pointer" onClick={() => !isCollecting && onClose()}>닫기</button>
           </div>
         </div>
       </div>
     );
   }
 
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    // 키보드 방향키를 누르면 바로 닫힘
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    if (data.type !== "building" || !data.action) return;
+    
+    let frameId: number;
+    let start = performance.now();
+    const duration = 2000; 
+
+    const animate = (time: number) => {
+      let passed = time - start;
+      if (passed >= duration) {
+        setProgress(100);
+        data.action?.();
+        onClose();
+      } else {
+        setProgress((passed / duration) * 100);
+        frameId = requestAnimationFrame(animate);
+      }
+    };
+    frameId = requestAnimationFrame(animate);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      cancelAnimationFrame(frameId);
+    };
+  }, [data, onClose]);
+
+  const handleImmediateEnter = () => {
+    setProgress(100);
+    data.action?.();
+    onClose();
+  };
+
   return (
     <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/40 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white rounded-[2rem] shadow-2xl p-8 flex flex-col items-center gap-6 min-w-[280px] border-4 border-slate-200" style={R} onClick={(e) => e.stopPropagation()}>
-        <div className="w-20 h-20 rounded-full bg-indigo-50 flex items-center justify-center border-4 border-indigo-100 shadow-inner">
-          <span className="text-4xl">🏛️</span>
+      <div className="bg-white rounded-[2rem] shadow-2xl p-8 flex flex-col items-center gap-6 min-w-[320px] border-4 border-slate-200 relative overflow-hidden" style={R} onClick={(e) => e.stopPropagation()}>
+        
+        {/* 상단 프로그레스 바 영역 */}
+        <div className="absolute top-0 left-0 right-0 h-3 bg-slate-100">
+          <div className="h-full bg-indigo-500 transition-all duration-75 ease-linear" style={{ width: `${progress}%` }} />
         </div>
-        <p className="text-xl font-black text-slate-800 text-center leading-relaxed">
-          <span className="text-indigo-600 text-2xl">[{data.label}]</span><br />(으)로 이동하시겠습니까?
-        </p>
-        <div className="flex gap-3 w-full mt-4">
-          <button className="flex-1 py-4 rounded-xl bg-indigo-500 text-white font-black text-lg hover:bg-indigo-600 transition-colors shadow-lg active:scale-95" onClick={() => { data.action?.(); onClose(); }}>이동</button>
-          <button className="flex-1 py-4 rounded-xl bg-slate-100 text-slate-600 border-2 border-slate-200 font-black text-lg hover:bg-slate-200 transition-colors active:scale-95" onClick={onClose}>취소</button>
+
+        <div className="w-20 h-20 rounded-full bg-indigo-50 flex items-center justify-center border-4 border-indigo-100 shadow-inner mt-4 px-2 py-2">
+          {/* Replace emoji with img or just simple emoji as fallback */}
+          <span className="text-4xl animate-bounce">🏛️</span>
+        </div>
+        <div className="flex flex-col items-center gap-2">
+          <p className="text-xl font-black text-slate-800 text-center leading-relaxed">
+            <span className="text-indigo-600 text-2xl">[{data.label}]</span> 입장을 보실 수 있습니다.
+          </p>
+          <p className="text-sm text-slate-500 font-bold animate-pulse">2초 후 자동 입장됩니다. 움직여서 취소 가능합니다.</p>
+        </div>
+        
+        <div className="flex w-full mt-2 gap-3">
+          <button className="flex-1 py-4 rounded-xl bg-slate-100 text-slate-600 border-2 border-slate-200 font-black text-lg hover:bg-slate-200 active:scale-95 cursor-pointer transition-colors" onClick={onClose}>취소 (나가기)</button>
+          <button className="flex-1 py-4 rounded-xl bg-indigo-500 text-white font-black text-lg hover:bg-indigo-600 active:scale-95 cursor-pointer shadow-lg transition-colors" onClick={handleImmediateEnter}>즉시 입장</button>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── PlayerCharacter: WASD + 방향키 이동 ─────────────────────────
 function PlayerCharacter({
   isWorkstationWorking,
   onEnterBuilding,
@@ -238,12 +321,9 @@ function PlayerCharacter({
   );
   const { actions } = useAnimations(allAnimations, groupRef);
 
-  // 키보드 이벤트
   useEffect(() => {
-    // 💡 핵심 버그 픽스: 모달이 팝업되면서 isPaused 상태가 되면 누르고 있던 모든 키 상태를 해제하여 유령입력 제거
     if (isPaused) {
       keysRef.current = { w: false, a: false, s: false, d: false };
-      // early return을 하면 이벤트 등록이 안돼서 스페이스바/상호작용이 다 날아가므로 해제만 하고 넘어감
     }
 
     const setKey = (code: string, val: boolean) => {
@@ -264,7 +344,6 @@ function PlayerCharacter({
       if (e.code === 'Space') setShowMenu(false);
       setKey(e.code, false);
     };
-    // 브라우저 화면 포커스 나갈 때 유령입력 제거
     const onBlur = () => { keysRef.current = { w: false, a: false, s: false, d: false }; };
 
     window.addEventListener('keydown', onDown);
@@ -277,7 +356,6 @@ function PlayerCharacter({
     };
   }, [isPaused]);
 
-  // 스폰 애니메이션
   useEffect(() => {
     if (!actions) return;
     const spawnAct = actions["Spawn_Ground"] || actions["Spawn_Air"];
@@ -295,7 +373,6 @@ function PlayerCharacter({
     }
   }, [actions]);
 
-  // 애니메이션 제어
   useEffect(() => {
     if (!actions) return;
     Object.values(actions).forEach(a => a?.fadeOut(0.2));
@@ -394,7 +471,6 @@ function PlayerCharacter({
   );
 }
 
-// ─── AnimatedCar ─────────────────────────────────────────────────
 function AnimatedCar({
   modelKey, path, speed = 4, initialProgress = 0,
 }: {
@@ -406,36 +482,46 @@ function AnimatedCar({
   const groupRef = useRef<THREE.Group>(null);
   const progressRef = useRef(initialProgress);
   const speedRef = useRef(speed);
-  const cooldownRef = useRef(0);
+  const [bounce, setBounce] = useState(0);
 
   const curve = useMemo(() => {
     if (!path || path.length < 2) return new THREE.CatmullRomCurve3([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0.1)]);
     const pts = path.map(p => new THREE.Vector3(p[0], 0, p[1]));
-    return new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0.1);
+    return new THREE.CatmullRomCurve3(pts, false, "catmullrom", 0.1);
   }, [path]);
 
   useFrame((_, delta) => {
     if (!groupRef.current || !path || path.length < 2) return;
     const currentPos = groupRef.current.position;
-    let collision = false;
-    const collisionDistance = 2.5;
-    if (currentPos.distanceTo(SHARED_STATE.playerPos) < collisionDistance) collision = true;
-    for (const [otherId, otherPos] of Object.entries(SHARED_STATE.cars)) {
-      if (otherId !== modelKey && currentPos.distanceTo(otherPos) < collisionDistance) { collision = true; break; }
+
+    // 플레이어와 거리
+    const dist = currentPos.distanceTo(SHARED_STATE.playerPos);
+
+    if (dist < 3.0) {
+      if (bounce === 0) setBounce(1); // 점프 액션 트리거
     }
-    if (cooldownRef.current > 0) {
-      cooldownRef.current -= delta;
-    } else if (collision) {
-      speedRef.current *= -1;
-      cooldownRef.current = 1.0;
+
+    if (bounce > 0) {
+      setBounce(b => b - delta * 4);
     }
+    const bounceY = Math.max(0, Math.sin(bounce * Math.PI) * 1.5);
+
     const len = curve.getLength();
     progressRef.current = (progressRef.current + (speedRef.current * delta) / len) % 1;
     if (progressRef.current < 0) progressRef.current += 1;
+    
+    // speed가 매우 빠를때 에러방지
     const point = curve.getPointAt(progressRef.current);
-    const tangent = curve.getTangentAt(progressRef.current);
-    groupRef.current.position.set(point.x, 0.65, point.z);
-    groupRef.current.rotation.y = Math.atan2(tangent.x, tangent.z) + (speedRef.current < 0 ? Math.PI : 0);
+    // 방향
+    let nextCheck = progressRef.current + 0.01;
+    if (nextCheck > 1) nextCheck -= 1;
+    const nextPoint = curve.getPointAt(nextCheck);
+    
+    groupRef.current.position.set(point.x, 0.65 + bounceY, point.z);
+    
+    const angle = Math.atan2(nextPoint.x - point.x, nextPoint.z - point.z);
+    groupRef.current.rotation.y = angle + (Math.PI / 2); // 정면을 보게 약간 조정
+    
     SHARED_STATE.cars[modelKey] = groupRef.current.position.clone();
   });
 
@@ -448,7 +534,6 @@ function AnimatedCar({
   );
 }
 
-// ─── MapEnvironment ───────────────────────────────────────────────
 function MapEnvironment() {
   const Y = 0;
   const hLineX: number[] = [];
@@ -533,7 +618,6 @@ function MapEnvironment() {
   );
 }
 
-// ─── GameScene ────────────────────────────────────────────────────
 export function GameScene({
   isWorkstationWorking,
   setIsWorkstationWorking,
@@ -565,7 +649,6 @@ export function GameScene({
       onStart: async (qty) => {
         try {
           await WorkstationAPI.start({ companyId: 1, recipeId: 1, quantity: qty, workerId: 1 });
-          console.log(`작업 시작: 수량 ${qty}`);
           setIsWorkstationWorking(true);
         } catch (e) {
           console.error(e);
@@ -575,7 +658,6 @@ export function GameScene({
       onStop: async () => {
         try {
           await WorkstationAPI.collect(1);
-          console.log(`결과물 수령!`);
           setIsWorkstationWorking(false);
           alert("결과물을 성공적으로 수령하여 창고에 보관했습니다.");
         } catch (e) {
@@ -588,12 +670,15 @@ export function GameScene({
 
   return (
     <>
-      <color attach="background" args={['#b1e2f6']} />
-      <fog attach="fog" args={['#b1e2f6', 40, 200]} />
-      {/* 1. 배경을 부드럽게 밝혀줄 은은한 빛 */}
-      <ambientLight intensity={0.9} color="#ffffff" />
+      <color attach="background" args={['#a5e1f9']} />
+      {/* 바다가 고르게 보이도록 안개를 멀리 설정하거나 제거 */}
+      <fog attach="fog" args={['#a5e1f9', 300, 1000]} />
+      <ambientLight intensity={0.8} color="#ffffff" />
 
-      {/* 2. 메인 태양광: 강도 증가, 그림자 범위(shadow-camera)를 전체 맵(-60~60)이 덮이도록 확장 */}
+      <React.Suspense fallback={null}>
+        <Ocean />
+      </React.Suspense>
+
       <directionalLight
         position={[20, 40, 20]}
         intensity={2.0}
@@ -604,25 +689,24 @@ export function GameScene({
         <orthographicCamera attach="shadow-camera" args={[-80, 80, 80, -80, 0.5, 150]} />
       </directionalLight>
 
-      {/* 3. 너무 파래보이는 원인이었던 파란 보조광 삭제 및 화이트 컬러 스포트라이트로 윤곽선 확보 */}
       <spotLight position={[0, 20, 0]} intensity={1.5} distance={150} angle={1.2} penumbra={1} color="#6bd9e8" castShadow={false} />
       <directionalLight position={[-30, 15, -30]} intensity={0.5} color="#ffffff" />
 
-
       <MapEnvironment />
 
-      <BuildingTile position={[-BX, 0, -BZ]} modelUrl={M.hr} label="인력소" onClick={() => go("hr", "인력소")} />
-      <BuildingTile position={[0, 0, -BZ]} modelUrl={M.bank} label="은행" onClick={() => go("bank", "은행")} />
-      <BuildingTile position={[BX, 0, -BZ]} modelUrl={M.warehouse} label="창고" onClick={() => go("warehouse", "창고")} />
-      <BuildingTile position={[BX, 0, BZ]} modelUrl={M.market} label="마켓" onClick={() => go("market", "마켓")} />
+      {/* 마우스 클릭 액션은 없어지고 오직 캐릭터 접근으로만 여리도록 함 */}
+      <BuildingTile position={[-BX, 0, -BZ]} modelUrl={M.hr} label="인력소" />
+      <BuildingTile position={[0, 0, -BZ]} modelUrl={M.bank} label="은행" />
+      <BuildingTile position={[BX, 0, -BZ]} modelUrl={M.warehouse} label="창고" />
+      <BuildingTile position={[BX, 0, BZ]} modelUrl={M.market} label="마켓" />
 
-      <Minigame position={[-BX, 0, BZ]} onClick={() => go("minigame", "미니게임")} />
+      <Minigame position={[-BX, 0, BZ]} />
 
       <Workstation
         position={[0, 0, BZ]}
         isWorking={isWorkstationWorking}
         inWorkstation={inWorkstation}
-        onOpenModal={handleWorkstationClick}
+        onClick={handleWorkstationClick}
         onStoreGold={(count) => {
           console.log(`금괴 ${count}개 창고 저장 요청`);
           alert(`금괴 ${count}개를 창고에 저장했습니다!`);
@@ -642,7 +726,6 @@ export function GameScene({
   );
 }
 
-// ─── canvas 포커스 복원 헬퍼 ─────────────────────────────────────
 function refocusCanvas(wrap: HTMLDivElement | null) {
   const canvas = wrap?.querySelector('canvas') as HTMLElement | null;
   if (canvas) {
@@ -651,11 +734,13 @@ function refocusCanvas(wrap: HTMLDivElement | null) {
   }
 }
 
-// ─── IsometricScene ──────────────────────────────────────────────
 export function IsometricScene() {
+  const { state } = useGame();
   const [dialogData, setDialogData] = useState<ConfirmData | null>(null);
   const [isWorkstationWorking, setIsWorkstationWorking] = useState(false);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
+
+  const isGlobalPaused = !!dialogData || !!state.activeModal || !!state.activeBuildingPage;
 
   const d = CONFIG.CAMERA.distance;
   const pA = CONFIG.CAMERA.polarAngle;
@@ -664,19 +749,16 @@ export function IsometricScene() {
   const cy = d * Math.cos(pA);
   const cz = d * Math.sin(pA) * Math.cos(aA);
 
-  // 탭 전환 / 모달 닫힌 후 자동 포커스 복원
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
         setTimeout(() => refocusCanvas(canvasWrapRef.current), 100);
       }
     };
-    // 다른 DOM 요소에 포커스가 갔다가 canvas 영역으로 돌아올 때
     const onFocusIn = (e: FocusEvent) => {
       const wrap = canvasWrapRef.current;
       if (!wrap) return;
       const target = e.target as HTMLElement;
-      // 포커스가 canvas 래퍼 바깥 요소(모달 등)에서 다시 바디/wrap으로 돌아오면 복원
       if (!wrap.contains(target) && target.tagName !== 'BUTTON' && target.tagName !== 'INPUT') {
         setTimeout(() => refocusCanvas(canvasWrapRef.current), 50);
       }
@@ -689,9 +771,7 @@ export function IsometricScene() {
     };
   }, []);
 
-  // 다이얼로그가 닫힐 때 포커스 복원
   const closeDialog = useCallback(() => {
-    // 포인터 이벤트(pointerup)가 현재 렌더트리에서 무사히 끝나기를 기다린 뒤 언마운트
     setTimeout(() => {
       setDialogData(null);
       setTimeout(() => refocusCanvas(canvasWrapRef.current), 100);
@@ -723,12 +803,11 @@ export function IsometricScene() {
         >
           <GameScene
             onDialog={setDialogData}
-            isPaused={!!dialogData}
+            isPaused={isGlobalPaused}
             isWorkstationWorking={isWorkstationWorking}
             setIsWorkstationWorking={setIsWorkstationWorking}
             onEnterBuilding={() => { }}
           />
-          {/* 캐릭터 따라가는 카메라 삭제됨 -> 월드 바운드(이동 제한)만 유지 */}
           <WorldBounds />
           <MapControls
             makeDefault enableRotate={false} enableZoom enablePan
@@ -739,14 +818,11 @@ export function IsometricScene() {
           />
         </Canvas>
         {dialogData && <GlobalDialog data={dialogData} onClose={closeDialog} />}
-        {/* 카메라 트래킹 모드 삭제됨 (UI 토글도 삭제) */}
-
       </div>
     </div>
   );
 }
 
-// ─── 프리로드 ─────────────────────────────────────────────────────
 [
   M.base, M.bank, M.hr, M.market, M.warehouse,
   M.roadStraight, M.roadCornerCurved,
@@ -754,7 +830,7 @@ export function IsometricScene() {
   M.streetlight, M.trafficlightA, M.trafficlightB,
   M.bush, M.firehydrant, M.boxA, M.boxB,
   M.carHatchback, M.carPolice, M.carSedan, M.carStationwagon, M.carTaxi,
-  M.minigame,
+  M.minigame, M.ocean,
   "/models/props/animated_conveyer_belt.glb",
   "/models/characters/Barbarian.glb",
   "/models/animations/Rig_Medium_Tools.glb",

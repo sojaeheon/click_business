@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { ArrowLeft, Plus, Minus, Package } from "lucide-react";
+import { ArrowLeft, Package } from "lucide-react";
 import { useGame } from "../../app/store/gameStore";
+import Aurora from "../../app/components/ui/Aurora";
 
 function ShelfItem({
   name,
@@ -29,7 +30,7 @@ function ShelfItem({
       >
         <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity" />
 
-        <Package 
+        <Package
           className={`w-1/2 h-1/2 drop-shadow-md transition-transform group-hover:scale-110 ${isMaterial ? "text-yellow-600" : "text-blue-500"}`}
         />
 
@@ -40,7 +41,7 @@ function ShelfItem({
           </span>
         </div>
       </div>
-      
+
       {/* Quantity label */}
       <div className="mt-3 bg-white/90 backdrop-blur border border-white/50 shadow-md rounded-xl px-4 py-1.5 text-center transform transition-all group-hover:scale-105">
         <span className="text-sm text-gray-800 font-black tracking-wide">
@@ -60,48 +61,35 @@ export function WarehousePage() {
   const products = warehouseItems.filter((i) => i.type === "product");
 
   return (
-    <div className="absolute inset-0 z-40 bg-[#f5f0e8] flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b-2 border-gray-300">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={closeBuildingPage}
-            className="w-10 h-10 rounded-full border-2 border-gray-400 flex items-center justify-center hover:bg-gray-200 transition-colors cursor-pointer"
-          >
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
-          </button>
-          <span className="text-gray-500">창고</span>
-        </div>
-        <h1 className="text-2xl" style={{ fontWeight: 800 }}>
-          창 고
-        </h1>
-        <div className="w-10" />
+    <div className="absolute inset-0 z-40 bg-black flex flex-col pt-8 overflow-hidden relative">
+      <div className="absolute inset-0 z-0 opacity-80">
+        <Aurora colorStops={["#7cff67", "#B19EEF", "#5227FF"]} blend={0.5} amplitude={1.0} speed={1} />
       </div>
 
-      {/* View toggle */}
-      <div className="flex items-center gap-2 px-6 pt-4">
+      {/* Header - 뒤로가기 버튼만 */}
+      <div className="absolute top-6 left-6 z-50">
         <button
-          onClick={() => setCompactView(false)}
-          className={`w-8 h-8 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors ${!compactView
-              ? "border-gray-800 bg-gray-800 text-white"
-              : "border-gray-400 text-gray-500 hover:bg-gray-200"
-            }`}
+          onClick={closeBuildingPage}
+          className="w-14 h-14 rounded-2xl bg-white border-2 border-slate-300 flex items-center justify-center hover:bg-slate-50 transition-all shadow-sm hover:scale-105 active:scale-95 cursor-pointer overflow-hidden relative"
         >
-          <Plus className="w-4 h-4" />
+          <img
+            src="/ui_icons/Button_Square_Sky.png"
+            alt="back-bg"
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+          <img
+            src="/ui_icons/Icon_Return.png"
+            alt="back"
+            className="absolute inset-0 w-8 h-8 m-auto object-contain z-10"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+              (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+            }}
+          />
+          <ArrowLeft className="absolute inset-0 m-auto w-8 h-8 text-slate-700 hidden z-10" />
         </button>
-        <button
-          onClick={() => setCompactView(true)}
-          className={`w-8 h-8 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors ${compactView
-              ? "border-gray-800 bg-gray-800 text-white"
-              : "border-gray-400 text-gray-500 hover:bg-gray-200"
-            }`}
-        >
-          <Minus className="w-4 h-4" />
-        </button>
-        <span className="text-xs text-gray-400 ml-2">
-          {compactView ? "작게보기" : "크게보기"}
-        </span>
       </div>
+
 
       {/* Shelves */}
       <div className="flex-1 p-6 flex flex-col justify-center max-w-4xl mx-auto w-full">
