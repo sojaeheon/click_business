@@ -20,9 +20,9 @@ import java.util.concurrent.ThreadLocalRandom;
 public class BotOrderScheduler {
 
     private final OrderEventPublisher eventPublisher;
-    // 추후 시장가 조회를 위해 추가
+    // 현재 시장가(Redis Ticker) 조회용
     private final RedisTemplate<String, Object> redisTemplate;
-    // Market Sweep 시 반대편 호가창의 총 잔량 조회를 위해 추가
+    // Market Sweep 시 반대편 호가창의 총 잔량 조회용
     private final OrderBookManager orderBookManager;
 
     // 사이클 관리
