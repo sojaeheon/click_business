@@ -1,10 +1,13 @@
 package com.ssafy.ecosim.domain.user.service;
 
+import com.ssafy.ecosim.domain.user.dto.request.LoginRequest;
 import com.ssafy.ecosim.domain.user.dto.request.UserRegisterRequest;
+import com.ssafy.ecosim.domain.user.dto.response.LoginResponse;
 import com.ssafy.ecosim.domain.user.entity.User;
 import com.ssafy.ecosim.domain.user.entity.UserOauth;
 import com.ssafy.ecosim.domain.user.repository.UserOauthRepository;
 import com.ssafy.ecosim.domain.user.repository.UserRepository;
+import com.ssafy.ecosim.global.security.JwtTokenProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,10 +17,13 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final UserOauthRepository userOauthRepository;
+    private final JwtTokenProvider tokenProvider;
 
-    public UserService(UserRepository userRepository, UserOauthRepository userOauthRepository) {
+    public UserService(UserRepository userRepository, UserOauthRepository userOauthRepository,
+            JwtTokenProvider tokenProvider) {
         this.userRepository = userRepository;
         this.userOauthRepository = userOauthRepository;
+        this.tokenProvider = tokenProvider;
     }
 
     @Transactional
@@ -58,5 +64,19 @@ public class UserService {
     public User getUserById(Long id) {
         return userRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사용자입니다."));
+    }
+
+    public LoginResponse login(LoginRequest request) {
+        UserOauth userOauth = userOauthRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사용자입니다."));
+
+        if (!userOauth.getProvider().equals(request.getProvider())) {
+            throw new IllegalArgumentException("소셜 로그인 정보가 일치하지 않습니다.");
+        }
+
+        User user = userOauth.getUser();
+        String accessToken = tokenProvider.createToken(user.getId(), userOauth.getEmail());
+
+        return new LoginResponse(accessToken, user.getId(), user.getIsGuest());
     }
 }

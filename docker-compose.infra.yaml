@@ -7,10 +7,8 @@ services:
     user: root
     container_name: jenkins-server
     restart: always
+    # K8s(Kind) 관리를 위해 호스트 네트워크 모드를 사용합니다.
     network_mode: "host"
-    # ports:
-    #   - "8080:8080"
-    #   - "50000:50000"
     env_file:
       - .env
     volumes:
@@ -19,6 +17,7 @@ services:
       - ./jenkins.yaml:/var/jenkins_home/jenkins.yaml
     environment:
       - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+      - JENKINS_OPTS=--prefix=/jenkins
       - CASC_JENKINS_CONFIG=/var/jenkins_home/jenkins.yaml
       - MM_WEBHOOK_URL
       - JENKINS_ADMIN_ID
@@ -30,9 +29,4 @@ services:
       - DOCKER_HUB_PASSWORD
       - JENKINS_URL
       - KUBECONFIG_CONTENT
-    # networks:
-    #   - ecosim-network
-
-# networks:
-#   ecosim-network:
-#     driver: bridge
+    # host 모드에서는 별도의 networks나 ports 설정이 무시되거나 불필요합니다.
