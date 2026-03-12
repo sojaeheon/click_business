@@ -4,8 +4,8 @@ import com.ssafy.ecosim.domain.market.dto.event.OrderCreationEventDto;
 import com.ssafy.ecosim.domain.market.dto.event.TradeEventDto;
 
 /**
- * DE팀의 Kafka 인프라 구축 전까지 매칭 엔진 개발을 막힘없이 진행하기 위해 만들어둔 임시 인터페이스입니다.
- * 체결이 성사될 때 이벤트를 발행하는 역할을 합니다.
+ * Kafka 이벤트 발행 인터페이스입니다.
+ * 신규 주문(유저/봇) 및 체결 이벤트를 발행하는 계약을 정의합니다.
  */
 public interface OrderEventPublisher {
     

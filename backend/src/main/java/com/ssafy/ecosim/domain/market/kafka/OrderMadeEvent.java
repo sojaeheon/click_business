@@ -39,8 +39,8 @@ public class OrderMadeEvent {
     @JsonProperty("market_order_id")
     private Long marketOrderId;
 
-    /** 거래 아이템 (Kafka Partition Key) */
-    private String item;
+    /** 거래 아이템 ID (Kafka Partition Key) */
+    private Integer item;
 
     /** 기업 ID */
     @JsonProperty("company_id")

@@ -15,7 +15,7 @@ public class OrderDetailsCacheManager {
 
     private final RedisTemplate<String, Object> redisTemplate;
     private final ObjectMapper objectMapper; // Spring Boot 기본 제공 객체 매퍼
-    
+
     private static final String KEY_PREFIX = "market:order:";
     // 메모리 누수 방지를 위한 TTL 설정 (예: 1시간)
     private static final long CACHE_TTL_HOURS = 1L;
@@ -31,13 +31,13 @@ public class OrderDetailsCacheManager {
      */
     public void saveOrderCache(MarketOrder order) {
         String key = getKey(order.getId());
-        
+
         // Java 객체 필드들을 Key-Value 형태의 Map으로 분해 (개발자 가시성 확보)
         Map<String, Object> orderMap = objectMapper.convertValue(order, Map.class);
-        
+
         // 필드 단위로 Hash (서랍장 구조)에 쏙쏙 분산 적재
         redisTemplate.opsForHash().putAll(key, orderMap);
-        
+
         // 만료 시간 설정
         redisTemplate.expire(key, CACHE_TTL_HOURS, TimeUnit.HOURS);
     }
@@ -47,14 +47,14 @@ public class OrderDetailsCacheManager {
      */
     public MarketOrder getOrderCache(Long orderId) {
         String key = getKey(orderId);
-        
+
         // Hash에 저장된 모든 필드 꺼내오기 (HGETALL)
         Map<Object, Object> orderMap = redisTemplate.opsForHash().entries(key);
-        
+
         if (orderMap == null || orderMap.isEmpty()) {
             return null;
         }
-        
+
         // Map 형태의 데이터를 원래의 MarketOrder 객체로 통째 조립
         return objectMapper.convertValue(orderMap, MarketOrder.class);
     }
