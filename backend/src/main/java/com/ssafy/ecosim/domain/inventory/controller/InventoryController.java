@@ -78,7 +78,7 @@ public class InventoryController {
     }
 
     private Company getCompanyByUserId(Long userId) {
-        return companyRepository.findByUserId(userId)
+        return companyRepository.findByUser_Id(userId)
                 .orElseThrow(() -> new IllegalArgumentException("이 유저는 아직 창고(기업)를 소유하고 있지 않습니다."));
     }
 }
