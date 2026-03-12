@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { ArrowLeft, ShoppingCart, TrendingUp, TrendingDown, Activity } from "lucide-react";
 import { useGame } from "../../app/store/gameStore";
-import { MarketAPI } from "../../api/gameApi"; // (TODO: 실제 API 연동 시 주석 해제하여 사용)
+import { MarketAPI } from "../../api/gameApi"; 
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import Aurora from "../../app/components/ui/Aurora";
 
 type MarketMode = "buy" | "sell" | null;
 
-// Mock 데이터 생성기
 const generateMockChartData = () => {
   const data = [];
   let currentPrice = 3000;
@@ -19,30 +19,27 @@ const generateMockChartData = () => {
 };
 
 export function MarketPage() {
-  const { state, closeBuildingPage } = useGame();
+  const { closeBuildingPage } = useGame();
   const [mode, setMode] = useState<MarketMode>(null);
   
   const [price, setPrice] = useState<number>(0);
   const [quantity, setQuantity] = useState<number>(0);
   const [showPopup, setShowPopup] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [errImg, setErrImg] = useState(false);
 
-  // 차트 데이터 및 이펙트 상태
   const [chartData, setChartData] = useState<{time: string, price: number}[]>(generateMockChartData());
   const [marketTrend, setMarketTrend] = useState<"up" | "down" | "neutral">("neutral");
 
-  // 실시간 차트 업데이트 시뮬레이션
   useEffect(() => {
-    if (!mode) return; // Depth 2에 있을 때만 작동
+    if (!mode) return; 
     
     const interval = setInterval(() => {
       setChartData(prev => {
         const lastPrice = prev[prev.length - 1].price;
-        // -150 ~ 150 변동
         const change = (Math.random() - 0.5) * 300; 
         const newPrice = Math.max(100, Math.floor(lastPrice + change));
         
-        // 급등락 시 배경 플래시 이펙트 부여
         if (change > 100) setMarketTrend("up");
         else if (change < -100) setMarketTrend("down");
         else setMarketTrend("neutral");
@@ -54,14 +51,12 @@ export function MarketPage() {
         return newData;
       });
       
-      // 플래시 이펙트는 0.8초 후 초기화
       setTimeout(() => setMarketTrend("neutral"), 800);
     }, 2500);
 
     return () => clearInterval(interval);
   }, [mode]);
 
-  // 총 금액 자동 계산
   const totalAmount = price * quantity;
 
   const handleConfirm = async () => {
@@ -69,7 +64,6 @@ export function MarketPage() {
     
     setIsProcessing(true);
     try {
-      // 1번 회사의 특정 아이템(1번 id로 임시 하드코딩) 거래 접수
       await MarketAPI.createOrder({
         companyId: 1,
         itemId: 1,
@@ -96,27 +90,33 @@ export function MarketPage() {
   const isUpTrend = chartData[chartData.length - 1].price >= chartData[0].price;
 
   return (
-    <div className={`absolute inset-0 z-40 flex flex-col pt-8 transition-colors duration-700 ease-out ${
-      marketTrend === "up" ? "bg-rose-50" : marketTrend === "down" ? "bg-blue-50" : "bg-[#f5f0e8]"
-    }`}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => { mode ? setMode(null) : closeBuildingPage() }}
-            className="w-12 h-12 rounded-full bg-white border-2 border-slate-300 flex items-center justify-center hover:bg-slate-50 transition-colors shadow-sm relative z-10"
-          >
-            <ArrowLeft className="w-6 h-6 text-slate-700" />
-          </button>
-        </div>
-        <div className="text-center">
-          <h1 className="text-4xl tracking-widest text-slate-800" style={{ fontWeight: 900 }}>
-            DK <span className="font-light text-slate-600">MARKET</span>
-          </h1>
-        </div>
-        <div className="w-12 h-12 flex items-center justify-center cursor-default">
-          <ShoppingCart className="w-6 h-6 text-slate-700" />
-        </div>
+    <div className="absolute inset-0 z-40 bg-black flex flex-col pt-8 overflow-hidden relative transition-colors duration-700 ease-out">
+      <div className="absolute inset-0 z-0 opacity-80">
+        <Aurora colorStops={marketTrend === "up" ? ["#ff6b6b", "#f06595", "#cc5de8"] : marketTrend === "down" ? ["#339af0", "#22b8cf", "#20c997"] : ["#7cff67", "#B19EEF", "#5227FF"]} blend={0.5} amplitude={1.0} speed={1} />
+      </div>
+
+      {/* Header (Back button only) */}
+      <div className="absolute top-6 left-6 z-50">
+        <button
+          onClick={() => { mode ? setMode(null) : closeBuildingPage() }}
+          className="w-14 h-14 rounded-2xl bg-white border-2 border-slate-300 flex items-center justify-center hover:bg-slate-50 transition-all shadow-sm hover:scale-105 active:scale-95 cursor-pointer overflow-hidden relative"
+        >
+          <img
+            src="/ui_icons/Button_Square_Sky.png"
+            alt="back-bg"
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+          <img
+            src="/ui_icons/Icon_Return.png"
+            alt="back"
+            className="absolute inset-0 w-8 h-8 m-auto object-contain z-10"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+              (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+            }}
+          />
+          <ArrowLeft className="absolute inset-0 m-auto w-8 h-8 text-slate-700 hidden z-10" />
+        </button>
       </div>
 
       {/* Main content */}
@@ -127,7 +127,7 @@ export function MarketPage() {
             {/* 구매 버튼 */}
             <button
               onClick={() => setMode("buy")}
-              className="flex-1 bg-white hover:bg-rose-50 border-4 border-slate-300 hover:border-rose-400 rounded-[2rem] shadow-xl flex flex-col items-center justify-center gap-6 group transition-all duration-300 active:scale-95"
+              className="flex-1 bg-white hover:bg-rose-50 border-4 border-slate-300 hover:border-rose-400 rounded-[2rem] shadow-xl flex flex-col items-center justify-center gap-6 group transition-all duration-300 active:scale-95 cursor-pointer"
             >
               <div className="w-24 h-24 rounded-full bg-rose-100 flex items-center justify-center group-hover:scale-110 transition-transform">
                 <TrendingUp className="w-12 h-12 text-rose-500" />
@@ -138,7 +138,7 @@ export function MarketPage() {
             {/* 판매 버튼 */}
             <button
               onClick={() => setMode("sell")}
-              className="flex-1 bg-white hover:bg-blue-50 border-4 border-slate-300 hover:border-blue-400 rounded-[2rem] shadow-xl flex flex-col items-center justify-center gap-6 group transition-all duration-300 active:scale-95"
+              className="flex-1 bg-white hover:bg-blue-50 border-4 border-slate-300 hover:border-blue-400 rounded-[2rem] shadow-xl flex flex-col items-center justify-center gap-6 group transition-all duration-300 active:scale-95 cursor-pointer"
             >
               <div className="w-24 h-24 rounded-full bg-blue-100 flex items-center justify-center group-hover:scale-110 transition-transform">
                 <TrendingDown className="w-12 h-12 text-blue-500" />
@@ -150,20 +150,8 @@ export function MarketPage() {
         </div>
       ) : (
         // --- DEPTH 2: 차트 + 주문 폼 ---
-        <div className="flex-1 flex flex-col justify-start items-center p-6 max-w-7xl mx-auto w-full gap-8 relative z-10">
-          
-          {/* 하위 헤더 토글 */}
-          <div className="flex bg-white border-2 border-slate-300 rounded-full overflow-hidden shadow-sm h-14 w-80 relative z-20">
-            <button onClick={() => setMode("buy")} className={`flex-1 flex justify-center items-center gap-2 transition-colors ${mode === "buy" ? "bg-rose-500 text-white font-bold text-lg" : "text-slate-500 font-medium hover:bg-slate-50 text-lg"}`}>
-              <TrendingUp className="w-5 h-5" /> 구매
-            </button>
-            <button onClick={() => setMode("sell")} className={`flex-1 flex justify-center items-center gap-2 transition-colors ${mode === "sell" ? "bg-blue-500 text-white font-bold text-lg" : "text-slate-500 font-medium hover:bg-slate-50 text-lg"}`}>
-              <TrendingDown className="w-5 h-5" /> 판매
-            </button>
-          </div>
-
+        <div className="flex-1 flex flex-col justify-center items-center p-6 max-w-7xl mx-auto w-full gap-8 relative z-10 pt-16">
           <div className="flex w-full gap-8 items-stretch h-[calc(100vh-220px)] min-h-[500px]">
-            
             {/* 왼쪽: 실시간 차트 영역 UI */}
             <div className="w-2/3 bg-white border-4 border-slate-300 rounded-3xl p-6 flex flex-col shadow-xl relative overflow-hidden">
               <div className="flex justify-between items-center mb-6">
@@ -209,7 +197,6 @@ export function MarketPage() {
                   </AreaChart>
                 </ResponsiveContainer>
 
-                {/* Status Overlay for visual impact */}
                 <div className={`absolute top-4 left-4 px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest border-2 transition-opacity duration-300 ${
                   marketTrend === "up" ? "bg-rose-100 text-rose-500 border-rose-200 opacity-100" : 
                   marketTrend === "down" ? "bg-blue-100 text-blue-500 border-blue-200 opacity-100" : 
@@ -272,7 +259,7 @@ export function MarketPage() {
               <button
                 onClick={handleConfirm}
                 disabled={price <= 0 || quantity <= 0 || isProcessing}
-                className={`w-full py-5 rounded-2xl font-black text-xl transition-all transform active:scale-95 flex items-center justify-center gap-3 shadow-lg mt-8 ${
+                className={`w-full py-5 rounded-2xl font-black text-xl transition-all transform active:scale-95 flex items-center justify-center gap-3 shadow-lg mt-8 cursor-pointer ${
                   price > 0 && quantity > 0 && !isProcessing
                     ? mode === "buy"
                       ? "bg-rose-500 hover:bg-rose-600 text-white shadow-rose-200"
@@ -297,7 +284,7 @@ export function MarketPage() {
             }`}>
               <ShoppingCart className={`w-10 h-10 ${mode === "buy" ? "text-rose-500" : "text-blue-500"}`} />
             </div>
-            <h2 className="text-3xl font-black text-slate-800 mb-3 tracking-wide">주문 생성 완로</h2>
+            <h2 className="text-3xl font-black text-slate-800 mb-3 tracking-wide">주문 생성 완료</h2>
             <p className="text-slate-500 font-bold text-lg">
               {mode === "buy" ? "구매" : "판매"} 요청이 시장에 접수되었습니다.
             </p>
