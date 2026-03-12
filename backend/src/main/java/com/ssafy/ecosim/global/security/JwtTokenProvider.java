@@ -1,9 +1,8 @@
 package com.ssafy.ecosim.global.security;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import io.jsonwebtoken.security.SecurityException;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -63,9 +62,16 @@ public class JwtTokenProvider {
         try {
             Jwts.parser().verifyWith(key).build().parseSignedClaims(token);
             return true;
-        } catch (Exception e) {
-            return false;
+        } catch (SecurityException | MalformedJwtException e) {
+            // 잘못된 JWT 서명
+        } catch (ExpiredJwtException e) {
+            // 만료된 JWT 토큰
+        } catch (UnsupportedJwtException e) {
+            // 지원되지 않는 JWT 토큰
+        } catch (IllegalArgumentException e) {
+            // JWT 토큰이 잘못됨
         }
+        return false;
     }
 
     private Claims parseClaims(String token) {
