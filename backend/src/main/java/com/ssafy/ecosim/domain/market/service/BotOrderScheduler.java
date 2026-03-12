@@ -46,7 +46,7 @@ public class BotOrderScheduler {
 
     private static final Integer ITEM_ID_GOLD = 1;
 
-    @Scheduled(fixedRate = 1000) // 1초마다 정확히 실행
+    // @Scheduled(fixedRate = 1000) // 1초마다 정확히 실행
     public void generateVirtualOrderTick() {
         if (currentTick == 0) {
             initNewDayCycle();
@@ -79,7 +79,7 @@ public class BotOrderScheduler {
             // 4. 주문 가격 결정 (방향 인식 배치)
             // - 스윕 방향 봇: 타겟가 ± 소폭 랜덤 스프레드 → 기존 벽을 직접 뚫음
             // - 반대 방향 봇(유동성 공급): 타겟가에서 1~3 Tick 더 바깥(안전지대)에 배치
-            //   → 스윕이 진행 중인 구간을 방해하지 않고 자연스러운 원거리 호가 형성
+            // → 스윕이 진행 중인 구간을 방해하지 않고 자연스러운 원거리 호가 형성
             long orderPrice;
             if (isSweeperBot) {
                 // 스윕 봇: ±0.1% 소폭 스프레드
@@ -130,7 +130,8 @@ public class BotOrderScheduler {
      * @param botIndex     봇 인덱스 (0 이상)
      * @return 이 봇이 처리할 수량
      */
-    private long calculateSweepQtyPerBot(long currentPrice, long targetPrice, int botCount, OrderType botOrderType, int botIndex) {
+    private long calculateSweepQtyPerBot(long currentPrice, long targetPrice, int botCount, OrderType botOrderType,
+            int botIndex) {
         boolean priceGoingUp = targetPrice > currentPrice;
 
         // 가격이 오르려면 매도(SELL) 물량을 매수(BUY)로 흡수해야 하고, 내리려면 그 반대
