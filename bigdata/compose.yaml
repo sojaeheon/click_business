@@ -1,0 +1,71 @@
+services:
+  spark-master:
+    build:
+      context: .
+      dockerfile: ./spark/Dockerfile.spark
+    container_name: spark-master
+    volumes:
+      - ./spark/jobs:/opt/spark-apps
+    command: >
+      /opt/spark/bin/spark-class
+      org.apache.spark.deploy.master.Master
+    ports:
+      - "7077:7077"
+      - "8082:8080"
+    networks:
+      - ecosim-network
+
+  spark-worker:
+    build:
+      context: .
+      dockerfile: ./spark/Dockerfile.spark
+    container_name: spark-worker
+    depends_on:
+      - spark-master
+    volumes:
+      - ./spark/jobs:/opt/spark-apps
+    command: >
+      /opt/spark/bin/spark-class
+      org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077
+    ports:
+      - "8081:8081"
+    networks:
+      - ecosim-network
+
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    ports:
+      - "9870:9870"
+      - "9000:9000"
+    environment:
+      CLUSTER_NAME: ecosim-hdfs
+    env_file:
+      - ./hdfs/conf/hadoop.env
+    volumes:
+      - ./hdfs/storage/namenode:/hadoop/dfs/name
+      - ./hdfs/init:/init
+      - ./hdfs/sample-data:/sample-data
+    networks:
+      - ecosim-network
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    depends_on:
+      - namenode
+    ports:
+      - "9864:9864"
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    env_file:
+      - ./hdfs/conf/hadoop.env
+    volumes:
+      - ./hdfs/storage/datanode:/hadoop/dfs/data
+    networks:
+      - ecosim-network
+
+networks:
+  ecosim-network:
+    name: ecosim-network

@@ -37,12 +37,25 @@ public class Company extends BaseEntity {
     @Column(name = "production_yield", nullable = false)
     private Integer productionYield; // 산출되는 결과물량
 
+    // ERD 기준 추가 필드
+    @Column(name = "level", nullable = false)
+    private Integer level;
+
+    @Column(name = "cash", nullable = false)
+    private Long cash;
+
+    @Column(name = "total_asset", nullable = false)
+    private Long totalAsset;
+
     public Company(User user, String name, Long inputItemId, Long outputItemId) {
         this.user = user;
         this.name = name;
         this.inputItemId = inputItemId;
         this.outputItemId = outputItemId;
-        this.productionRequirement = 1; // 기본값 1
-        this.productionYield = 1; // 기본값 1
+        this.productionRequirement = 1;
+        this.productionYield = 1;
+        this.level = 1;
+        this.cash = 1_000_000L;   // 초기 지급 현금 100만원
+        this.totalAsset = 1_000_000L;
     }
 }

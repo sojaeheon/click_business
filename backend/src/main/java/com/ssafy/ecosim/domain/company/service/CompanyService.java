@@ -30,7 +30,7 @@ public class CompanyService {
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
 
         // 유저당 하나의 기업만 가질 수 있도록 체크
-        companyRepository.findByUserId(userId).ifPresent(c -> {
+        companyRepository.findByUser_Id(userId).ifPresent(c -> {
             throw new IllegalArgumentException("이 유저는 이미 기업을 보유하고 있습니다.");
         });
 
@@ -51,7 +51,7 @@ public class CompanyService {
      * @return 기업 엔티티
      */
     public Company getCompanyByUserId(Long userId) {
-        return companyRepository.findByUserId(userId)
+        return companyRepository.findByUser_Id(userId)
                 .orElseThrow(() -> new IllegalArgumentException("이 유저는 아직 기업을 소유하고 있지 않습니다."));
     }
 
