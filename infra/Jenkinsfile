@@ -108,8 +108,8 @@ pipeline {
                 script {
                     try {
                         withCredentials([string(credentialsId: K8S_CREDENTIAL_ID, variable: 'KUBE_CONTENT')]) {
-                            writeFile file: 'kubeconfig', text: env.KUBE_CONTENT
                             sh """
+                                echo "\${KUBE_CONTENT}" | base64 -d > kubeconfig
                                 export KUBECONFIG=kubeconfig
 
                                 # 초기 manifest 적용 (deployment가 없으면 생성, 있으면 무시)

@@ -88,19 +88,18 @@ else
     echo "✅ 감지된 퍼블릭 IP: $PUBLIC_IP"
 fi
 
-# .env 파일 업데이트 (YAML 잔재 및 잘못된 설정 제거)
+# .env 파일 업데이트
 sed -i '/JENKINS_URL=/d' .env
 echo "JENKINS_URL=http://$PUBLIC_IP/jenkins" >> .env
-sed -i '/KUBECONFIG_CONTENT\|clusters:\|contexts:\|users:\|current-context:\|kind:\|apiVersion:/d' .env 2>/dev/null || true
-# 공백으로 시작하는 라인(YAML 인덴트) 삭제
-sed -i '/^[[:space:]]\+/d' .env 2>/dev/null || true
+
+# KUBECONFIG_CONTENT: base64 인코딩해서 한 줄로 .env에 저장 (멀티라인 YAML 문제 해결)
+KUBECONFIG_B64=$(echo "$KUBECONFIG_ADJUSTED" | base64 | tr -d '\n')
+sed -i '/KUBECONFIG_CONTENT=/d' .env
+echo "KUBECONFIG_CONTENT=$KUBECONFIG_B64" >> .env
+
 # 빈 줄 정리
 sed -i '/^$/d' .env 2>/dev/null || true
 echo "" >> .env
-
-# 변수를 현재 셸에 export — docker compose가 상위 환경변수를 자동으로 상속받음
-# (멀티라인 YAML이라 .env에 직접 저장 불가)
-export KUBECONFIG_CONTENT="$KUBECONFIG_ADJUSTED"
 
 # 사용할 Docker Compose 명령어 확인
 if docker compose version >/dev/null 2>&1; then
