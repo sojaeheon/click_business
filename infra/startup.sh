@@ -7,9 +7,12 @@
 
 set -e # 오류 발생 시 즉시 중단
 
-# 스크립트 위치 기준으로 레포 루트 경로 설정
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# 스크립트 위치 기준으로 레포 루트 경로 설정 ($0: bash/sh 모두 호환)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# 이후 모든 상대경로(compose.yaml, .env 등)가 infra/ 기준으로 동작하도록 이동
+cd "$SCRIPT_DIR"
 
 echo "🔍 [1/5] 필수 도구 설치 확인 및 설치 시작..."
 
