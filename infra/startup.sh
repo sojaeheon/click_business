@@ -7,6 +7,10 @@
 
 set -e # 오류 발생 시 즉시 중단
 
+# 스크립트 위치 기준으로 레포 루트 경로 설정
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+
 echo "🔍 [1/5] 필수 도구 설치 확인 및 설치 시작..."
 
 # Docker 설치 확인
@@ -105,13 +109,20 @@ else
     DOCKER_COMPOSE_CMD="docker-compose"
 fi
 
-echo "🚀 [4/5] Jenkins 실행 중 (사용 명령어: $DOCKER_COMPOSE_CMD)..."
+echo "📥 [4/6] 최신 코드 Pull 중..."
+git -C "$REPO_ROOT" pull
+echo "✅ 코드 Pull 완료"
 
-# 기존 인프라 종료 및 재시작
-$DOCKER_COMPOSE_CMD -f compose.yaml down || true
+echo "🚀 [5/6] Jenkins 실행 중 (사용 명령어: $DOCKER_COMPOSE_CMD)..."
+
+# 기존 컨테이너 강제 제거 (이름 충돌 방지)
+docker rm -f nginx-router jenkins 2>/dev/null || true
+# 혹시 남은 것들도 정리
+$DOCKER_COMPOSE_CMD -f compose.yaml down --remove-orphans --timeout 10 2>/dev/null || true
+# 최신 코드로 재빌드 및 실행
 $DOCKER_COMPOSE_CMD -f compose.yaml up -d --build
 
-echo "✅ [5/5] 모든 인프라 구축 완료!"
+echo "✅ [6/6] 모든 인프라 구축 완료!"
 echo "===================================================="
 echo "🌐 Jenkins 접속 주소: http://$PUBLIC_IP:8080"
 echo " (참고: 나중에 Nginx 설정을 통해 80/443 포트로 접속 가능하게 변경될 예정입니다.)"
