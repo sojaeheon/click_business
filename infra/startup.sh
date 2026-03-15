@@ -94,8 +94,10 @@ sed -i '/^[[:space:]]\+/d' .env 2>/dev/null || true
 sed -i '/^$/d' .env 2>/dev/null || true
 echo "" >> .env
 
-# 변수를 메모리에 올림
+# 변수를 메모리에 올리고 .env에도 저장 (서버 재시작 후에도 유지)
 export KUBECONFIG_CONTENT="$KUBECONFIG_ADJUSTED"
+sed -i '/^KUBECONFIG_CONTENT=/d' .env
+echo "KUBECONFIG_CONTENT=$KUBECONFIG_ADJUSTED" >> .env
 
 # 사용할 Docker Compose 명령어 확인
 if docker compose version >/dev/null 2>&1; then
@@ -106,9 +108,9 @@ fi
 
 echo "🚀 [4/5] Jenkins 실행 중 (사용 명령어: $DOCKER_COMPOSE_CMD)..."
 
-# 기존 인프라 종료 및 재시작 (ngrok 제외)
-$DOCKER_COMPOSE_CMD -f docker-compose.infra.yaml down || true
-$DOCKER_COMPOSE_CMD -f docker-compose.infra.yaml up -d --build
+# 기존 인프라 종료 및 재시작
+$DOCKER_COMPOSE_CMD -f compose.yaml down || true
+$DOCKER_COMPOSE_CMD -f compose.yaml up -d --build
 
 echo "✅ [5/5] 모든 인프라 구축 완료!"
 echo "===================================================="
@@ -125,5 +127,5 @@ if [ -f .env ]; then
     source .env
     # JCasC 설정 리로드 (네트워크 준비 시간에 따라 실패할 수 있음)
     sleep 5
-    curl -s -X POST "http://localhost:8080/configuration-as-code/reload" -u "$JENKINS_ADMIN_ID:$JENKINS_ADMIN_PASSWORD" || echo "💡 Jenkins 웹페이지 준비 중... 약 1분 뒤 자동 설정이 완료됩니다."
+    curl -s -X POST "http://localhost:8080/jenkins/configuration-as-code/reload" -u "$JENKINS_ADMIN_ID:$JENKINS_ADMIN_PASSWORD" || echo "💡 Jenkins 웹페이지 준비 중... 약 1분 뒤 자동 설정이 완료됩니다."
 fi
