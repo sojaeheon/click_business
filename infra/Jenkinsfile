@@ -109,18 +109,18 @@ pipeline {
                             writeFile file: 'kubeconfig', text: KUBE_CONTENT
                             sh """
                                 export KUBECONFIG=kubeconfig
-                                # 배포 파일 내 이미지 및 빌드 번호 치환
-                                sed -i "s|\${BACKEND_IMAGE}|${BACKEND_IMAGE}|g" k8s/infra-test.yaml
-                                sed -i "s|\${FRONTEND_IMAGE}|${FRONTEND_IMAGE}|g" k8s/infra-test.yaml
-                                sed -i "s|\${BUILD_NUMBER}|${env.BUILD_NUMBER}|g" k8s/infra-test.yaml
-                                
-                                # 실제 배포 적용
-                                kubectl apply -f k8s/infra-test.yaml --validate=false
-                                
-                                # 상태 확인 및 강제 재기동
-                                kubectl rollout restart deployment/backend-app || true
-                                kubectl rollout restart deployment/frontend-app || true
-                                
+
+                                # 초기 manifest 적용 (deployment가 없으면 생성, 있으면 무시)
+                                kubectl apply -f infra/k8s/deployment.yaml
+
+                                # 빌드된 이미지로 교체 (yaml 파일 수정 없이 직접 업데이트)
+                                kubectl set image deployment/backend-app backend=${BACKEND_IMAGE}
+                                kubectl set image deployment/frontend-app frontend=${FRONTEND_IMAGE}
+
+                                # 롤아웃 완료까지 대기
+                                kubectl rollout status deployment/backend-app --timeout=120s
+                                kubectl rollout status deployment/frontend-app --timeout=120s
+
                                 rm kubeconfig
                             """
                         }

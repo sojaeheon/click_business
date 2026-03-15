@@ -1,14 +1,15 @@
+# Backend Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: s14p11b201-app
+  name: backend-app
   labels:
-    app: s14p11b201
+    app: backend
 spec:
-  replicas: 3
+  replicas: 2
   selector:
     matchLabels:
-      app: s14p11b201
+      app: backend
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -17,35 +18,92 @@ spec:
   template:
     metadata:
       labels:
-        app: s14p11b201
+        app: backend
     spec:
       containers:
-      - name: app
-        image: ${DOCKER_IMAGE}
+      - name: backend
+        image: chlendyd7/s14p21b109-backend:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 8080
         readinessProbe:
           httpGet:
-            path: /actuator/health # 애플리케이션의 상태 체크 경로에 맞춰 수정 필요
+            path: /actuator/health
             port: 8080
           initialDelaySeconds: 15
           periodSeconds: 10
         livenessProbe:
           httpGet:
-            path: /actuator/health # 애플리케이션의 상태 체크 경로에 맞춰 수정 필요
+            path: /actuator/health
             port: 8080
           initialDelaySeconds: 30
           periodSeconds: 20
 ---
+# Backend Service
 apiVersion: v1
 kind: Service
 metadata:
-  name: s14p11b201-service
+  name: backend-service
 spec:
   selector:
-    app: s14p11b201
+    app: backend
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
+---
+# Frontend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-app
+  labels:
+    app: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: chlendyd7/s14p21b109-frontend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 20
+---
+# Frontend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+spec:
+  selector:
+    app: frontend
   ports:
     - protocol: TCP
       port: 80
-      targetPort: 8080
+      targetPort: 80
   type: LoadBalancer

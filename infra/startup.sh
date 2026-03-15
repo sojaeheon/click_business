@@ -139,3 +139,10 @@ if [ -f .env ]; then
     sleep 5
     curl -s -X POST "http://localhost:8080/jenkins/configuration-as-code/reload" -u "$JENKINS_ADMIN_ID:$JENKINS_ADMIN_PASSWORD" || echo "💡 Jenkins 웹페이지 준비 중... 약 1분 뒤 자동 설정이 완료됩니다."
 fi
+
+echo "☸️ [6/6] K8s 초기 매니페스트 적용 중..."
+# 최초 1회: deployment/service 리소스 생성 (이후 Jenkins가 kubectl set image로 자동 갱신)
+KUBECONFIG_RAW_APPLY=$(sudo kind get kubeconfig --name kind 2>/dev/null)
+KIND_IP_APPLY=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' kind-control-plane 2>/dev/null)
+KUBECONFIG_APPLY=$(echo "$KUBECONFIG_RAW_APPLY" | sed -E "s|https://127.0.0.1:[0-9]+|https://$KIND_IP_APPLY:6443|g")
+echo "$KUBECONFIG_APPLY" | kubectl apply -f "$SCRIPT_DIR/k8s/deployment.yaml" --kubeconfig=/dev/stdin || echo "💡 K8s 초기 배포 실패 (클러스터 준비 중일 수 있음 — 잠시 후 kubectl apply -f infra/k8s/deployment.yaml 재실행)"
