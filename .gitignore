@@ -81,3 +81,5 @@ rule.md
 /postgres_data/
 
 hadoop.env
+.claude/
+claude.md
