@@ -108,7 +108,7 @@ pipeline {
                 script {
                     try {
                         withCredentials([string(credentialsId: K8S_CREDENTIAL_ID, variable: 'KUBE_CONTENT')]) {
-                            writeFile file: 'kubeconfig', text: KUBE_CONTENT
+                            writeFile file: 'kubeconfig', text: env.KUBE_CONTENT
                             sh """
                                 export KUBECONFIG=kubeconfig
 
