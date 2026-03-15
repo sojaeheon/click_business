@@ -73,7 +73,7 @@ jobs:
                 }
               }
             }
-            scriptPath('Jenkinsfile') // 저장소 루트의 Jenkinsfile 읽기
+            scriptPath('infra/Jenkinsfile') // infra 폴더 내 Jenkinsfile 읽기
           }
         }
         triggers {

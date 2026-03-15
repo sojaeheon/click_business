@@ -134,7 +134,7 @@ echo "===================================================="
 
 # 설정 변경사항 Jenkins에 즉시 반영 시도
 if [ -f .env ]; then
-    source .env
+    . .env
     # JCasC 설정 리로드 (네트워크 준비 시간에 따라 실패할 수 있음)
     sleep 5
     curl -s -X POST "http://localhost:8080/jenkins/configuration-as-code/reload" -u "$JENKINS_ADMIN_ID:$JENKINS_ADMIN_PASSWORD" || echo "💡 Jenkins 웹페이지 준비 중... 약 1분 뒤 자동 설정이 완료됩니다."
