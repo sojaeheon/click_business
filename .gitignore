@@ -40,8 +40,9 @@ workspace/
 /plugins/*.bak
 *.war
 *.ear
-!gradle-wrapper.jar
 *.jar
+!gradle/wrapper/gradle-wrapper.jar
+!backend/gradle/wrapper/gradle-wrapper.jar
 
 ### --- [4. Docker & Kubernetes] --- ###
 .docker/
