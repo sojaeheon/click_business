@@ -112,15 +112,16 @@ pipeline {
                                 echo "\${KUBE_CONTENT}" | base64 -d > kubeconfig
                                 export KUBECONFIG=kubeconfig
 
-                                # 초기 manifest 적용 (deployment가 없으면 생성, 있으면 무시)
+                                # deployment 리소스 생성/업데이트 (없으면 생성, 있으면 apply)
+                                # secret/database는 startup.sh에서 최초 1회 apply — Jenkins는 건드리지 않음
                                 kubectl apply -f infra/k8s/deployment.yaml
 
-                                # 빌드된 이미지로 교체 (yaml 파일 수정 없이 직접 업데이트)
+                                # 빌드된 이미지로 교체
                                 kubectl set image deployment/backend-app backend=${BACKEND_IMAGE}
                                 kubectl set image deployment/frontend-app frontend=${FRONTEND_IMAGE}
 
                                 # 롤아웃 완료까지 대기
-                                kubectl rollout status deployment/backend-app --timeout=120s
+                                kubectl rollout status deployment/backend-app --timeout=180s
                                 kubectl rollout status deployment/frontend-app --timeout=120s
 
                                 rm kubeconfig

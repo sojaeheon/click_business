@@ -142,9 +142,46 @@ if [ -f .env ]; then
     curl -s -X POST "http://localhost:8080/jenkins/configuration-as-code/reload" -u "$JENKINS_ADMIN_ID:$JENKINS_ADMIN_PASSWORD" || echo "💡 Jenkins 웹페이지 준비 중... 약 1분 뒤 자동 설정이 완료됩니다."
 fi
 
-echo "☸️ [6/6] K8s 초기 매니페스트 적용 중..."
-# 최초 1회: deployment/service 리소스 생성 (이후 Jenkins가 kubectl set image로 자동 갱신)
+echo "🗄️ [6/7] data/compose.yaml (postgres, redis, kafka) 시작 중..."
+$DOCKER_COMPOSE_CMD -f "$REPO_ROOT/data/compose.yaml" up -d
+echo "✅ DB 컨테이너 시작 완료"
+
+echo "☸️ [7/7] K8s 초기 매니페스트 적용 중..."
 KUBECONFIG_RAW_APPLY=$(sudo kind get kubeconfig --name kind 2>/dev/null)
 KIND_IP_APPLY=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' kind-control-plane 2>/dev/null)
 KUBECONFIG_APPLY=$(echo "$KUBECONFIG_RAW_APPLY" | sed -E "s|https://127.0.0.1:[0-9]+|https://$KIND_IP_APPLY:6443|g")
-echo "$KUBECONFIG_APPLY" | kubectl apply -f "$SCRIPT_DIR/k8s/deployment.yaml" --kubeconfig=/dev/stdin || echo "💡 K8s 초기 배포 실패 (클러스터 준비 중일 수 있음 — 잠시 후 kubectl apply -f infra/k8s/deployment.yaml 재실행)"
+
+apply_k8s() {
+    echo "$KUBECONFIG_APPLY" | kubectl apply -f "$1" --kubeconfig=/dev/stdin
+}
+
+# kind-control-plane을 ecosim-network에 연결 (postgres-db, redis 컨테이너에 접근 가능하도록)
+docker network connect ecosim-network kind-control-plane 2>/dev/null || true
+
+# postgres-db, redis의 ecosim-network 상 IP 가져오기
+POSTGRES_IP=$(docker inspect postgres-db --format '{{.NetworkSettings.Networks.ecosim-network.IPAddress}}' 2>/dev/null)
+REDIS_IP=$(docker inspect redis --format '{{.NetworkSettings.Networks.ecosim-network.IPAddress}}' 2>/dev/null)
+
+if [ -z "$POSTGRES_IP" ] || [ -z "$REDIS_IP" ]; then
+    echo "⚠️ postgres-db 또는 redis 컨테이너 IP를 가져오지 못했습니다. data/compose.yaml이 실행 중인지 확인하세요."
+else
+    echo "  📌 postgres-db IP: $POSTGRES_IP / redis IP: $REDIS_IP"
+    # IP placeholder를 실제 값으로 치환해서 임시 파일로 저장 후 적용
+    sed -e "s/POSTGRES_IP/$POSTGRES_IP/g" -e "s/REDIS_IP/$REDIS_IP/g" \
+        "$SCRIPT_DIR/k8s/external-services.yaml" > /tmp/ext-svc.yaml
+    apply_k8s /tmp/ext-svc.yaml || echo "⚠️ external-services 적용 실패"
+fi
+
+# secret.yaml 적용 (git에 없으므로 서버에 직접 존재해야 함)
+if [ -f "$SCRIPT_DIR/k8s/secret.yaml" ]; then
+    echo "  🔐 secret 적용 중..."
+    apply_k8s "$SCRIPT_DIR/k8s/secret.yaml" || echo "⚠️ secret 적용 실패"
+else
+    echo "  ⚠️ secret.yaml 없음 — infra/k8s/secret.yaml에 실제 값 채워서 생성 필요"
+fi
+
+# deployment 적용
+echo "  🚀 deployment 적용 중..."
+apply_k8s "$SCRIPT_DIR/k8s/deployment.yaml" || echo "⚠️ deployment 적용 실패 (Jenkins가 이후 자동 갱신)"
+
+echo "✅ K8s 초기 구성 완료 (이후 push → Jenkins → 자동 이미지 교체)"
