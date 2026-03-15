@@ -73,16 +73,18 @@ pipeline {
                     }
                     steps {
                         script {
-                            try {
+                            // catchError: Frontend 빌드 실패해도 전체 파이프라인은 계속 진행
+                            // buildResult: 최종 빌드 상태를 UNSTABLE로 (FAILURE 아님 → K8s stage 스킵 방지)
+                            catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                                 docker.withRegistry('https://index.docker.io/v1/', DOCKER_HUB_CREDENTIAL_ID) {
                                     def frontendImg = docker.build("${FRONTEND_IMAGE}", "./frontend")
                                     frontendImg.push()
                                     frontendImg.push("latest")
                                 }
                                 stageResults['Frontend Build'] = '✅ Success'
-                            } catch (e) {
+                            }
+                            if (stageResults['Frontend Build'] != '✅ Success') {
                                 stageResults['Frontend Build'] = '❌ Failed'
-                                throw e
                             }
                         }
                     }
