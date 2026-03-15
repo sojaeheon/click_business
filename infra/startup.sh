@@ -94,10 +94,9 @@ sed -i '/^[[:space:]]\+/d' .env 2>/dev/null || true
 sed -i '/^$/d' .env 2>/dev/null || true
 echo "" >> .env
 
-# 변수를 메모리에 올리고 .env에도 저장 (서버 재시작 후에도 유지)
+# 변수를 현재 셸에 export — docker compose가 상위 환경변수를 자동으로 상속받음
+# (멀티라인 YAML이라 .env에 직접 저장 불가)
 export KUBECONFIG_CONTENT="$KUBECONFIG_ADJUSTED"
-sed -i '/^KUBECONFIG_CONTENT=/d' .env
-echo "KUBECONFIG_CONTENT=$KUBECONFIG_ADJUSTED" >> .env
 
 # 사용할 Docker Compose 명령어 확인
 if docker compose version >/dev/null 2>&1; then
