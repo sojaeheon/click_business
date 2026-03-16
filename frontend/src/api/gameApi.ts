@@ -8,7 +8,8 @@ export const CompanyAPI = {
     // ✅ 실제 연동 + 아직 백엔드에 없는 데이터(재화 등)는 목업 데이터와 병합
     try {
       const res = await apiClient.get('/companies/me');
-      const company = res.data.data;
+      const company = res.data?.data;
+      if (!company) throw new Error("API 연동 실패 (데이터 누락)");
       return {
         data: {
           name: company.name,
@@ -34,16 +35,37 @@ export const CompanyAPI = {
   },
 };
 
+// 💡 작업장(Workstation) 백엔드 연동 전 임시 테스트용 목업 상태
+let mockWorkIsWorking = false;
+let mockWorkProgress = 0;
+let mockWorkInterval: ReturnType<typeof setInterval> | null = null;
+
 export const WorkstationAPI = {
   getStatus: async (companyId: number) => {
     // ✅ 실제 API 연결: GET /api/v1/workstations/{workstationId}
     try {
       const res = await apiClient.get('/workstations/1'); // workstationId 임시 1
-      return { data: { isWorking: res.data.data.isActive, progress: res.data.data.producedQuantity || 0 } };
+      const data = res.data.data;
+      // 서버에서 progress = 0~100 퍼센트, producedQuantity = 실제 생산 개수
+      return {
+        data: {
+          isWorking: data.isActive,
+          progress: data.progress ?? 0,            // 퍼센트 (0~100)
+          producedQuantity: data.producedQuantity ?? 0, // 실제 개수
+        }
+      };
     } catch (err) {
       console.warn("API 연동 실패! WorkstationAPI.getStatus 목업 데이터 사용", err);
-      await mockDelay();
-      return { data: { isWorking: false, progress: 0 } };
+      // 목업: mockWorkProgress를 퍼센트(0~100)로 사용, 개수는 별도 계산
+      const mockPct = Math.min(100, mockWorkProgress);
+      const mockQty = Math.floor((mockPct / 100) * 500); // 500개 기준
+      return {
+        data: {
+          isWorking: mockWorkIsWorking,
+          progress: mockPct,           // 퍼센트
+          producedQuantity: mockQty,   // 개수
+        }
+      };
     }
   },
   start: async (data: { companyId: number; recipeId: number; quantity: number; workerId: number }) => {
@@ -55,6 +77,20 @@ export const WorkstationAPI = {
     } catch (err) {
       console.warn("API 연동 실패! WorkstationAPI.start 목업 데이터 사용", err);
       await mockDelay();
+
+      // 목업: mockWorkProgress는 퍼센트(0~100) 기준으로 누적
+      mockWorkIsWorking = true;
+      mockWorkProgress = 0; // 시작 시 초기화
+      if (!mockWorkInterval) {
+        mockWorkInterval = setInterval(() => {
+          if (mockWorkProgress < 100) mockWorkProgress += 1; // 1초마다 1%씩 (100초면 완료)
+          else {
+            // 완료 도달 시 인터벌 멈춤
+            if (mockWorkInterval) { clearInterval(mockWorkInterval); mockWorkInterval = null; }
+          }
+        }, 500); // 0.5초마다 → 약 50초 완료
+      }
+
       return { data: { success: true, message: "작업이 시작되었습니다. (Mock)" } };
     }
   },
@@ -66,10 +102,18 @@ export const WorkstationAPI = {
     } catch (err) {
       console.warn("API 연동 실패! WorkstationAPI.collect 목업 데이터 사용", err);
       await mockDelay();
+
+      // 목업: 수거 성공 시 모두 초기화
+      mockWorkProgress = 0;
+      mockWorkIsWorking = false;
+      if (mockWorkInterval) { clearInterval(mockWorkInterval); mockWorkInterval = null; }
+
       return { data: { success: true, message: "수령 완료 (Mock)" } };
     }
   }
 };
+
+
 
 export const MarketAPI = {
   getOrderbook: async (itemId: number) => {

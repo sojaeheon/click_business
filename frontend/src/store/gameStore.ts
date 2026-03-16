@@ -59,6 +59,7 @@ export interface GameState {
   updateMaterial: (amount: number) => number; // 실제 변경된 수량 반환
   updateProduct: (amount: number) => number;
   addAlert: (alertData: Omit<Alert, 'id' | 'timeAgo' | 'read'>) => void;
+  markAllAlertsAsRead: () => void;
 
   getWarehouseUsage: () => { usedSlots: number; percent: number };
   getIndustryItemNames: () => { material: string; product: string };
@@ -108,6 +109,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   }),
   dismissAlert: (id) => set((state) => ({ 
       alerts: state.alerts.filter(alert => alert.id !== id) 
+  })),
+  markAllAlertsAsRead: () => set((state) => ({
+      alerts: state.alerts.map(alert => ({ ...alert, read: true }))
   })),
   selectBuilding: (building) => set({ selectedBuilding: building }),
   openBuildingPage: (page) => set({ activeBuildingPage: page }),
@@ -234,6 +238,7 @@ export function useGame() {
     closeModal: store.closeModal,
     switchTab: store.switchTab,
     dismissAlert: store.dismissAlert,
+    markAllAlertsAsRead: store.markAllAlertsAsRead,
     selectBuilding: store.selectBuilding,
     openBuildingPage: store.openBuildingPage,
     closeBuildingPage: store.closeBuildingPage,

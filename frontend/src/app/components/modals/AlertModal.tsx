@@ -1,8 +1,13 @@
-import { X, Bell } from "lucide-react";
+import { useEffect } from "react";
+import { Bell } from "lucide-react";
 import { useGame } from "../../../store/gameStore";
 
 export function AlertModal() {
-  const { state, dismissAlert } = useGame();
+  const { state, markAllAlertsAsRead } = useGame();
+
+  useEffect(() => {
+    markAllAlertsAsRead();
+  }, [markAllAlertsAsRead]);
 
   return (
     <div>
@@ -43,13 +48,6 @@ export function AlertModal() {
               </div>
             </div>
 
-            {/* X 버튼: 알림 삭제 */}
-            <button
-              onClick={() => dismissAlert(notification.id)}
-              className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-200 transition-colors cursor-pointer"
-            >
-              <X className="w-4 h-4 text-gray-400" />
-            </button>
           </div>
         ))}
 

@@ -104,84 +104,112 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
 
         <div className="bg-white rounded-[2rem] shadow-2xl p-8 flex flex-col gap-5 border-4 border-slate-200" style={{ ...R, minWidth: 400 }} onClick={(e) => e.stopPropagation()}>
           
-          {/* 모달 헤더 */}
-          <div className="flex items-center gap-4 border-b-2 border-slate-100 pb-4">
-            <div className={`w-16 h-16 flex items-center justify-center rounded-2xl shadow-inner ${data.isWorking ? 'bg-orange-100 border-2 border-orange-300' : 'bg-slate-100 border-2 border-slate-300'}`}>
-              <span className={`text-4xl ${data.isWorking ? 'animate-[spinSlow_4s_linear_infinite]' : ''}`}>⚙️</span>
-            </div>
-            <div>
-              <h2 className="text-2xl font-black text-slate-800 tracking-widest">작업장</h2>
-              <p className={`text-sm font-bold mt-1 ${data.isWorking ? 'text-orange-500 animate-pulse' : 'text-slate-400'}`}>
-                {data.isWorking ? '🔥 기계 가동 중...' : '💤 대기 중'}
-              </p>
+          {/* 모달 헤더 및 일꾼 장착 슬롯 통합 */}
+          <div className="flex items-center gap-5 border-b-2 border-slate-100 pb-5">
+            <button
+              onClick={() => {
+                if (!data.isWorking) setIsInventoryOpen(true);
+              }}
+              className={`relative w-[88px] h-[88px] flex flex-col items-center justify-center rounded-2xl shadow-inner border-[3px] transition-all overflow-hidden group flex-shrink-0 ${
+                equippedWorker
+                  ? "bg-gradient-to-br from-blue-100 to-indigo-50 border-blue-300"
+                  : data.isWorking
+                  ? "bg-slate-100 border-slate-300 opacity-50 cursor-not-allowed grayscale"
+                  : "bg-slate-50 border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 cursor-pointer"
+              }`}
+            >
+              {equippedWorker ? (
+                <>
+                  <span className="text-4xl drop-shadow-md group-hover:scale-110 transition-transform">🧑‍🔧</span>
+                  <span className="absolute bottom-1 bg-blue-600/90 text-white font-black px-2 py-0.5 rounded text-[10px] shadow-sm">
+                    Lv.{equippedWorker.level}
+                  </span>
+                </>
+              ) : (
+                <div className="flex flex-col items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                  <UserPlus className="w-8 h-8 text-slate-400 group-hover:text-blue-500 transition-colors" />
+                </div>
+              )}
+              {/* 호버 시 오버레이 (가동 중 아닐 때만) */}
+              {!data.isWorking && (
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="text-white text-xs font-bold bg-black/50 px-2 py-1 rounded">
+                    {equippedWorker ? "변경" : "배치"}
+                  </span>
+                </div>
+              )}
+            </button>
+            
+            <div className="flex-1 flex flex-col justify-center">
+              <h2 className="text-[26px] font-black text-slate-800 tracking-widest leading-none mb-1.5">작업장</h2>
+              <div className="flex items-center gap-2">
+                <p className={`text-[15px] font-bold ${data.isWorking ? 'text-orange-500 animate-pulse' : 'text-slate-500'}`}>
+                  {data.isWorking ? '🔥 생산 가동 중...' : (equippedWorker ? `✔️ ${equippedWorker.name} 대기 중` : '💤 일꾼을 배치해주세요')}
+                </p>
+                {/* 톱니바퀴는 작게 우측에 애니메이션으로 배치 */}
+                {data.isWorking && <span className="text-lg animate-[spinSlow_4s_linear_infinite]">⚙️</span>}
+              </div>
             </div>
           </div>
 
-          {/* 일꾼 장착 슬롯 */}
-          {!data.isWorking && (
-            <div className="bg-blue-50/50 rounded-2xl p-4 border-2 border-blue-100">
-              <label className="text-xs font-black text-blue-500 uppercase tracking-widest mb-2 block">담당 일꾼 배치</label>
-              <button 
-                onClick={() => {
-                  setIsInventoryOpen(true);
-                }}
-                className={`w-full h-20 rounded-xl border-[3px] flex items-center px-4 cursor-pointer transition-all hover:-translate-y-1 active:scale-95 group
-                  ${equippedWorker 
-                    ? 'bg-gradient-to-r from-blue-500 to-indigo-600 border-blue-600 shadow-md' 
-                    : 'bg-white border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50/80'
-                  }`
-                }
-              >
-                {equippedWorker ? (
-                  <div className="flex items-center gap-4 w-full animate-fade-in">
-                    <span className="text-4xl drop-shadow-md group-hover:scale-110 transition-transform">🧑‍🔧</span>
-                    <div className="flex flex-col items-start text-white">
-                      <span className="bg-blue-800/50 font-black px-2 py-0.5 rounded text-[10px] shadow-sm mb-0.5 border border-blue-400/50">
-                        Lv.{equippedWorker.level}
-                      </span>
-                      <span className="font-bold text-lg tracking-wide">{equippedWorker.name}</span>
-                    </div>
-                    <span className="ml-auto text-blue-100 text-xs font-bold px-3 py-1.5 bg-black/20 rounded-lg hover:bg-black/40 transition-colors">
-                      변경하기
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-3 opacity-70 group-hover:opacity-100 transition-opacity w-full justify-center">
-                    <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center border-2 border-slate-200 group-hover:border-blue-400 group-hover:bg-blue-100">
-                      <UserPlus className="w-5 h-5 text-slate-400 group-hover:text-blue-500" />
-                    </div>
-                    <span className="text-slate-600 font-bold text-sm">클릭하여 인벤토리 열기</span>
-                  </div>
-                )}
-              </button>
-            </div>
-          )}
-
           {/* 작업 설정 */}
           {!data.isWorking ? (
-            <div className="bg-slate-50 rounded-2xl p-6 flex flex-col gap-4 border-2 border-slate-100">
-              <label className="text-sm font-bold text-slate-500 uppercase tracking-widest">생산 수량 설정</label>
-              <div className="flex items-center gap-4">
-                <button className="w-12 h-12 rounded-xl bg-white border-2 border-slate-200 font-black text-slate-700 hover:bg-slate-50 active:scale-95 transition-all text-xl shadow-sm cursor-pointer" onClick={() => setQty(q => Math.max(1, q - 1))}>−</button>
-                <input
-                  type="number" min={1} value={qty}
-                  onChange={e => setQty(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="flex-1 text-center text-3xl font-black border-2 border-slate-200 rounded-xl py-2 bg-white text-slate-800 focus:outline-none focus:border-indigo-400"
-                />
-                <button className="w-12 h-12 rounded-xl bg-white border-2 border-slate-200 font-black text-slate-700 hover:bg-slate-50 active:scale-95 transition-all text-xl shadow-sm cursor-pointer" onClick={() => setQty(q => q + 1)}>+</button>
+            <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-2xl p-6 flex flex-col gap-5 border border-slate-200 shadow-sm relative overflow-hidden">
+              {/* 배경 장식 */}
+              <div className="absolute -right-6 -top-6 text-9xl opacity-5 pointer-events-none">🏭</div>
+              
+              <label className="text-sm font-black text-slate-400 uppercase tracking-widest text-center relative z-10">생산 수량 설정</label>
+              
+              <div className="flex items-center justify-center gap-3 relative z-10">
+                <button 
+                  className="w-14 h-14 rounded-2xl bg-white border-b-4 border-2 border-slate-200 border-b-slate-300 font-black text-slate-400 hover:bg-slate-50 hover:text-slate-600 hover:border-b-slate-400 active:translate-y-1 active:border-b-0 transition-all text-2xl shadow-sm flex items-center justify-center cursor-pointer select-none" 
+                  onClick={(e) => { e.stopPropagation(); setQty(q => Math.max(1, q - 1)); }}
+                >−</button>
+                <div className="relative group flex-1">
+                  <input
+                    type="number" min={1} value={qty}
+                    onChange={e => {
+                      const val = parseInt(e.target.value, 10);
+                      if (!isNaN(val) && val >= 1) setQty(val);
+                      else if (e.target.value === '') setQty(1);
+                    }}
+                    onKeyDown={e => {
+                      // 모달 내 input에서 키 이벤트가 Three.js 캔버스로 전파되지 않도록 모두 차단
+                      e.stopPropagation();
+                    }}
+                    onKeyUp={e => e.stopPropagation()}
+                    onFocus={e => {
+                      e.stopPropagation();
+                      // canvas 포커스 탈취 방지: input에 포커스 고정
+                      e.target.select();
+                    }}
+                    onClick={e => e.stopPropagation()}
+                    className="w-full text-center text-4xl font-black border-2 border-b-4 border-slate-200 rounded-2xl py-3 bg-white text-indigo-900 focus:outline-none focus:border-indigo-400 focus:border-b-indigo-500 shadow-inner hover:border-indigo-300 transition-colors"
+                  />
+                  <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none">
+                    <span className="text-indigo-300 font-bold text-base select-none bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">단위</span>
+                  </div>
+                </div>
+                <button 
+                  className="w-14 h-14 rounded-2xl bg-white border-b-4 border-2 border-slate-200 border-b-slate-300 font-black text-slate-400 hover:bg-slate-50 hover:text-slate-600 hover:border-b-slate-400 active:translate-y-1 active:border-b-0 transition-all text-2xl shadow-sm flex items-center justify-center cursor-pointer select-none" 
+                  onClick={(e) => { e.stopPropagation(); setQty(q => q + 1); }}
+                >+</button>
               </div>
-              <div className="flex flex-col gap-2 pt-4 border-t-2 border-slate-200 mt-2">
-                <div className="flex justify-between text-sm font-bold">
-                  <span className="text-slate-500">필요 재료</span>
-                  <span className={`${hasEnough ? 'text-slate-800' : 'text-rose-500'}`}>{totalMaterial}개</span>
+
+
+              <div className="flex flex-col gap-3 pt-5 border-t-2 border-slate-200 bg-white/50 rounded-xl px-4 py-3 relative z-10 mt-2">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500 font-bold flex items-center gap-1.5"><span className="text-lg">📦</span> 소모 재료 <span className="text-[10px] text-slate-400 font-normal bg-slate-100 rounded px-1.5 py-0.5">창고</span></span>
+                  <div className={`font-black tracking-widest px-3 py-1.5 rounded-lg border-b-2 flex items-center gap-2 ${hasEnough ? 'text-indigo-600 bg-indigo-50 border-indigo-200 border-b-indigo-300' : 'text-rose-500 border-rose-200 border-b-rose-300 bg-rose-50'}`}>
+                    <span>{totalMaterial}</span>
+                    <span className="text-xs text-slate-300 font-bold">/</span> 
+                    <span className={hasEnough ? 'text-indigo-400' : 'text-rose-400'}>{warehouseStock}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between text-sm font-bold">
-                  <span className="text-slate-500">창고 재고</span>
-                  <span className="text-slate-800">{warehouseStock}개</span>
-                </div>
+                
                 {!hasEnough && (
-                  <p className="text-xs font-bold text-rose-500 mt-2 bg-rose-50 border-2 border-rose-100 rounded-xl p-3">
-                    ⚠️ 재료가 부족합니다. ({totalMaterial - warehouseStock}개 더 필요)
+                  <p className="text-xs font-bold text-rose-500 mt-1 flex items-center gap-1.5 justify-center animate-pulse bg-rose-100/50 py-2 rounded-lg border border-rose-200">
+                    ⚠️ 재료가 <strong className="text-rose-600">{totalMaterial - warehouseStock}개</strong> 더 필요해요!
                   </p>
                 )}
               </div>
@@ -201,10 +229,12 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
           <div className="flex gap-3 mt-2">
             {!data.isWorking ? (
               <button
-                className={`flex-1 py-4 rounded-xl font-black text-lg transition-all shadow-lg ${hasEnough ? 'bg-indigo-500 hover:bg-indigo-600 active:scale-95 text-white shadow-indigo-200 cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}`}
-                disabled={!hasEnough}
-                onClick={() => { if (hasEnough) { data.onStart?.(qty); onClose(); } }}
-              >작업 시작 ▶</button>
+                className={`flex-1 py-4 rounded-xl font-black text-lg transition-all shadow-lg ${(hasEnough && equippedWorker) ? 'bg-indigo-500 hover:bg-indigo-600 active:scale-95 text-white shadow-indigo-200 cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}`}
+                disabled={!hasEnough || !equippedWorker}
+                onClick={() => { if (hasEnough && equippedWorker) { data.onStart?.(qty); onClose(); } }}
+              >
+                {!equippedWorker ? "일꾼을 배치해주세요" : (!hasEnough ? "재료 부족" : "작업 시작 ▶")}
+              </button>
             ) : (
               <button
                 className="flex-1 py-4 rounded-xl bg-gradient-to-r from-emerald-400 to-emerald-500 text-white font-black text-lg hover:from-emerald-500 active:scale-95 cursor-pointer shadow-lg shadow-emerald-200"

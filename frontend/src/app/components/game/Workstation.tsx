@@ -6,6 +6,7 @@ import { Html } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGameStore } from "../../../store/gameStore";
+import { WorkstationAPI } from "../../../api/gameApi";
 import { EnvModel, HoverableGroup } from "./BaseComponents";
 import { AreaLabel } from "./BuildingComponents";
 import {
@@ -86,7 +87,7 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
     const updateProduct = useGameStore(state => state.updateProduct);
     const usedSlots = useGameStore(state => state.getWarehouseUsage().usedSlots);
     const warehouseMaxSlots = useGameStore(state => state.warehouseMaxSlots);
-    
+
     const flyIdRef = useRef(0);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -114,24 +115,69 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
     ];
 
     useEffect(() => {
-        if (isWorking && !isCompleted && !cannotProduce) {
-            intervalRef.current = setInterval(() => {
-                flyIdRef.current += 1;
-                setFlyingBars(prev => [...prev, flyIdRef.current]);
-                setStoredCount(prev => Math.min(prev + 1, MAX_GOLD_CAP));
-                setProgress(p => {
-                    if (p >= 98) { if (intervalRef.current) clearInterval(intervalRef.current); return 100; }
-                    return p + 2;
-                });
-            }, 1500);
+        let isCancelled = false;
+        if (isWorking && !cannotProduce) {
+            // 초기 1회 실행
+            WorkstationAPI.getStatus(1).then(res => {
+                if (!isCancelled && res.data) {
+                    // progress = 퍼센트(0~100), producedQuantity = 실제 개수
+                    const pct: number = res.data.progress ?? 0;
+                    const qty: number = (res.data as any).producedQuantity ?? 0;
+                    setProgress(pct);
+                    setStoredCount(qty);
+                }
+            }).catch(() => { });
+
+            intervalRef.current = setInterval(async () => {
+                try {
+                    const res = await WorkstationAPI.getStatus(1);
+                    if (!isCancelled && res.data) {
+                        const pct: number = res.data.progress ?? 0;
+                        const qty: number = (res.data as any).producedQuantity ?? 0;
+
+                        setProgress(pct);
+
+                        // 100% 달성 시 인터벌 정지 + 완료 알림
+                        if (pct >= 100 && intervalRef.current) {
+                            clearInterval(intervalRef.current);
+                            intervalRef.current = null;
+                            useGameStore.getState().addAlert({ message: "작업 완료! 🎉", detail: "금괴를 클릭해서 창고로 가져가세요." });
+                        }
+
+                        // 개수 증가 시 flying bar 발사
+                        setStoredCount(prev => {
+                            const diff = qty - prev;
+                            if (diff > 0) {
+                                const count = Math.min(diff, 3);
+                                for (let i = 0; i < count; i++) {
+                                    setTimeout(() => {
+                                        flyIdRef.current += 1;
+                                        setFlyingBars(fb => [...fb, flyIdRef.current]);
+                                    }, i * 250);
+                                }
+                            }
+                            return qty;
+                        });
+                    }
+                } catch (e) {
+                    console.error("작업장 상태 조회 오류:", e);
+                }
+            }, 3000);
         } else {
+
+
             if (intervalRef.current) clearInterval(intervalRef.current);
         }
-        return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-    }, [isWorking, isCompleted, cannotProduce]);
+        return () => { isCancelled = true; if (intervalRef.current) clearInterval(intervalRef.current); };
+    }, [isWorking, cannotProduce]);
 
-    // 금괴 더미: 총 적재 용량(500) 기준으로 시각화
-    const totalGold = Math.floor((storedCount / MAX_GOLD_CAP) * MAX_TOTAL);
+    // 금괴 더미: 총 적재 용량(500) 기준으로 시각화 (최소 1개 적재시 1단계 모델 바로 노출)
+    let totalGold = 0;
+    if (storedCount > 0) {
+        // 최대 12단계(MAX_TOTAL), 적어도 1단계 노출, 비율에 따라 단계 점진적 상승
+        totalGold = Math.max(1, Math.floor((storedCount / MAX_GOLD_CAP) * MAX_TOTAL));
+    }
+
     const handleBarArrive = useCallback((barId: number) => {
         setFlyingBars(prev => prev.filter(id => id !== barId));
     }, []);
@@ -139,15 +185,11 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
     const nextPileIdx = levels.findIndex(l => l < GOLD_STACK_MODELS.length);
     const targetPile = nextPileIdx >= 0 ? nextPileIdx : MAX_PILES - 1;
 
-    const handleStore = useCallback(() => {
-        if (storedCount > 0) { onStoreGold?.(storedCount); setStoredCount(0); setProgress(0); }
-    }, [storedCount, onStoreGold]);
-
     const showProgressGauge = isWorking && !isCompleted && !isFull;
     const showFullGauge = showProgressGauge && (inWorkstation || gaugeHovered);
 
     return (
-        <HoverableGroup position={position} onClick={onOpenModal}>
+        <group position={position}>
             <mesh position={[0, -0.04, 0]} receiveShadow>
                 <boxGeometry args={[BW, 0.08, BW]} />
                 <meshStandardMaterial color="#8b7355" />
@@ -160,37 +202,79 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
                 </React.Suspense>
             </group>
 
-            {stackPositions.map((pos, i) => (
-                <group key={i} position={pos}><GoldBarStack stackLevel={levels[i]} /></group>
-            ))}
+            <group
+                onPointerEnter={(e) => { e.stopPropagation(); if (storedCount > 0) document.body.style.cursor = 'pointer'; setGaugeHovered(true); }}
+                onPointerLeave={(e) => { e.stopPropagation(); document.body.style.cursor = 'auto'; setGaugeHovered(false); }}
+                onClick={async (e) => {
+                    e.stopPropagation();
+                    if (storedCount > 0 && !isWarehouseFull) {
+                        try {
+                            const added = updateProduct(storedCount);
+                            if (added > 0) {
+                                await WorkstationAPI.collect(1);
+                                setStoredCount(0);
+                                onStoreGold?.(added);
+                                setProgress(0);
+                            }
+                        } catch (err) {
+                            console.error("수령 실패:", err);
+                        }
+                    } else if (isWarehouseFull) {
+                        useGameStore.getState().addAlert({ message: "수령 불가", detail: "창고가 가득 찼습니다." });
+                    }
+                }}
+            >
+                {/* 클릭 판정을 위한 투명 히트박스 */}
+                <mesh position={[half * 0.45, 0.5, -half * 0.45]}>
+                    <boxGeometry args={[half * 1.5, 1, half * 1.5]} />
+                    <meshBasicMaterial transparent opacity={0.0} depthWrite={false} />
+                </mesh>
+
+                {stackPositions.map((pos, i) => (
+                    <group key={i} position={pos}><GoldBarStack stackLevel={levels[i]} /></group>
+                ))}
+            </group>
+
+            {/* 작업장 진행 게이지 (progressbar) */}
+            {isWorking && !cannotProduce && (
+                <group position={[0, 2.7, 0]}>
+                    <Html center zIndexRange={[20, 0]}>
+                        <div className="flex flex-col items-center gap-1 pointer-events-none transition-opacity duration-300 w-32" style={{ opacity: showFullGauge ? 1 : 0.8 }}>
+                            <div className="bg-gray-900/80 rounded border border-gray-700 w-full overflow-hidden shadow-lg h-3 relative">
+                                <div
+                                    className="h-full bg-gradient-to-r from-emerald-400 to-green-500 transition-all duration-300 ease-out"
+                                    style={{ width: `${progress}%` }}
+                                />
+                                <div className="absolute inset-0 bg-white/20 opacity-50 animate-[pulse_1s_ease-in-out_infinite]" />
+                            </div>
+                            <div className="text-[10px] font-bold text-emerald-300 tracking-wider bg-gray-900/80 px-2 py-0.5 rounded-full border border-gray-800">
+                                생산 진행도 {progress}%
+                            </div>
+                        </div>
+                    </Html>
+                </group>
+            )}
 
             {/* 금괴 더미 위 카운터 */}
-            <group position={[0, 1.8, -half * 0.7]}>
-                <Html center zIndexRange={[10, 0]}>
-                    <div className="flex flex-col items-center gap-1" title={cannotProduce ? "더 이상 생산할 수 없어요(공간 부족)" : "작업장 임시 저장소"}>
-                        {cannotProduce && <span className="text-3xl animate-bounce drop-shadow-md cursor-help">⚠️</span>}
-                        <div className="bg-black/70 text-white text-xs font-mono rounded px-2 py-0.5 tracking-widest">
-                            {String(storedCount).padStart(3, '0')}/{MAX_GOLD_CAP}
+            {isWorking && storedCount > 0 && (
+                <group position={[0, 1.8, -half * 0.7]}>
+                    <Html center zIndexRange={[10, 0]}>
+                        <div
+                            className="flex flex-col items-center gap-1 transition-transform pointer-events-none"
+                        >
+                            {cannotProduce && <span className="text-3xl animate-bounce drop-shadow-md cursor-help mb-1">⚠️</span>}
+                            <div className={`border-2 text-xs font-black rounded-lg px-2.5 py-1 tracking-widest shadow-[0_0_10px_rgba(52,211,153,0.3)] select-none transition-colors 
+                                ${isWarehouseFull
+                                    ? 'bg-rose-900/80 border-rose-400/50 text-rose-300 shadow-[0_0_10px_rgba(244,63,94,0.3)]'
+                                    : 'bg-gray-900/80 border-emerald-400/50 text-emerald-300 group-hover:bg-gray-800'
+                                }`}
+                            >
+                                {String(storedCount).padStart(3, '0')}<span className="text-gray-400 font-bold">/{MAX_GOLD_CAP}</span>
+                            </div>
                         </div>
-                        {storedCount > 0 && (
-                            <button
-                                className={`mt-1 px-2 py-0.5 ${isWarehouseFull ? 'bg-red-500 hover:bg-red-600' : 'bg-emerald-500 hover:bg-emerald-600'} text-white text-[10px] font-bold rounded shadow transition-colors`}
-                                onClick={(e) => { 
-                                    e.stopPropagation(); 
-                                    if (storedCount > 0) {
-                                      const added = updateProduct(storedCount);
-                                      if (added > 0) {
-                                        setStoredCount(prev => prev - added);
-                                        onStoreGold?.(added); 
-                                        if (added === storedCount) setProgress(0); // 모두 옮겼을때만 게이지 리셋
-                                      }
-                                    }
-                                }}
-                            >📦 {isWarehouseFull ? '창고 부족' : '창고에 저장'}</button>
-                        )}
-                    </div>
-                </Html>
-            </group>
+                    </Html>
+                </group>
+            )}
 
             {flyingBars.map(barId => (
                 <FlyingGoldBar key={barId} startPos={beltEndPos} endPos={stackPositions[targetPile]} onArrive={() => handleBarArrive(barId)} />
@@ -198,54 +282,7 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
 
             <AreaLabel label="작업장" />
 
-            {/* 진행도 UI */}
-            <group position={[0, 4, 0]}>
-                <Html center zIndexRange={[10, 0]}>
-                    {(isCompleted || cannotProduce) ? (
-                        <div title="더 이상 생산할 수 없어요(공간 부족)" className="cursor-help">
-                          <img src="/ui_icons/warning_128x128.png" alt="Warning" className="w-14 h-14 object-contain animate-bounce drop-shadow-md" />
-                        </div>
-                    ) : !isWorking ? (
-                        <img src="/ui_icons/warning_128x128.png" alt="Stopped" className="w-14 h-14 object-contain drop-shadow-md opacity-80" style={{ filter: 'grayscale(100%)' }} />
-                    ) : showFullGauge ? (
-                        <div
-                            className="relative flex flex-col items-center justify-center cursor-pointer min-w-[140px]"
-                            onMouseLeave={() => setGaugeHovered(false)}
-                        >
-                            <span className="text-white text-[12px] font-black tracking-widest mb-1 drop-shadow-md">{progress}%</span>
-                            <div className="relative w-32 h-6 flex items-center justify-center">
-                                {/* 배경 (빈 게이지) */}
-                                <img src="/ui_icons/Progressbar_Gold.png" alt="Gauge BG" className="absolute inset-0 w-full h-full object-fill drop-shadow" />
-                                {/* 채워지는 게이지 (클리핑 마스크 느낌으로 width 조정) */}
-                                <div
-                                    className="absolute left-[3%] top-[15%] h-[70%] overflow-hidden transition-all duration-700 ease-out flex justify-start items-center"
-                                    style={{ width: `${progress * 0.94}%` }}
-                                >
-                                    <img src="/ui_icons/Progressbar_Gold_3.png" alt="Gauge Fill" className="h-full w-[112px] max-w-none object-fill" />
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <div
-                            className="relative flex items-center justify-center cursor-pointer min-w-[80px]"
-                            onMouseEnter={() => setGaugeHovered(true)}
-                        >
-                            <div className="relative w-20 h-4 flex items-center justify-center">
-                                {/* 축소된 배경 */}
-                                <img src="/ui_icons/Progressbar_Gold.png" alt="Gauge BG" className="absolute inset-0 w-full h-full object-fill drop-shadow" />
-                                {/* 축소된 채워지는 게이지 */}
-                                <div
-                                    className="absolute left-[3%] top-[15%] h-[70%] overflow-hidden transition-all duration-700 ease-out flex justify-start items-center"
-                                    style={{ width: `${progress * 0.94}%` }}
-                                >
-                                    <img src="/ui_icons/Progressbar_Gold_3.png" alt="Gauge Fill" className="h-full w-[70px] max-w-none object-fill" />
-                                </div>
-                            </div>
-                            <span className="absolute text-white text-[9px] font-black drop-shadow-md">{progress}%</span>
-                        </div>
-                    )}
-                </Html>
-            </group>
-        </HoverableGroup>
+            {/* 게이지 제거 및 HoverableGroup 제거에 따른 닫기 태그 변경 */}
+        </group>
     );
 }

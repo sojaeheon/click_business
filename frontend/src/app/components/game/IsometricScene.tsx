@@ -4,7 +4,7 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { MapControls, useGLTF, useAnimations, Html } from "@react-three/drei";
 import * as THREE from "three";
 import { SkeletonUtils } from "three-stdlib";
-import { useGame } from "../../../store/gameStore";
+import { useGame, useGameStore } from "../../../store/gameStore";
 import { WorkstationAPI } from "../../../api/gameApi";
 
 import {
@@ -21,6 +21,7 @@ import { Workstation } from "./Workstation";
 // ✨ 잘 분리해둔 모달을 불러옵니다!
 import { GlobalDialog, ConfirmData } from "../modals/GlobalDialog";
 import { useAlertStore } from "../../../store/useAlertStore";
+import { ControlGuideModal } from "../modals/ControlGuideModal";
 
 // ─────────────────────────────────────────────────────────────────
 // 🌊 1. 바다 타일 1장 (OceanTile) - 구조 변경 완벽 대응!
@@ -163,23 +164,33 @@ function PlayerCharacter({
       }
     };
     const onDown = (e: KeyboardEvent) => {
-      // 1. 만약 모달이 꺼져있고 영역 안에 있는데 스페이스를 눌렀다면 다시 진입 모달을 띄운다.
-      if (e.code === 'Space' && !e.repeat && lastBuildingRef.current && !isPaused) {
-        const b = BUILDING_AREAS.find(a => a.name === lastBuildingRef.current);
-        if (b) {
-          onEnterBuilding(b.name, b.label);
-          return;
-        }
-      }
-
       if (isPaused) return;
 
-      if (e.code === 'Space' && !e.repeat && !lastBuildingRef.current) {
-        // 이모트는 V 나 C키 등으로 빼거나 길게 누르기로 뺄 수 있지만, 일단 점프로 덮어씁니다.
-        // 건물 밖에서 Space를 누르면 Jump
+      // 1. 만약 모달이 꺼져있고 영역 안에 있는데 스페이스를 눌렀다면 다시 진입 모달을 띄운다.
+      if (e.code === 'Space' && !e.repeat) {
+        // 1-1. 건물 진입
+        if (lastBuildingRef.current) {
+          const b = BUILDING_AREAS.find(a => a.name === lastBuildingRef.current);
+          if (b) {
+            onEnterBuilding(b.name, b.label);
+            return;
+          }
+        }
+        
+        // 1-2. 작업장 상호작용 (요청에 따라 스페이스바에서 상호작용 해제)
+        // if (lastInWorkstation.current && !isWorking_ref.current) {
+        //   onOpenWorkstationModal?.();
+        //   return;
+        // }
+
+        // 1-3. 필드 점프 (위의 상호작용이 없었을 때만)
         if (modeRef.current !== "jumping" && modeRef.current !== "spawning") {
           keysRef.current.jump = true;
         }
+      }
+
+      if (e.code === 'KeyE' && !e.repeat && !isPaused) {
+        setShowMenu(prev => !prev);
       }
 
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
@@ -302,17 +313,18 @@ function PlayerCharacter({
         }
       }
 
-      // 4. 작업장 충돌
-      if (canMove && posRef.current.y < 1.0) {
-        const dx = nextPos.x - WORKSTATION_POS[0];
-        const dz = nextPos.z - WORKSTATION_POS[1];
-        if (dx * dx + dz * dz < 2.0 * 2.0) {
-          const oldDist = (posRef.current.x - WORKSTATION_POS[0]) ** 2 + (posRef.current.z - WORKSTATION_POS[1]) ** 2;
-          if (dx * dx + dz * dz < oldDist) {
-            canMove = false;
-          }
-        }
-      }
+      // 4. 작업장 충돌 - 제거: 캐릭터가 작업장 안으로 들어가야 상호작용 가능
+      // if (canMove && posRef.current.y < 1.0) {
+      //   const dx = nextPos.x - WORKSTATION_POS[0];
+      //   const dz = nextPos.z - WORKSTATION_POS[1];
+      //   if (dx * dx + dz * dz < 2.0 * 2.0) {
+      //     const oldDist = (posRef.current.x - WORKSTATION_POS[0]) ** 2 + (posRef.current.z - WORKSTATION_POS[1]) ** 2;
+      //     if (dx * dx + dz * dz < oldDist) {
+      //       canMove = false;
+      //     }
+      //   }
+      // }
+
 
       groupRef.current.rotation.y = Math.atan2(dir.x, dir.z);
 
@@ -350,10 +362,15 @@ function PlayerCharacter({
     const halfBW = BW / 2;
     const inWorkstation = Math.abs(px - WORKSTATION_POS[0]) < halfBW && Math.abs(pz - WORKSTATION_POS[1]) < halfBW;
 
-    if (inWorkstation && !isWorking_ref.current && !lastInWorkstation.current) onOpenWorkstationModal?.();
     isWorking_ref.current = isWorkstationWorking;
+    const prevInWorkstation = lastInWorkstation.current;
     lastInWorkstation.current = inWorkstation;
     onInWorkstation?.(inWorkstation);
+    
+    // 작업장 진입함(오직 false -> true 순간) & 작업 중이 아닐 때 자동으로 모달 오픈
+    if (!prevInWorkstation && inWorkstation && !isWorkstationWorking) {
+      onOpenWorkstationModal?.();
+    }
 
     let newMode: "idle" | "walking" | "working" | "jumping" = "idle";
 
@@ -706,7 +723,6 @@ export function IsometricScene({ isLoginMode = false }: { isLoginMode?: boolean 
       // 3. 키보드 입력 매핑
       switch (e.key.toLowerCase()) {
         // 🎒 인벤토리
-        case 'e':
         case 'i': toggleModal("inventory"); break;
 
         // 🏆 명예의 전당 (R -> K로 변경하여 새로고침 충돌 방지)
@@ -769,8 +785,11 @@ export function IsometricScene({ isLoginMode = false }: { isLoginMode?: boolean 
   }, []);
 
   const handleWrapperClick = useCallback(() => {
-    refocusCanvas(canvasWrapRef.current);
-  }, []);
+    // 모달이 열려있으면 캔버스 포커스 이동 금지 (input 포커스 유지)
+    if (!dialogData) {
+      refocusCanvas(canvasWrapRef.current);
+    }
+  }, [dialogData]);
 
   return (
     <div className="relative w-full h-screen flex flex-col overflow-hidden font-sans bg-[#0a3d6b]">
@@ -809,6 +828,8 @@ export function IsometricScene({ isLoginMode = false }: { isLoginMode?: boolean 
         </Canvas>
         {/* ✨ 불러온 GlobalDialog를 여기에 렌더링합니다! */}
         {dialogData && <GlobalDialog data={dialogData} onClose={closeDialog} />}
+        {/* ✨ 조작 가이드 모달 추가 */}
+        {!isLoginMode && <ControlGuideModal />}
       </div>
     </div>
   );
