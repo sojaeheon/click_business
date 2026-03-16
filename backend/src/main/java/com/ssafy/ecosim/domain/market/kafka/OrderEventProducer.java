@@ -9,9 +9,7 @@ import org.springframework.stereotype.Component;
  * 주문 관련 Kafka 이벤트를 발행하는 프로듀서입니다.
  *
  * Topics:
- *   - market.order.created  : 주문 생성 이벤트 (key = item_id)
- *   - market.order.cancelled: 주문 취소 이벤트 (key = item_id)
- *   - market.trade.executed : 주문 체결 이벤트 (key = item_id)
+ *   - market.events (단일 토픽 사용)
  */
 @Slf4j
 @Component
@@ -57,5 +55,4 @@ public class OrderEventProducer {
                     }
                 });
     }
-
 }

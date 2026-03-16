@@ -8,13 +8,21 @@ Client
    ↓
 Backend Service API
    ↓
+<<<<<<< HEAD:backend/src/main/java/com/ssafy/ecosim/domain/market/kafka/kafka_event_contract.md
 Kafka (market.events : order.created, order.cancelled)
+=======
+Kafka (order.made)
+>>>>>>> e596c003a1b469d7e8ee617af4d52cae2a1e342f:backend/src/main/java/com/ssafy/ecosim/order.made_event_contract.md
    ↓
 Redis
    ↓
 Matching Engine
    ↓
+<<<<<<< HEAD:backend/src/main/java/com/ssafy/ecosim/domain/market/kafka/kafka_event_contract.md
 Kafka (market.events : trade.executed)
+=======
+Kafka (order.matched)
+>>>>>>> e596c003a1b469d7e8ee617af4d52cae2a1e342f:backend/src/main/java/com/ssafy/ecosim/order.made_event_contract.md
    ↓
 DB / HDFS
 ```
@@ -23,12 +31,18 @@ DB / HDFS
 
 | Topic | Description |
 |------|-------------|
+<<<<<<< HEAD:backend/src/main/java/com/ssafy/ecosim/domain/market/kafka/kafka_event_contract.md
 | market.events | 시장 도메인의 모든 이벤트 (주문 생성, 취소, 체결) |
+=======
+| order.made | 주문 생성 및 취소 이벤트 |
+| order.matched | 주문 체결 이벤트 |
+>>>>>>> e596c003a1b469d7e8ee617af4d52cae2a1e342f:backend/src/main/java/com/ssafy/ecosim/order.made_event_contract.md
 
 ## Partition Key
 
 | Topic | Key | Reason |
 |------|------|------|
+<<<<<<< HEAD:backend/src/main/java/com/ssafy/ecosim/domain/market/kafka/kafka_event_contract.md
 | market.events | item_id (String) | 동일 아이템에 대한 모든 처리 순서를 보장하기 위함 |
 
 ## Event Schema (Envelope + Payload)
@@ -37,6 +51,10 @@ DB / HDFS
 
 ### 1. 주문 생성 / 취소 (Order Event Envelope)
 **Topic**: `market.events`
+=======
+| order.made | item | 동일 아이템 주문의 순서를 보장하기 위함 |
+| order.matched | item | 동일 아이템 거래 순서를 유지하기 위함 |
+>>>>>>> e596c003a1b469d7e8ee617af4d52cae2a1e342f:backend/src/main/java/com/ssafy/ecosim/order.made_event_contract.md
 
 | Field | Type | Required | Description |
 |------|------|------|-------------|
@@ -52,6 +70,7 @@ DB / HDFS
 #### Payload: `market.order.created`
 ```json
 {
+<<<<<<< HEAD:backend/src/main/java/com/ssafy/ecosim/domain/market/kafka/kafka_event_contract.md
   "event_id": "8d7a0e32-6b4e-4a2f-8b2c-3b51a12c2d01",
   "event_type": "market.order.created",
   "event_version": 1,
@@ -91,6 +110,22 @@ DB / HDFS
     "is_virtual": false,
     "cancelled_at": "2026-03-16T10:05:00Z"
   }
+=======
+  "event_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "event_time": "2026-03-06T10:00:00Z",
+  "event_type": "ORDER_CREATED",
+  "market_order_id": 123,
+  "item": "GOLD_ORE",
+  "company_id": 10,
+  "order_type": "BUY",
+  "price": 1000,
+  "total_quantity": 5,
+  "remaining_quantity": 5,
+  "status": "OPEN",
+  "is_virtual": false,
+  "created_at": "2026-03-06T10:00:00Z",
+  "updated_at": "2026-03-06T10:00:00Z"
+>>>>>>> e596c003a1b469d7e8ee617af4d52cae2a1e342f:backend/src/main/java/com/ssafy/ecosim/order.made_event_contract.md
 }
 ```
 
@@ -113,6 +148,7 @@ DB / HDFS
 #### Payload: `market.trade.executed`
 ```json
 {
+<<<<<<< HEAD:backend/src/main/java/com/ssafy/ecosim/domain/market/kafka/kafka_event_contract.md
   "event_id": "c928b19a-ef18-4a9b-81d2-09f1a8c9e2b1",
   "event_type": "market.trade.executed",
   "event_version": 1,
@@ -131,6 +167,22 @@ DB / HDFS
     "sell_remaining_quantity": null,
     "executed_at": "2026-03-16T10:02:00Z"
   }
+=======
+  "event_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "event_time": "2026-03-06T10:00:00Z",
+  "event_type": "ORDER_CANCELLED",
+  "market_order_id": 123,
+  "item": "GOLD_ORE",
+  "company_id": 10,
+  "order_type": "BUY",
+  "price": 1000,
+  "total_quantity": 5,
+  "remaining_quantity": 5,
+  "status": "CANCELLED",
+  "is_virtual": false,
+  "created_at": "2026-03-06T10:00:00Z",
+  "updated_at": "2026-03-06T10:05:00Z"
+>>>>>>> e596c003a1b469d7e8ee617af4d52cae2a1e342f:backend/src/main/java/com/ssafy/ecosim/order.made_event_contract.md
 }
 ```
 *(참고: `trade_id`, `remaining_quantity` 등은 향후 고도화 시 매칭엔진이나 DB 적재 단계에서 채워짐)*
@@ -140,6 +192,7 @@ DB / HDFS
 ## 디렉토리 구조
 ### backend
 ```
+<<<<<<< HEAD:backend/src/main/java/com/ssafy/ecosim/domain/market/kafka/kafka_event_contract.md
 /S14P21B109/backend/src/main/java/com/ssafy/ecosim/domain/market/kafka/
 ├─ kafka_event_contract.md             # Event Contract 파일
 ├─ OrderEventEnvelope.java             # 주문 Kafka Envelope
@@ -152,4 +205,28 @@ DB / HDFS
 ├─ KafkaOrderEventPublisher.java       # 주문 Publisher 구현체 (Envelope 포장)
 ├─ TradeEventPublisher.java            # 체결 Publisher 인터페이스
 └─ KafkaTradeEventPublisher.java       # 체결 Publisher 구현체 (Envelope 포장)
+=======
+/S14P21B109/backend/src/main/java/com/ssafy/ecosim/
+├─ kafka_event_contract.md                  # Event Contract 파일
+├─ domain
+│  └─ market
+│     └─ kafka
+│        ├─ OrderMadeEventProducer.java     # Kafka Producer
+│        ├─ OrderMadeEvent.java             # 주문 생성 이벤트
+│        └─ OrderMatchedEvent.java          # 주문 체결 이벤트
+│
+└─ global
+   └─ config
+      ├─ KafkaProducerConfig.java           # Kafka Producer 설정
+      └─ RedisConfig.java                   # Redis 설정
+```
+### bigdata
+```
+/S14P21B109/bigdata/kafka/
+├── configs                                 # Kafka 설정
+├── consumers                               # Kafka Consumer
+├── producers                               # Kafka Producer
+├── scripts
+└── kafkaReadme.md
+>>>>>>> e596c003a1b469d7e8ee617af4d52cae2a1e342f:backend/src/main/java/com/ssafy/ecosim/order.made_event_contract.md
 ```

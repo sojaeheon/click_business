@@ -13,11 +13,10 @@ import java.util.UUID;
 
 /**
  * 실제 Kafka 연동 이벤트 발행기입니다.
- * OrderEventProducer를 통해 각 토픽으로 이벤트를 발행합니다.
+ * OrderMadeEventProducer를 통해 'market.events' 단일 토픽으로 이벤트를 발행합니다.
  *
  * - market.order.created  : 주문 생성
  * - market.order.cancelled: 주문 취소
- * - market.trade.executed : 체결
  */
 @Slf4j
 @Component

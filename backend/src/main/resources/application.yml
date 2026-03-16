@@ -1,0 +1,49 @@
+server:
+  port: 8000
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/ecosim}
+    driver-class-name: org.postgresql.Driver
+    username: ${SPRING_DATASOURCE_USERNAME:ecosim}
+    password: ${SPRING_DATASOURCE_PASSWORD:ecosim}
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+  flyway:
+    enabled: true
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:dummy-client-id}
+            client-secret: ${GOOGLE_CLIENT_SECRET:dummy-client-secret}
+            scope: profile, email
+
+jwt:
+  secret: ${JWT_SECRET:vmsrehkbuckettestbacktokenKeyforEcoSimulationProject2026SSAFY}
+  expiration-time: 2592000000 # 30일 (테스트 편의를 위해 연장)
+
+spring.autoconfigure.exclude: org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+
+# 창고 도메인 설정
+warehouse:
+  initial-slot-count: 20
+  expand-slot-amount: 5
+  max-stack-size: 100
+  max-expandable-limit: 100 # 창고가 무제한으로 확장되는 것을 방지하기 위한 최대 슬롯 수 정의
+
+# API 요청 로그 출력 설정
+logging:
+  level:
+    org.springframework.web: DEBUG
+    # org.springframework.security: DEBUG (필요시 보안 필터 로그도 볼 수 있습니다)
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
