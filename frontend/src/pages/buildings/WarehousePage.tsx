@@ -81,7 +81,7 @@ export function WarehousePage() {
 
 
       {/* Shelves */}
-      <div className="flex-1 p-6 flex flex-col justify-center max-w-4xl mx-auto w-full">
+      <div className="flex-1 p-6 flex flex-col justify-center max-w-5xl mx-auto w-full">
         {/* Shelf structure - Modern Glass/wood mix */}
         <div className="relative bg-white/40 backdrop-blur-2xl rounded-3xl p-8 border border-white/50 shadow-2xl">
           <div className="px-4">
@@ -152,17 +152,6 @@ export function WarehousePage() {
             />
           </div>
         </div>
-      </div>
-
-      {/* Back button */}
-      <div className="p-6 flex justify-center">
-        <button
-          onClick={closeBuildingPage}
-          className="bg-gray-800 text-white px-10 py-3 rounded-full hover:bg-gray-700 transition-colors cursor-pointer active:scale-95"
-          style={{ fontWeight: 700 }}
-        >
-          돌아가기
-        </button>
       </div>
     </div>
   );
