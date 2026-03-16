@@ -15,16 +15,29 @@ public class UserOrderController {
 
     private final UserOrderService userOrderService;
 
+    /**
+     * 주문 생성 - market.events 토픽으로 발행
+     */
     @PostMapping
     public ResponseEntity<String> createOrder(
             @AuthenticationPrincipal UserDetails userDetails,
             @RequestBody UserOrderRequestDto request) {
 
-        // JwtTokenProvider가 subject(= userId)로 심어준 값을 꺼냄
         Long userId = Long.parseLong(userDetails.getUsername());
-
         userOrderService.createOrder(userId, request);
-
         return ResponseEntity.ok("주문 접수 이벤트가 발행되었습니다.");
+    }
+
+    /**
+     * 주문 취소 - market.events 토픽으로 발행
+     */
+    @DeleteMapping("/{orderId}")
+    public ResponseEntity<String> cancelOrder(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable Long orderId) {
+
+        Long userId = Long.parseLong(userDetails.getUsername());
+        userOrderService.cancelOrder(userId, orderId);
+        return ResponseEntity.ok("주문 취소 이벤트가 발행되었습니다.");
     }
 }

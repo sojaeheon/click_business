@@ -1,0 +1,115 @@
+package com.ssafy.ecosim.domain.market.service;
+
+import com.ssafy.ecosim.domain.market.dto.event.TradeEventDto;
+import com.ssafy.ecosim.domain.market.entity.MarketOrder;
+import com.ssafy.ecosim.domain.market.entity.OrderStatus;
+import com.ssafy.ecosim.domain.market.entity.OrderType;
+import com.ssafy.ecosim.domain.market.kafka.TradeEventPublisher;
+import com.ssafy.ecosim.domain.market.repository.redis.OrderBookManager;
+import com.ssafy.ecosim.domain.market.repository.redis.OrderDetailsCacheManager;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.ZSetOperations;
+import org.springframework.stereotype.Service;
+
+import java.util.Set;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class MarketMatchingService {
+
+    private final OrderBookManager orderBookManager;
+    private final OrderDetailsCacheManager orderDetailsCacheManager;
+    private final TradeEventPublisher tradeEventPublisher;
+
+    /**
+     * 특정 아이템에 대해 매칭을 수행합니다.
+     * @param itemId 아이템 식별자
+     */
+    public void matchItem(Integer itemId) {
+        log.debug("Matching started for item: {}", itemId);
+
+        while (true) {
+            // 1. 최우선 호가 조회 (매수 최고가, 매도 최저가)
+            Set<ZSetOperations.TypedTuple<String>> topBuys = orderBookManager.getTopBuys(itemId, 1);
+            Set<ZSetOperations.TypedTuple<String>> topSells = orderBookManager.getTopSells(itemId, 1);
+
+            if (topBuys == null || topBuys.isEmpty() || topSells == null || topSells.isEmpty()) {
+                break; // 매수 또는 매도 한쪽이라도 주문이 없으면 종료
+            }
+
+            ZSetOperations.TypedTuple<String> topBuy = topBuys.iterator().next();
+            ZSetOperations.TypedTuple<String> topSell = topSells.iterator().next();
+
+            Long buyOrderId = Long.valueOf(topBuy.getValue());
+            Long sellOrderId = Long.valueOf(topSell.getValue());
+
+            // 2. 상세 정보 조회
+            MarketOrder buyOrder = orderDetailsCacheManager.getOrderCache(buyOrderId);
+            MarketOrder sellOrder = orderDetailsCacheManager.getOrderCache(sellOrderId);
+
+            if (buyOrder == null || sellOrder == null) {
+                // 캐시가 유실된 경우 (있어서는 안 될 일이지만 안전장치)
+                if (buyOrder == null) orderBookManager.removeOrder(itemId, "BUY", buyOrderId);
+                if (sellOrder == null) orderBookManager.removeOrder(itemId, "SELL", sellOrderId);
+                continue;
+            }
+
+            // 3. 매칭 검사 (매수 최고가 >= 매도 최저가)
+            if (buyOrder.getPrice() < sellOrder.getPrice()) {
+                break; // 가격이 맞지 않으면 더 이상 매칭 불가
+            }
+
+            // 4. 체결 실행
+            executeTrade(itemId, buyOrder, sellOrder);
+        }
+    }
+
+    private void executeTrade(Integer itemId, MarketOrder buyOrder, MarketOrder sellOrder) {
+        // 체결 가격 결정: 매도 호가(Sell Price)를 기준으로 체결합니다.
+        // 매수자가 매도자의 가격을 수용하여 체결되는 형태이며, 이를 통해 매수자의 차액 환불 로직이 가능해집니다.
+        long matchedPrice = sellOrder.getPrice();
+        long matchedQuantity = Math.min(buyOrder.getRemainingQuantity(), sellOrder.getRemainingQuantity());
+
+        log.info("Matching Execution: Item={}, Price={}, Qty={}, Buyer={}, Seller={}",
+                itemId, matchedPrice, matchedQuantity, buyOrder.getId(), sellOrder.getId());
+
+        // Redis 잔량 업데이트
+        buyOrder.executeTrade(matchedQuantity);
+        sellOrder.executeTrade(matchedQuantity);
+
+        // Redis 상세 캐시 업데이트 또는 삭제
+        updateOrRemoveCache(buyOrder);
+        updateOrRemoveCache(sellOrder);
+
+        // Redis 호가창 업데이트 (잔량이 0이면 제거)
+        if (buyOrder.getStatus() == OrderStatus.COMPLETED) {
+            orderBookManager.removeOrder(itemId, "BUY", buyOrder.getId());
+        }
+        if (sellOrder.getStatus() == OrderStatus.COMPLETED) {
+            orderBookManager.removeOrder(itemId, "SELL", sellOrder.getId());
+        }
+
+        // TradeEvent 발행
+        TradeEventDto tradeEvent = TradeEventDto.builder()
+                .makerOrderId(sellOrder.getId()) // 가상의 Maker 설정 (매도자)
+                .takerOrderId(buyOrder.getId())  // 가상의 Taker 설정 (매수자)
+                .itemId(itemId)
+                .makerOrderType(OrderType.SELL)
+                .matchedPrice(matchedPrice)
+                .matchedQuantity(matchedQuantity)
+                .timestamp(System.currentTimeMillis())
+                .build();
+
+        tradeEventPublisher.publishTradeEvent(tradeEvent);
+    }
+
+    private void updateOrRemoveCache(MarketOrder order) {
+        if (order.getStatus() == OrderStatus.COMPLETED) {
+            orderDetailsCacheManager.removeOrderCache(order.getId());
+        } else {
+            orderDetailsCacheManager.saveOrderCache(order);
+        }
+    }
+}
