@@ -23,39 +23,83 @@ import { GlobalDialog, ConfirmData } from "../modals/GlobalDialog";
 import { useAlertStore } from "../../../store/useAlertStore";
 
 // ─────────────────────────────────────────────────────────────────
-// 🌊 수정된 바다(Ocean) 컴포넌트
+// 🌊 1. 바다 타일 1장 (OceanTile) - 구조 변경 완벽 대응!
 // ─────────────────────────────────────────────────────────────────
-function Ocean() {
+function OceanTile({ position, scale }: { position: [number, number, number], scale: [number, number, number] }) {
   const group = useRef<THREE.Group>(null);
-  const { scene, animations } = useGLTF(M.ocean);
+
+  // 새로 구운 깔끔한 모델 불러오기
+  const { nodes, animations } = useGLTF(M.ocean) as any;
   const { actions } = useAnimations(animations, group);
 
   useEffect(() => {
-    // 1. 애니메이션 강제 실행
-    if (actions && actions["AnimCtrlAction"]) {
-      actions["AnimCtrlAction"].play();
-    }
+    // ✨ 쓸데없는 애니메이션 다 빼고, 정확히 '평면Action'만 실행합니다!
+    if (actions && actions['평면Action']) {
+      const action = actions['평면Action'];
 
-    // 2. 복제(Clone)하지 않고 원본 씬에 직접 파란색 바다 재질을 덮어씌웁니다.
-    scene.traverse((child) => {
-      if ((child as THREE.Mesh).isMesh) {
-        const mesh = child as THREE.Mesh;
-        mesh.material = new THREE.MeshStandardMaterial({
-          color: "#0a4b7f", // 짙은 바다색
-          roughness: 0.2,   // 살짝 반짝거리게
-          metalness: 0.1,
-          side: THREE.DoubleSide // 양면 렌더링
-        });
-        mesh.receiveShadow = true; // 그림자도 받게 설정
-      }
-    });
-  }, [scene, actions]);
+      // 유저님이 구워오신 0->1->0->1 완벽 루프 재생!
+      action.setLoop(THREE.LoopPingPong, Infinity);
+      action.setEffectiveTimeScale(0.5); // 🌊 파도 속도 (입맛에 맞게 조절)
+      action.play();
+    }
+  }, [actions]);
 
   return (
-    <group ref={group} position={[0, -0.5, 0]} scale={40}>
-      <primitive object={scene} />
+    // 타일 크기
+    <group ref={group} position={position} scale={scale} dispose={null}>
+      {/* gltfjsx가 뽑아준 가장 안정적이고 깔끔한 원본 구조 그대로 사용! */}
+      <group name="Scene">
+        <mesh
+          name="LowPolyOcean"
+          geometry={nodes.LowPolyOcean.geometry}
+          morphTargetDictionary={nodes.LowPolyOcean.morphTargetDictionary}
+          morphTargetInfluences={nodes.LowPolyOcean.morphTargetInfluences}
+          receiveShadow={false}
+        >
+          {/* 청량하고 각진 바다 재질 */}
+          <meshStandardMaterial
+            color="#48cae4"
+            roughness={0.5}
+            metalness={0.3}
+            flatShading={true}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      </group>
     </group>
   );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 🌊 2. 바다 타일맵 관리자 (OceanGrid) -> 예전 Ocean 컴포넌트 대체
+// ─────────────────────────────────────────────────────────────────
+function OceanGrid() {
+  // 블렌더 바다 원본 크기(30) * OceanTile의 스케일(2) = 타일 1장의 실제 크기(60)
+  const TILE_SIZE = 60;
+  const GRID_RADIUS = 3; // 카메라가 보는 범위를 덮을 타일 반경 (3이면 7x7=49장 렌더링)
+
+  const tiles = [];
+
+  // 타일을 바둑판처럼 X축, Z축으로 쫙 깝니다.
+  for (let x = -GRID_RADIUS; x <= GRID_RADIUS; x++) {
+    for (let z = -GRID_RADIUS; z <= GRID_RADIUS; z++) {
+      // ✨ 핵심 마법: x와 z가 짝수냐 홀수냐에 따라 스케일을 2 또는 -2로 뒤집습니다!
+      // (음수 스케일을 주면 메쉬가 거울처럼 반전됩니다)
+      const scaleX = x % 2 === 0 ? 2 : -2;
+      const scaleZ = z % 2 === 0 ? 2 : -2;
+
+      tiles.push(
+        <OceanTile
+          key={`ocean-${x}-${z}`}
+          position={[x * TILE_SIZE, -0.8, z * TILE_SIZE]}
+          scale={[scaleX, 2, scaleZ]} // 뒤집힌 스케일 적용!
+        />
+      );
+    }
+  }
+
+  // 생성된 수십 장의 바다 타일을 한 번에 렌더링합니다.
+  return <group>{tiles}</group>;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -76,13 +120,14 @@ function PlayerCharacter({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const posRef = useRef(new THREE.Vector3(0, 0, 0));
-  const keysRef = useRef({ w: false, a: false, s: false, d: false });
+  const keysRef = useRef({ w: false, a: false, s: false, d: false, jump: false });
   const lastBuildingRef = useRef<string | null>(null);
   const lastInWorkstation = useRef(false);
   const isWorking_ref = useRef(isWorkstationWorking);
-  const modeRef = useRef<"idle" | "walking" | "working" | "spawning">("spawning");
-  const [mode, setMode] = useState<"idle" | "walking" | "working" | "spawning">("spawning");
+  const modeRef = useRef<"idle" | "walking" | "working" | "spawning" | "jumping">("spawning");
+  const [mode, setMode] = useState<"idle" | "walking" | "working" | "spawning" | "jumping">("spawning");
   const [showMenu, setShowMenu] = useState(false);
+  const jumpVelocityRef = useRef(0);
   const [emotionAnim, setEmotionAnim] = useState<string | null>(null);
 
   const { scene: barbarianScene } = useGLTF("/models/characters/Barbarian.glb");
@@ -106,7 +151,7 @@ function PlayerCharacter({
 
   useEffect(() => {
     if (isPaused) {
-      keysRef.current = { w: false, a: false, s: false, d: false };
+      keysRef.current = { w: false, a: false, s: false, d: false, jump: false };
     }
 
     const setKey = (code: string, val: boolean) => {
@@ -120,23 +165,30 @@ function PlayerCharacter({
     const onDown = (e: KeyboardEvent) => {
       // 1. 만약 모달이 꺼져있고 영역 안에 있는데 스페이스를 눌렀다면 다시 진입 모달을 띄운다.
       if (e.code === 'Space' && !e.repeat && lastBuildingRef.current && !isPaused) {
-         const b = BUILDING_AREAS.find(a => a.name === lastBuildingRef.current);
-         if (b) {
-            onEnterBuilding(b.name, b.label);
-            return;
-         }
+        const b = BUILDING_AREAS.find(a => a.name === lastBuildingRef.current);
+        if (b) {
+          onEnterBuilding(b.name, b.label);
+          return;
+        }
       }
 
       if (isPaused) return;
-      if (e.code === 'Space' && !e.repeat && !lastBuildingRef.current) setShowMenu(true);
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+
+      if (e.code === 'Space' && !e.repeat && !lastBuildingRef.current) {
+        // 이모트는 V 나 C키 등으로 빼거나 길게 누르기로 뺄 수 있지만, 일단 점프로 덮어씁니다.
+        // 건물 밖에서 Space를 누르면 Jump
+        if (modeRef.current !== "jumping" && modeRef.current !== "spawning") {
+          keysRef.current.jump = true;
+        }
+      }
+
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
       setKey(e.code, true);
     };
     const onUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space') setShowMenu(false);
       setKey(e.code, false);
     };
-    const onBlur = () => { keysRef.current = { w: false, a: false, s: false, d: false }; };
+    const onBlur = () => { keysRef.current = { w: false, a: false, s: false, d: false, jump: false }; };
 
     window.addEventListener('keydown', onDown);
     window.addEventListener('keyup', onUp);
@@ -176,6 +228,9 @@ function PlayerCharacter({
     if (mode === "working") {
       const act = actions["Work_B"] || actions["Work_A"] || actions["Pickaxing"] || Object.values(actions)[0];
       if (act) act.setEffectiveTimeScale(1.2).reset().fadeIn(0.3).play();
+    } else if (mode === "jumping") {
+      const act = actions["Jump_A"] || actions["Jump_B"] || actions["Jump"] || Object.values(actions)[0];
+      if (act) act.setEffectiveTimeScale(1.5).reset().fadeIn(0.1).play();
     } else if (mode === "walking") {
       const act = actions["Running_A"] || actions["Walking_A"] || Object.values(actions)[0];
       if (act) act.setEffectiveTimeScale(1.5).reset().fadeIn(0.3).play();
@@ -201,16 +256,93 @@ function PlayerCharacter({
     if (isMoving && emotionAnim) setEmotionAnim(null);
     if (isMoving) {
       dir.normalize().multiplyScalar(10 * delta);
-      posRef.current.add(dir);
+      const nextPos = posRef.current.clone().add(dir);
+      let canMove = true;
 
-      const buffer = 0.2;
-      posRef.current.x = THREE.MathUtils.clamp(posRef.current.x, -outerX + buffer, outerX - buffer);
-      posRef.current.z = THREE.MathUtils.clamp(posRef.current.z, -outerZ + buffer, outerZ - buffer);
+      // 1. 차 주변을 투과하지 않도록 충돌 (점프 체공 높이가 1.5 미만일 때)
+      if (posRef.current.y < 1.5) {
+        for (const carPos of Object.values(SHARED_STATE.cars)) {
+          const dx = nextPos.x - carPos.x;
+          const dz = nextPos.z - carPos.z;
+          if (dx * dx + dz * dz < 2.5 * 2.5) { // 자동차 충돌 반경
+            const oldDist = (posRef.current.x - carPos.x) ** 2 + (posRef.current.z - carPos.z) ** 2;
+            if (dx * dx + dz * dz < oldDist) { // 차에서 멀어지는 방향이면 허용
+              canMove = false; break;
+            }
+          }
+        }
+      }
+
+      // 2. 가로등, 수풀, 상자 (맵 위 데스크 모델) 무적 투과 방지
+      if (canMove && posRef.current.y < 1.0) {
+        for (const d of mapDecos) {
+          const rx = d.radius || 1.0;
+          const dx = nextPos.x - d.x;
+          const dz = nextPos.z - d.z;
+          if (dx * dx + dz * dz < rx * rx) {
+            const oldDist = (posRef.current.x - d.x) ** 2 + (posRef.current.z - d.z) ** 2;
+            if (dx * dx + dz * dz < oldDist) {
+              canMove = false; break;
+            }
+          }
+        }
+      }
+
+      // 3. 빌딩 뚫고 건물 뒤로 사라짐 방지
+      if (canMove && posRef.current.y < 1.0) {
+        for (const b of BUILDING_AREAS) {
+          const dx = nextPos.x - b.pos[0];
+          const dz = nextPos.z - b.pos[1];
+          if (dx * dx + dz * dz < 2.2 * 2.2) { // 빌딩 충돌 반경
+            const oldDist = (posRef.current.x - b.pos[0]) ** 2 + (posRef.current.z - b.pos[1]) ** 2;
+            if (dx * dx + dz * dz < oldDist) {
+              canMove = false; break;
+            }
+          }
+        }
+      }
+
+      // 4. 작업장 충돌
+      if (canMove && posRef.current.y < 1.0) {
+        const dx = nextPos.x - WORKSTATION_POS[0];
+        const dz = nextPos.z - WORKSTATION_POS[1];
+        if (dx * dx + dz * dz < 2.0 * 2.0) {
+          const oldDist = (posRef.current.x - WORKSTATION_POS[0]) ** 2 + (posRef.current.z - WORKSTATION_POS[1]) ** 2;
+          if (dx * dx + dz * dz < oldDist) {
+            canMove = false;
+          }
+        }
+      }
 
       groupRef.current.rotation.y = Math.atan2(dir.x, dir.z);
+
+      const buffer = 5.0; // 타일 밖으로 나갈 수 있게 넉넉하게 변경 (기존 0.2 -> 5.0)
+      if (canMove) {
+        posRef.current.copy(nextPos);
+        posRef.current.x = THREE.MathUtils.clamp(posRef.current.x, -outerX - buffer, outerX + buffer);
+        posRef.current.z = THREE.MathUtils.clamp(posRef.current.z, -outerZ - buffer, outerZ + buffer);
+      }
     }
 
-    groupRef.current.position.set(posRef.current.x, 0.35, posRef.current.z);
+    // 점프 물리 연산 (중력 및 속도)
+    if (keys.jump) {
+      if (modeRef.current !== "jumping") {
+        jumpVelocityRef.current = 10; // 점프 초기 파워를 살짝 높여서 차를 넘도록 조정
+      }
+      keys.jump = false; // 플래그 소모
+    }
+
+    if (jumpVelocityRef.current !== 0 || posRef.current.y > 0) {
+      jumpVelocityRef.current -= 25 * delta; // 중력
+      posRef.current.y += jumpVelocityRef.current * delta;
+
+      if (posRef.current.y <= 0) {
+        posRef.current.y = 0;
+        jumpVelocityRef.current = 0;
+      }
+    }
+
+    groupRef.current.position.set(posRef.current.x, posRef.current.y + 0.35, posRef.current.z);
     SHARED_STATE.playerPos.copy(groupRef.current.position);
 
     const px = posRef.current.x;
@@ -223,7 +355,16 @@ function PlayerCharacter({
     lastInWorkstation.current = inWorkstation;
     onInWorkstation?.(inWorkstation);
 
-    let newMode: "idle" | "walking" | "working" = inWorkstation && isWorkstationWorking ? "working" : isMoving ? "walking" : "idle";
+    let newMode: "idle" | "walking" | "working" | "jumping" = "idle";
+
+    if (posRef.current.y > 0 || jumpVelocityRef.current > 0) {
+      newMode = "jumping";
+    } else if (inWorkstation && isWorkstationWorking) {
+      newMode = "working";
+    } else if (isMoving) {
+      newMode = "walking";
+    }
+
     if (newMode !== modeRef.current) { modeRef.current = newMode; setMode(newMode); }
 
     let currentBuilding: string | null = null;
@@ -269,6 +410,26 @@ function PlayerCharacter({
 // ─────────────────────────────────────────────────────────────────
 // 환경 및 기타 컴포넌트
 // ─────────────────────────────────────────────────────────────────
+
+type Deco = { x: number; z: number; type: keyof typeof M; rot?: number; s?: number; radius?: number };
+export const mapDecos: Deco[] = [
+  { x: -BX, z: -ROAD_S, type: "streetlight", rot: 90, s: 3, radius: 0.5 },
+  { x: BX, z: -ROAD_S, type: "streetlight", rot: 90, s: 3, radius: 0.5 },
+  { x: -BX, z: ROAD_S, type: "streetlight", rot: -90, s: 3, radius: 0.5 },
+  { x: BX, z: ROAD_S, type: "streetlight", rot: -90, s: 3, radius: 0.5 },
+  { x: -(BX / 2 - ROAD_S * 0.6), z: -ROAD_S * 0.6, type: "trafficlightA", rot: 45, s: 3, radius: 0.5 },
+  { x: (BX / 2 - ROAD_S * 0.6), z: -ROAD_S * 0.6, type: "trafficlightB", rot: 135, s: 3, radius: 0.5 },
+  { x: -(BX + BW * 0.4), z: -(BZ + BW * 0.4), type: "bush", s: 2.5, radius: 1.5 },
+  { x: (BX + BW * 0.4), z: -(BZ + BW * 0.4), type: "bush", s: 2.5, radius: 1.5 },
+  { x: -(BX + BW * 0.4), z: (BZ + BW * 0.4), type: "bush", s: 2.5, radius: 1.5 },
+  { x: (BX + BW * 0.4), z: (BZ + BW * 0.4), type: "bush", s: 2.5, radius: 1.5 },
+  { x: -BX + 2.5, z: BZ + 2.5, type: "firehydrant", s: 5, radius: 0.8 },
+  { x: BX - 2, z: -BZ * 0.5, type: "firehydrant", s: 5, radius: 0.8 },
+  { x: BX + BW * 0.5, z: -(BZ + BW * 0.3), type: "boxA", s: 3, radius: 1.0 },
+  { x: BX + BW * 0.5, z: -BZ + 0.5, type: "boxB", s: 3, radius: 1.2 },
+  { x: BX + BW * 0.5, z: -(BZ + BW * 0.1), type: "boxA", s: 3, radius: 1.0 },
+];
+
 function AnimatedCar({
   modelKey, path, speed = 4, initialProgress = 0,
 }: {
@@ -359,25 +520,6 @@ function MapEnvironment() {
     [-BX, BZ], [0, BZ], [BX, BZ],
   ];
 
-  type Deco = { x: number; z: number; type: keyof typeof M; rot?: number; s?: number };
-  const decos: Deco[] = [
-    { x: -BX, z: -ROAD_S, type: "streetlight", rot: 90, s: 3 },
-    { x: BX, z: -ROAD_S, type: "streetlight", rot: 90, s: 3 },
-    { x: -BX, z: ROAD_S, type: "streetlight", rot: -90, s: 3 },
-    { x: BX, z: ROAD_S, type: "streetlight", rot: -90, s: 3 },
-    { x: -(BX / 2 - ROAD_S * 0.6), z: -ROAD_S * 0.6, type: "trafficlightA", rot: 45, s: 3 },
-    { x: (BX / 2 - ROAD_S * 0.6), z: -ROAD_S * 0.6, type: "trafficlightB", rot: 135, s: 3 },
-    { x: -(BX + BW * 0.4), z: -(BZ + BW * 0.4), type: "bush", s: 2.5 },
-    { x: (BX + BW * 0.4), z: -(BZ + BW * 0.4), type: "bush", s: 2.5 },
-    { x: -(BX + BW * 0.4), z: (BZ + BW * 0.4), type: "bush", s: 2.5 },
-    { x: (BX + BW * 0.4), z: (BZ + BW * 0.4), type: "bush", s: 2.5 },
-    { x: -BX + 2.5, z: BZ + 2.5, type: "firehydrant", s: 5 },
-    { x: BX - 2, z: -BZ * 0.5, type: "firehydrant", s: 5 },
-    { x: BX + BW * 0.5, z: -(BZ + BW * 0.3), type: "boxA", s: 3 },
-    { x: BX + BW * 0.5, z: -BZ + 0.5, type: "boxB", s: 3 },
-    { x: BX + BW * 0.5, z: -(BZ + BW * 0.1), type: "boxA", s: 3 },
-  ];
-
   return (
     <group>
       {baseTiles.map(([tx, tz], i) => (
@@ -390,7 +532,7 @@ function MapEnvironment() {
           <EnvModel url={M[r.type]} position={[r.x, Y, r.z]} rotation={[0, ((r.rot ?? 0) * Math.PI) / 180, 0]} scale={ROAD_S} />
         </React.Suspense>
       ))}
-      {decos.map((d, i) => (
+      {mapDecos.map((d, i) => (
         <React.Suspense key={`deco-${i}`} fallback={null}>
           <EnvModel url={M[d.type]} position={[d.x, Y + 0.5, d.z]} rotation={[0, ((d.rot ?? 0) * Math.PI) / 180, 0]} scale={(d.s ?? 1) * TILE_S} />
         </React.Suspense>
@@ -469,7 +611,7 @@ export function GameScene({
 
       {/* ✨ 바다 컴포넌트 추가 */}
       <React.Suspense fallback={null}>
-        <Ocean />
+        <OceanGrid />
       </React.Suspense>
 
       <directionalLight
