@@ -5,6 +5,7 @@ import React, { useRef, useState, useEffect, useCallback } from "react";
 import { Html } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { useGameStore } from "../../../store/gameStore";
 import { EnvModel, HoverableGroup } from "./BaseComponents";
 import { AreaLabel } from "./BuildingComponents";
 import {
@@ -82,11 +83,28 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
     const [storedCount, setStoredCount] = useState(0);
     const [flyingBars, setFlyingBars] = useState<number[]>([]);
     const [gaugeHovered, setGaugeHovered] = useState(false);
+    const updateProduct = useGameStore(state => state.updateProduct);
+    const usedSlots = useGameStore(state => state.getWarehouseUsage().usedSlots);
+    const warehouseMaxSlots = useGameStore(state => state.warehouseMaxSlots);
+    
     const flyIdRef = useRef(0);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const isCompleted = progress >= 100;
     const isFull = storedCount >= MAX_GOLD_CAP;
+    const isWarehouseFull = usedSlots >= warehouseMaxSlots;
+
+    const cannotProduce = isFull || isWarehouseFull; // 둘 중 하나라도 꽉차면 생산 중단
+
+    // 알림: 생산 중단 시
+    useEffect(() => {
+        if (isWorking && cannotProduce) {
+            useGameStore.getState().addAlert({
+                message: "작업 라인 중단",
+                detail: isFull ? "작업장 임시 보관함이 가득 찼습니다." : "창고 공간이 부족합니다."
+            });
+        }
+    }, [isWorking, cannotProduce, isFull]);
 
     const beltEndPos: [number, number, number] = [-0.75 + 2.5, 0.5, 1];
     const stackPositions: [number, number, number][] = [
@@ -96,7 +114,7 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
     ];
 
     useEffect(() => {
-        if (isWorking && !isCompleted && !isFull) {
+        if (isWorking && !isCompleted && !cannotProduce) {
             intervalRef.current = setInterval(() => {
                 flyIdRef.current += 1;
                 setFlyingBars(prev => [...prev, flyIdRef.current]);
@@ -110,7 +128,7 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
             if (intervalRef.current) clearInterval(intervalRef.current);
         }
         return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-    }, [isWorking, isCompleted, isFull]);
+    }, [isWorking, isCompleted, cannotProduce]);
 
     // 금괴 더미: 총 적재 용량(500) 기준으로 시각화
     const totalGold = Math.floor((storedCount / MAX_GOLD_CAP) * MAX_TOTAL);
@@ -138,7 +156,7 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
             <group scale={BELT_S} position={[0.75, TW * 0.12, 1]} rotation={[0, Math.PI, 0]}>
                 <React.Suspense fallback={<mesh><boxGeometry args={[BW, TW * 0.3, TW * 0.5]} /><meshStandardMaterial color="#555" wireframe /></mesh>}>
                     {/* @ts-ignore */}
-                    <ConveyorBelt isAnimating={isWorking && !isCompleted && !isFull} />
+                    <ConveyorBelt isAnimating={isWorking && !isCompleted && !cannotProduce} />
                 </React.Suspense>
             </group>
 
@@ -149,16 +167,26 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
             {/* 금괴 더미 위 카운터 */}
             <group position={[0, 1.8, -half * 0.7]}>
                 <Html center zIndexRange={[10, 0]}>
-                    <div className="flex flex-col items-center gap-1">
-                        {isFull && <span className="text-2xl animate-bounce">⚠️</span>}
+                    <div className="flex flex-col items-center gap-1" title={cannotProduce ? "더 이상 생산할 수 없어요(공간 부족)" : "작업장 임시 저장소"}>
+                        {cannotProduce && <span className="text-3xl animate-bounce drop-shadow-md cursor-help">⚠️</span>}
                         <div className="bg-black/70 text-white text-xs font-mono rounded px-2 py-0.5 tracking-widest">
                             {String(storedCount).padStart(3, '0')}/{MAX_GOLD_CAP}
                         </div>
                         {storedCount > 0 && (
                             <button
-                                className="mt-1 px-2 py-0.5 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-bold rounded shadow"
-                                onClick={(e) => { e.stopPropagation(); handleStore(); }}
-                            >📦 창고에 저장</button>
+                                className={`mt-1 px-2 py-0.5 ${isWarehouseFull ? 'bg-red-500 hover:bg-red-600' : 'bg-emerald-500 hover:bg-emerald-600'} text-white text-[10px] font-bold rounded shadow transition-colors`}
+                                onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    if (storedCount > 0) {
+                                      const added = updateProduct(storedCount);
+                                      if (added > 0) {
+                                        setStoredCount(prev => prev - added);
+                                        onStoreGold?.(added); 
+                                        if (added === storedCount) setProgress(0); // 모두 옮겼을때만 게이지 리셋
+                                      }
+                                    }
+                                }}
+                            >📦 {isWarehouseFull ? '창고 부족' : '창고에 저장'}</button>
                         )}
                     </div>
                 </Html>
@@ -173,8 +201,10 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
             {/* 진행도 UI */}
             <group position={[0, 4, 0]}>
                 <Html center zIndexRange={[10, 0]}>
-                    {(isCompleted || isFull) ? (
-                        <img src="/ui_icons/warning_128x128.png" alt="Warning" className="w-14 h-14 object-contain animate-bounce drop-shadow-md" />
+                    {(isCompleted || cannotProduce) ? (
+                        <div title="더 이상 생산할 수 없어요(공간 부족)" className="cursor-help">
+                          <img src="/ui_icons/warning_128x128.png" alt="Warning" className="w-14 h-14 object-contain animate-bounce drop-shadow-md" />
+                        </div>
                     ) : !isWorking ? (
                         <img src="/ui_icons/warning_128x128.png" alt="Stopped" className="w-14 h-14 object-contain drop-shadow-md opacity-80" style={{ filter: 'grayscale(100%)' }} />
                     ) : showFullGauge ? (

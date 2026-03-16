@@ -1,8 +1,13 @@
 import { Building2, Package, Backpack, BarChart3, Factory } from "lucide-react";
-import { useGame } from "../../../store/gameStore";
+import { useGame, useGameStore } from "../../../store/gameStore";
+import { useInventoryStore } from "../../../store/useAppStore";
 
 export function CompanyProfile() {
   const { state } = useGame();
+  const usedSlots = useGameStore(s => s.getWarehouseUsage().usedSlots);
+  const maxSlots = useGameStore(s => s.warehouseMaxSlots);
+  const inventorySlots = useInventoryStore(s => s.slots);
+  const inventoryUsed = inventorySlots.filter(s => s.item_name).length;
 
   return (
     <div className="h-full flex flex-col">
@@ -63,13 +68,13 @@ export function CompanyProfile() {
           {/* 창고 & 인벤토리 */}
           <div className="space-y-5 flex flex-col justify-center">
             <div className="flex items-center gap-3">
-              <span className="text-gray-500 text-sm w-28">창고 수용량 :</span>
-              <span className="text-gray-700">{state.warehouseUsed} / {state.warehouseMax}</span>
+              <span className="text-gray-500 text-sm w-28">창고 슬롯 사용량 :</span>
+              <span className="text-gray-700 font-bold">{usedSlots} / {maxSlots}</span>
               <Package className="w-5 h-5 text-gray-400 ml-auto" />
             </div>
             <div className="flex items-center gap-3">
               <span className="text-gray-500 text-sm w-28">인벤토리 :</span>
-              <span className="text-gray-700">{state.inventoryUsed} / {state.inventoryMax}</span>
+              <span className="text-gray-700">{inventoryUsed} / {state.inventoryMax}</span>
               <Backpack className="w-5 h-5 text-gray-400 ml-auto" />
             </div>
           </div>

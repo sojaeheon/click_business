@@ -1,4 +1,4 @@
-import { useGame } from "../../../store/gameStore";
+import { useGame, useGameStore } from "../../../store/gameStore";
 import type { ModalTab } from "../../../store/gameStore";
 
 interface HudButton {
@@ -16,6 +16,7 @@ const leftButtons: HudButton[] = [
 
 export function GameHUD() {
   const { state, openModal } = useGame();
+  const percent = useGameStore(state => state.getWarehouseUsage().percent);
   const unreadAlerts = state.alerts.filter((n) => !n.read).length;
 
   return (
@@ -71,13 +72,13 @@ export function GameHUD() {
                 {/* 채워지는 게이지 이미지 마스킹 */}
                 <div
                   className="absolute left-[-10%] h-[100%] overflow-hidden transition-all duration-700 ease-out flex justify-start items-center rounded-sm"
-                  style={{ width: `${state.inventoryPercent * 0.9}%` }}
+                  style={{ width: `${percent * 0.9}%` }}
                 >
                   <img src="/ui_icons/Progressbar_Gold_3.png" alt="Gauge Fill" className="h-full w-[130px] max-w-none object-fill" />
                 </div>
                 {/* 텍스트 표기 (진행바 위) */}
                 <span className="absolute inset-0 flex items-center justify-center text-white font-black text-[12px] drop-shadow-[0_1px_2px_rgba(0,0,0,1)] tracking-widest pointer-events-none">
-                  {state.inventoryPercent.toFixed(0)}%
+                  {percent.toFixed(0)}%
                 </span>
               </div>
             </div>

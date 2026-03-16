@@ -40,7 +40,7 @@ function Ocean() {
     scene.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const mesh = child as THREE.Mesh;
-        mesh.material = new THREE.MeshStandardMaterial({ 
+        mesh.material = new THREE.MeshStandardMaterial({
           color: "#0a4b7f", // 짙은 바다색
           roughness: 0.2,   // 살짝 반짝거리게
           metalness: 0.1,
@@ -118,8 +118,17 @@ function PlayerCharacter({
       }
     };
     const onDown = (e: KeyboardEvent) => {
+      // 1. 만약 모달이 꺼져있고 영역 안에 있는데 스페이스를 눌렀다면 다시 진입 모달을 띄운다.
+      if (e.code === 'Space' && !e.repeat && lastBuildingRef.current && !isPaused) {
+         const b = BUILDING_AREAS.find(a => a.name === lastBuildingRef.current);
+         if (b) {
+            onEnterBuilding(b.name, b.label);
+            return;
+         }
+      }
+
       if (isPaused) return;
-      if (e.code === 'Space' && !e.repeat) setShowMenu(true);
+      if (e.code === 'Space' && !e.repeat && !lastBuildingRef.current) setShowMenu(true);
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
       setKey(e.code, true);
     };
@@ -193,11 +202,11 @@ function PlayerCharacter({
     if (isMoving) {
       dir.normalize().multiplyScalar(10 * delta);
       posRef.current.add(dir);
-      
-      const buffer = 0.2; 
+
+      const buffer = 0.2;
       posRef.current.x = THREE.MathUtils.clamp(posRef.current.x, -outerX + buffer, outerX - buffer);
       posRef.current.z = THREE.MathUtils.clamp(posRef.current.z, -outerZ + buffer, outerZ - buffer);
-      
+
       groupRef.current.rotation.y = Math.atan2(dir.x, dir.z);
     }
 
@@ -432,6 +441,7 @@ export function GameScene({
         try {
           await WorkstationAPI.start({ companyId: 1, recipeId: 1, quantity: qty, workerId: 1 });
           setIsWorkstationWorking(true);
+          useGameStore.getState().addAlert({ message: "생산 시작", detail: "작업장에서 생산이 시작되었습니다." });
         } catch (e) {
           console.error(e);
           useAlertStore.getState().openAlert("작업 시작에 실패했습니다.", "경고");
@@ -441,6 +451,7 @@ export function GameScene({
         try {
           await WorkstationAPI.collect(1);
           setIsWorkstationWorking(false);
+          useGameStore.getState().addAlert({ message: "생산 완료", detail: "작업장 결과물을 수령했습니다." });
           useAlertStore.getState().openAlert("결과물을 성공적으로 수령하여 창고에 보관했습니다.", "수령 완료");
         } catch (e) {
           console.error(e);
@@ -520,14 +531,14 @@ function refocusCanvas(wrap: HTMLDivElement | null) {
 // ─────────────────────────────────────────────────────────────────
 // 최상위 캔버스 컴포넌트 (App에서 호출됨)
 // ─────────────────────────────────────────────────────────────────
-export function IsometricScene({ isLoginMode = false }: {isLoginMode?: boolean}={}) {
+export function IsometricScene({ isLoginMode = false }: { isLoginMode?: boolean } = {}) {
   const { state, openModal, closeModal } = useGame();
   const [dialogData, setDialogData] = useState<ConfirmData | null>(null);
   const [isWorkstationWorking, setIsWorkstationWorking] = useState(false);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
 
   const isGlobalPaused = isLoginMode || !!dialogData || !!state.activeModal || !!state.activeBuildingPage;
-  
+
   // ────────────────────────────────────────────────────────────
   // ⌨️ UI 모달 전용 단축키 (자유로운 스위칭 & 토글 기능 탑재!)
   // ────────────────────────────────────────────────────────────
@@ -535,7 +546,7 @@ export function IsometricScene({ isLoginMode = false }: {isLoginMode?: boolean}=
     const handleHotkeys = (e: KeyboardEvent) => {
       // 1. 채팅이나 인풋창 타이핑 중이면 단축키 무시
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      
+
       // 2. 🚨 완전 차단 (Hard Block): 건물 입장 창, 작업장 모달, 로그인 화면이 떠있을 때는 단축키 안 먹힘!
       // (기존의 isGlobalPaused 대신, HUD 모달이 켜진 경우는 차단 조건에서 제외했습니다)
       if (isLoginMode || !!dialogData || !!state.activeBuildingPage) return;
@@ -555,10 +566,10 @@ export function IsometricScene({ isLoginMode = false }: {isLoginMode?: boolean}=
         // 🎒 인벤토리
         case 'e':
         case 'i': toggleModal("inventory"); break;
-        
-        // 🏆 명예의 전당
-        case 'r': toggleModal("ranking"); break;
-          
+
+        // 🏆 명예의 전당 (R -> K로 변경하여 새로고침 충돌 방지)
+        case 'k': toggleModal("ranking"); break;
+
         // 📰 뉴스
         case 'n': toggleModal("news"); break;
 

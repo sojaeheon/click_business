@@ -15,7 +15,7 @@ export const CompanyAPI = {
         cash: 5000000,          // 500만 원
         total_asset: 12000000,  // 자본금 1200만 원
         slots: {
-          warehouse_slots: 500,
+          warehouse_slots: 10,
           inventory_slots: 50
         }
       }

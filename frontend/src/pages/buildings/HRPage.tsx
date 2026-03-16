@@ -1,63 +1,36 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Plus } from "lucide-react";
 import { useGame } from "../../store/gameStore";
 import { Canvas } from "@react-three/fiber";
-import { Html, useGLTF, useAnimations, OrbitControls } from "@react-three/drei";
+import { Html, useGLTF, OrbitControls, useAnimations } from "@react-three/drei";
 import * as THREE from "three";
 import { BackButton } from "../../app/components/ui/backbutton";
-import { useAlertStore } from "../../store/useAlertStore";
 
-// --- Types ---
-interface WorkerItem {
-  id: number;
-  name: string;
-  model: string;
-  level: number;
-  owned: number;
-  maxOwned: number;
-}
+function CharacterModel({ url }: { url: string }) {
+  const { scene, animations } = useGLTF(url);
+  const clone = React.useMemo(() => scene.clone(), [scene]);
+  const group = useRef<any>(null);
+  const { actions } = useAnimations(animations, group);
+  
+  useEffect(() => {
+    if (actions && Object.keys(actions).length > 0) {
+      const actionName = Object.keys(actions)[0];
+      actions[actionName]?.play();
+    }
+  }, [actions]);
 
-const MOCK_INVENTORY: WorkerItem[] = [
-  { id: 1, name: "야만전사", model: "/models/characters/Barbarian.glb", level: 1, owned: 1, maxOwned: 2 },
-  { id: 2, name: "기사", model: "/models/characters/Knight.glb", level: 2, owned: 2, maxOwned: 2 },
-  { id: 3, name: "마법사", model: "/models/characters/Mage.glb", level: 3, owned: 0, maxOwned: 2 },
-  { id: 4, name: "궁수", model: "/models/characters/Ranger.glb", level: 1, owned: 1, maxOwned: 2 },
-  { id: 5, name: "도적", model: "/models/characters/Rogue.glb", level: 2, owned: 1, maxOwned: 2 },
-];
-
-
-// --- 3D Components ---
-function IsometricRoom() {
+  // Y값을 미세조정하여 발이 플랫폼 위에 닿도록 설정 (기존에는 살짝 떠 있었음)
   return (
-    <group position={[0, -0.05, 0]}>
-      {/* 바닥 타일 */}
-      <mesh receiveShadow position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[12, 12]} />
-        <meshStandardMaterial color="#fcdbcb" />
-      </mesh>
-      {/* 왼쪽 벽 */}
-      <mesh receiveShadow position={[-6, 4, 0]} rotation={[0, Math.PI / 2, 0]}>
-        <planeGeometry args={[12, 8]} />
-        <meshStandardMaterial color="#f0d1b3" />
-      </mesh>
-      {/* 뒤쪽 벽 */}
-      <mesh receiveShadow position={[0, 4, -6]}>
-        <planeGeometry args={[12, 8]} />
-        <meshStandardMaterial color="#fde5d0" />
-      </mesh>
+    <group ref={group}>
+      <primitive object={clone} scale={1.8} position={[0, -0.6, 0]} rotation={[0, 0, 0]} />
     </group>
   );
 }
 
-function CharacterModel({ url }: { url: string }) {
-  const { scene } = useGLTF(url);
-  const clone = React.useMemo(() => scene.clone(), [scene]);
-  return <primitive object={clone} scale={1.8} position={[0, 0, 0]} rotation={[0, Math.PI / 4, 0]} />;
-}
-
 function Lever({ onPull }: { onPull: () => void }) {
-  const group = useRef<THREE.Group>(null);
+  const group = useRef<any>(null);
   const { scene, animations } = useGLTF("/models/props/lever.glb");
+  const clone = React.useMemo(() => scene.clone(), [scene]);
   const { actions } = useAnimations(animations, group);
 
   const handleClick = (e: any) => {
@@ -76,25 +49,97 @@ function Lever({ onPull }: { onPull: () => void }) {
   };
 
   return (
-    <group ref={group} onClick={handleClick} position={[3, 0, -2]} scale={2.5} rotation={[0, -Math.PI / 6, 0]}>
-      <primitive object={scene} />
-      <Html position={[0, 2, 0]} center>
-        <div className="bg-white/90 backdrop-blur rounded-full px-4 py-1.5 font-bold text-slate-800 shadow-lg border-2 border-amber-500 text-sm pointer-events-none animate-bounce">
-          👇 CLICK
+    <group ref={group} onClick={handleClick} position={[2.5, -0.8, 0]} scale={2.0} rotation={[0, -Math.PI / 6, 0]}>
+      <primitive object={clone} />
+      <Html position={[0, 2.5, 0]} center zIndexRange={[100, 0]}>
+        <div className="bg-white/90 backdrop-blur rounded-full px-4 py-1.5 font-bold text-slate-800 shadow-lg border-2 border-amber-500 text-sm pointer-events-none animate-bounce whitespace-nowrap">
+          👇 강화 시도
         </div>
       </Html>
     </group>
   );
 }
 
+function LevelUpEffect() {
+  return (
+    <div className="absolute inset-0 z-50 pointer-events-none overflow-hidden flex items-center justify-center">
+      <div className="absolute inset-0 bg-amber-400/20 mix-blend-overlay animate-pulse" />
+      {Array.from({ length: 40 }).map((_, i) => (
+        <div
+          key={i}
+          className="absolute text-5xl animate-[fall_3s_ease-out_forwards]"
+          style={{
+            left: `${Math.random() * 100}%`,
+            top: `-10%`,
+            animationDelay: `${Math.random() * 0.5}s`,
+          }}
+        >
+          ✨
+        </div>
+      ))}
+      <div className="text-7xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-100 to-amber-500 drop-shadow-[0_0_30px_rgba(251,191,36,0.8)] animate-[zoomIn_0.8s_ease-out_forwards]">
+        LEVEL UP!
+      </div>
+      <style>{`
+        @keyframes fall {
+          0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+          100% { transform: translateY(120vh) rotate(360deg); opacity: 0; }
+        }
+        @keyframes zoomIn {
+          0% { transform: scale(0.5); opacity: 0; }
+          70% { transform: scale(1.1); opacity: 1; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function getModelPathForWorker(name: string) {
+  if (!name) return "/models/characters/Barbarian.glb";
+  if (name.includes("야만") || name.includes("전사") || name.includes("광부")) return "/models/characters/Barbarian.glb";
+  if (name.includes("기사") || name.includes("제련")) return "/models/characters/Knight.glb";
+  if (name.includes("마법")) return "/models/characters/Mage.glb";
+  if (name.includes("궁수")) return "/models/characters/Ranger.glb";
+  if (name.includes("도적")) return "/models/characters/Rogue.glb";
+  return "/models/characters/Barbarian.glb";
+}
+
 export function HRPage() {
   const { closeBuildingPage } = useGame();
 
-  const [selectedWorker, setSelectedWorker] = useState<WorkerItem | null>(null);
+  const [selectedWorker, setSelectedWorker] = useState<any>(null);
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
+  const [slots, setSlots] = useState<any[]>([]);
   const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null);
+  const [showLevelUp, setShowLevelUp] = useState(false);
 
-  const { scene: platformScene } = useGLTF("/models/props/platform.glb");
+  useEffect(() => {
+    import("../../api/gameApi").then(({ InventoryAPI }) => {
+      // 목업상 여러 개 소유하기 위해 수량을 가상으로 증폭시켜 테스트 가능하게 함
+      InventoryAPI.getInventory(1).then(res => {
+         const data = [...res.data];
+         data.forEach(d => { if (!d.quantity && !d.owned) d.quantity = 2; }); // 임시 보유량 세팅
+         setSlots(data);
+      });
+    });
+  }, []);
+
+  const getWorkerCount = (worker: any) => {
+    if (!worker) return 0;
+    const name = worker.name || worker.item_name;
+    const level = worker.level || 1;
+    let count = 0;
+    slots.forEach(s => {
+      const sName = s.name || s.item_name;
+      const sLevel = s.level || 1;
+      const qty = s.quantity || s.owned || 1;
+      if (sName === name && sLevel === level) {
+         count += qty;
+      }
+    });
+    return count;
+  };
 
   const handleLeverPull = () => {
     if (!selectedWorker) {
@@ -103,16 +148,24 @@ export function HRPage() {
       return;
     }
 
+    const count = getWorkerCount(selectedWorker);
+    if (count < 2) {
+      setUpgradeMessage(`동일한 레벨의 캐릭터가 2개 필요합니다! (현재 ${count}개)`);
+      setTimeout(() => setUpgradeMessage(null), 2000);
+      return;
+    }
+
     const r = Math.random();
     setTimeout(() => {
       if (r < 0.7) {
-        setUpgradeMessage(`✨ 강화 성공! ${selectedWorker.name} Lv.${selectedWorker.level + 1}`);
-        setSelectedWorker({ ...selectedWorker, level: selectedWorker.level + 1 });
+        setShowLevelUp(true);
+        setTimeout(() => setShowLevelUp(false), 3000);
+        setSelectedWorker({ ...selectedWorker, level: (selectedWorker.level || 1) + 1 });
       } else if (r < 0.85) {
         setUpgradeMessage("💦 변화가 없습니다 (유지)");
       } else if (r < 0.95) {
-        setUpgradeMessage(`🔻 강화 실패... ${selectedWorker.name} Lv.${Math.max(1, selectedWorker.level - 1)}`);
-        setSelectedWorker({ ...selectedWorker, level: Math.max(1, selectedWorker.level - 1) });
+        setUpgradeMessage(`🔻 강화 실패... 레벨 하락`);
+        setSelectedWorker({ ...selectedWorker, level: Math.max(1, (selectedWorker.level || 1) - 1) });
       } else {
         setUpgradeMessage("🔥 캐릭터가 파괴되었습니다!");
         setSelectedWorker(null);
@@ -121,104 +174,92 @@ export function HRPage() {
     }, 1000);
   };
 
+  const { scene: platformScene } = useGLTF("/models/props/platform.glb");
+
+  const workerCount = getWorkerCount(selectedWorker);
+
   return (
-    <div
-      className="absolute inset-0 z-40 flex flex-col pt-8"
-      style={{
-        backgroundImage: "url('/images/HR.png')",
-        backgroundSize: 'cover',
-        backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'center',
-        backgroundColor: '#cddeed' // 여백을 채워줄 파란 하늘 비슷한 색
-      }}
-    >
+    <div className="absolute inset-0 z-40 flex flex-col pt-8">
+      {/* 배경 컨테이너 - 이미지에만 블러 적용 */}
+      <div 
+        className="absolute inset-0 -z-10"
+        style={{
+          backgroundImage: "url('/images/HR.png')",
+          backgroundSize: 'cover',
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'center',
+          backgroundColor: '#cddeed',
+          filter: 'blur(4px)'
+        }}
+      />
+      
       <BackButton onClick={closeBuildingPage} className="absolute top-6 left-6 z-50" />
 
       {upgradeMessage && (
-        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-50 bg-black/80 text-white font-black text-3xl px-12 py-5 rounded-full shadow-[0_0_30px_rgba(0,0,0,0.5)] animate-bounce border-4 border-amber-400">
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-50 bg-black/80 text-white font-black text-2xl px-10 py-4 rounded-full shadow-[0_0_30px_rgba(0,0,0,0.5)] animate-bounce border-4 border-amber-400 z-[60]">
           {upgradeMessage}
         </div>
       )}
 
-      <div className="flex-1 w-full relative">
-        <Canvas shadows camera={{ position: [0, 6, 14], fov: 40 }}>
-          <ambientLight intensity={1.2} />
-          <directionalLight position={[10, 15, 10]} intensity={1.8} castShadow shadow-bias={-0.001} />
+      {showLevelUp && <LevelUpEffect />}
 
-          <IsometricRoom />
+      {/* 캔버스 래퍼 - 더 넓고 크게 배치 & 정면 응시 */}
+      <div className="absolute flex justify-center items-end bottom-4 left-0 right-0 h-[80%] pointer-events-none">
+        <div className="w-[1000px] h-[800px] pointer-events-auto relative">
 
-          {/* 중앙 인물 + 플랫폼 영역 */}
-          <group position={[-2, 0, -1]}>
-            <primitive object={platformScene.clone()} scale={1.8} />
-
-            <Html position={[0, 4.0, 0]} center zIndexRange={[100, 0]}>
-              <div className="flex flex-col items-center pointer-events-none w-64 transform -translate-y-4">
-                <div className="flex justify-between w-48 mb-[-1px]">
-                  <div className="w-1.5 h-12 bg-amber-800 border-l border-amber-950 shadow-md" />
-                  <div className="w-1.5 h-12 bg-amber-800 border-l border-amber-950 shadow-md" />
+          {/* 캐릭터 선택 정보창 */}
+          {selectedWorker && (
+             <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900/80 backdrop-blur-md px-8 py-4 rounded-3xl border-2 border-slate-600 shadow-xl flex gap-6 items-center z-10 text-white">
+                <div>
+                   <h2 className="text-3xl font-black text-amber-400">{selectedWorker.name || selectedWorker.item_name}</h2>
+                   <p className="text-xl font-bold">Lv. {selectedWorker.level || 1}</p>
                 </div>
-                <div className="bg-[#5c4033] border-4 border-[#3e2723] rounded-lg p-3 w-full text-center shadow-xl relative flex flex-col gap-1 items-center">
-                  <div className="absolute top-2 left-2 w-3 h-3 rounded-full bg-amber-900 shadow-inner" />
-                  <div className="absolute top-2 right-2 w-3 h-3 rounded-full bg-amber-900 shadow-inner" />
-                  <h2 className="text-white font-black text-2xl mb-1 drop-shadow-md">
-                    {selectedWorker ? `${selectedWorker.name} Lv.${selectedWorker.level}` : "캐릭터 미선택"}
-                  </h2>
-                  {selectedWorker && (
-                    <>
-                      <div className="bg-white/20 px-3 py-1 rounded text-white text-sm font-bold shadow-inner">
-                        보유 {selectedWorker.owned}/{selectedWorker.maxOwned}
-                      </div>
-                      <div className="text-yellow-400 font-bold mt-2 text-sm bg-black/40 w-full py-1.5 rounded drop-shadow">
-                        강화 후 기대: Lv.{selectedWorker.level + 1}
-                      </div>
-                    </>
-                  )}
+                <div className="h-10 w-px bg-slate-600"></div>
+                <div className="flex flex-col items-center cursor-help" title="강화 시 2개의 동일 캐릭터가 소모(합성)됩니다.">
+                   <span className="text-slate-300 text-sm font-bold">보유 수량</span>
+                   <span className={`text-2xl font-black ${workerCount >= 2 ? 'text-emerald-400' : 'text-rose-400'}`}>{workerCount} / 2</span>
                 </div>
+             </div>
+          )}
 
-                <div className="flex justify-between w-48 mb-[-1px]">
-                  <div className="w-1.5 h-6 bg-amber-800 border-l border-amber-950 shadow-md" />
-                  <div className="w-1.5 h-6 bg-amber-800 border-l border-amber-950 shadow-md" />
-                </div>
-                <div className="bg-[#4e342e] border-4 border-[#3e2723] rounded-lg w-56 text-center shadow-xl pt-3 pb-2 px-1 relative flex flex-col items-center">
-                  <div className="absolute -top-1 left-2 w-2 h-2 rounded-full bg-slate-900/60 shadow-inner" />
-                  <div className="absolute -top-1 right-2 w-2 h-2 rounded-full bg-slate-900/60 shadow-inner" />
-                  <div className="text-emerald-400 text-3xl font-black mb-1 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">성공 확률: 70%</div>
-                  <div className="text-slate-300 text-[11px] bg-black/50 rounded px-2 py-1.5 leading-tight font-bold w-[90%] mx-auto shadow-inner">
-                    실패 확률<br /><span className="text-yellow-400">유지 15%</span> / <span className="text-orange-400">하락 10%</span> / <span className="text-rose-500">파괴 5%</span>
-                  </div>
-                </div>
-              </div>
-            </Html>
+          <Canvas shadows camera={{ position: [0, 2.0, 9], fov: 35 }}>
+            <ambientLight intensity={1.2} />
+            <directionalLight position={[10, 15, 10]} intensity={1.8} castShadow shadow-bias={-0.001} />
 
-            <group position={[0, 0.45, 0]}>
-              {selectedWorker ? (
-                <group onClick={(e) => { e.stopPropagation(); setIsInventoryOpen(true); }} onPointerOver={() => document.body.style.cursor = 'pointer'} onPointerOut={() => document.body.style.cursor = 'auto'}>
-                  <CharacterModel url={selectedWorker.model} />
-                </group>
-              ) : (
-                <Html position={[0, 1.0, 0]} center>
-                  <button
-                    onClick={() => setIsInventoryOpen(true)}
-                    className="w-20 h-20 bg-amber-200/50 backdrop-blur-sm rounded-full border-[6px] border-amber-400 flex items-center justify-center hover:bg-amber-300/80 hover:scale-110 transition-all cursor-pointer shadow-[0_0_20px_rgba(251,191,36,0.5)] group"
-                  >
-                    <Plus className="w-10 h-10 text-amber-700 group-hover:rotate-90 transition-transform" strokeWidth={3} />
-                  </button>
-                </Html>
-              )}
+            <group position={[0, -1.5, 0]}>
+              {/* 플랫폼의 스케일을 줄여 폭을 캐릭터에 맞게 좁힘 */}
+              <primitive object={platformScene.clone()} scale={0.7} position={[0, 0, 0]} />
+
+              <group position={[0, 0.45, 0]}>
+                {selectedWorker ? (
+                  <group onClick={(e) => { e.stopPropagation(); setIsInventoryOpen(true); }} onPointerOver={() => document.body.style.cursor = 'pointer'} onPointerOut={() => document.body.style.cursor = 'auto'}>
+                    <CharacterModel url={getModelPathForWorker(selectedWorker.name || selectedWorker.item_name)} />
+                  </group>
+                ) : (
+                  <Html position={[0, 0.8, 0]} center zIndexRange={[100, 0]}>
+                    <button
+                      onClick={() => setIsInventoryOpen(true)}
+                      className="w-24 h-24 bg-amber-200/50 backdrop-blur-sm rounded-full border-[6px] border-amber-400 flex items-center justify-center hover:bg-amber-300/80 hover:scale-110 transition-all cursor-pointer shadow-[0_0_20px_rgba(251,191,36,0.5)] group"
+                    >
+                      <Plus className="w-12 h-12 text-amber-700 group-hover:rotate-90 transition-transform" strokeWidth={3} />
+                    </button>
+                  </Html>
+                )}
+              </group>
+
+              <Lever onPull={handleLeverPull} />
             </group>
-          </group>
 
-          <Lever onPull={handleLeverPull} />
-
-          <OrbitControls
-            enableZoom={false}
-            enablePan={false}
-            maxPolarAngle={Math.PI / 2 + 0.1}
-            minPolarAngle={Math.PI / 3}
-            minAzimuthAngle={-0.3}
-            maxAzimuthAngle={0.3}
-          />
-        </Canvas>
+            <OrbitControls
+              enableZoom={false}
+              enablePan={false}
+              maxPolarAngle={Math.PI / 2}
+              minPolarAngle={Math.PI / 3}
+              minAzimuthAngle={-0.3}
+              maxAzimuthAngle={0.3}
+            />
+          </Canvas>
+        </div>
       </div>
 
       {isInventoryOpen && (
@@ -229,32 +270,32 @@ export function HRPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto flex flex-col gap-4 pr-2">
-            {MOCK_INVENTORY.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => {
-                  if (item.owned > 0) {
+            {(!Array.isArray(slots) || slots.length === 0) && <div className="text-center text-slate-400 mt-10">인벤토리가 비어 있습니다.</div>}
+            {Array.isArray(slots) && slots.map((item) => {
+              const itemName = item.name || item.item_name;
+              const itemId = item.id || item.item_id;
+              const isWorker = itemName && (itemName.includes("광부") || itemName.includes("제련") || itemName.includes("대장") || itemName.includes("전사") || itemName.includes("기사") || itemName.includes("도적") || itemName.includes("대장장이"));
+              // @ts-ignore
+              const isLocked = item.locked !== undefined ? item.locked : false;
+              
+              if (!isWorker || isLocked) return null;
+
+              return (
+                <button
+                  key={itemId || Math.random()}
+                  onClick={() => {
                     setSelectedWorker(item);
                     setIsInventoryOpen(false);
-                  }
-                }}
-                className={`w-full text-left rounded-3xl border-[4px] p-5 flex justify-between items-center transition-all ${item.owned > 0
-                    ? "bg-white border-slate-200 hover:border-amber-400 hover:shadow-xl hover:-translate-y-1 cursor-pointer"
-                    : "bg-slate-50 border-slate-200 opacity-50 cursor-not-allowed grayscale"
-                  }`}
-              >
-                <div>
-                  <h3 className="text-xl font-black text-slate-800">{item.name}</h3>
-                  <p className="text-md font-bold text-amber-600 mt-1">Lv. {item.level}</p>
-                </div>
-                <div className="flex flex-col items-end">
-                  <span className="text-xs text-slate-400 font-bold mb-1">보유량</span>
-                  <span className={`text-2xl font-black ${item.owned > 0 ? "text-slate-800" : "text-rose-500"}`}>
-                    {item.owned} / {item.maxOwned}
-                  </span>
-                </div>
-              </button>
-            ))}
+                  }}
+                  className="w-full text-left rounded-3xl border-[4px] p-5 flex justify-between items-center transition-all bg-white border-slate-200 hover:border-amber-400 hover:shadow-xl hover:-translate-y-1 cursor-pointer"
+                >
+                  <div>
+                    <h3 className="text-xl font-black text-slate-800">{itemName}</h3>
+                    <p className="text-md font-bold text-amber-600 mt-1">Lv. {(item as any).level || 1}</p>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

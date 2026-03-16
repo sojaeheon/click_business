@@ -11,7 +11,14 @@ export type BuildingPage = "hr" | "bank" | "warehouse" | "minigame" | "workstati
 export interface Alert { id: string; message: string; detail?: string; timeAgo: string; read: boolean; }
 export interface NewsItem { id: string; headline: string; date: string; isBreaking?: boolean; summary?: string; }
 export interface BankData { loanRate: number; depositRate: number; currentLoan: number; currentDeposit: number; }
-export interface WarehouseItem { id: string; name: string; type: "material" | "product"; quantity: number; maxQuantity: number; }
+// 슬롯 하나에 담을 수 있는 최대량 (예: 100개)
+export const MAX_PER_SLOT = 100;
+
+export interface WarehouseItem { 
+  id: string; 
+  type: "material" | "product"; 
+  quantity: number; 
+}
 export interface HRData { currentLevel: number; expectedLevel: number; successRate: number; materialCurrent: number; materialMax: number; }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -24,11 +31,10 @@ export interface GameState {
   currency: string;
   capital: number;
   debt: number;
-  warehouseUsed: number;
-  warehouseMax: number;
-  inventoryUsed: number;
+  warehouseMaxSlots: number; // 총 창고 슬롯 칸 (예: 10칸)
   inventoryMax: number;
-  inventoryPercent: number;
+  
+  // 파생 상태 (혹은 계산 가능하지만 store에 포함)
   alerts: Alert[];
   news: NewsItem[];
   activeModal: ModalTab;
@@ -47,6 +53,16 @@ export interface GameState {
   openBuildingPage: (page: BuildingPage) => void;
   closeBuildingPage: () => void;
 
+  // 새로 추가되는 게임 로직 액션들
+  setCompanyInfo: (name: string, industry: string) => void;
+  updateMoney: (amount: number) => boolean;
+  updateMaterial: (amount: number) => number; // 실제 변경된 수량 반환
+  updateProduct: (amount: number) => number;
+  addAlert: (alertData: Omit<Alert, 'id' | 'timeAgo' | 'read'>) => void;
+
+  getWarehouseUsage: () => { usedSlots: number; percent: number };
+  getIndustryItemNames: () => { material: string; product: string };
+
   fetchCompanyData: (companyId: number) => Promise<void>;
 }
 
@@ -60,17 +76,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   currency: "₵",
   capital: 5000000,
   debt: 2000000,
-  warehouseUsed: 448,
-  warehouseMax: 500,
-  inventoryUsed: 32,
+  warehouseMaxSlots: 10,
   inventoryMax: 50,
-  inventoryPercent: 89.6,
-  alerts: [
-    { id: "n1", message: "철광석 매입 완료", detail: "2,500원 30개 완료", timeAgo: "방금 전", read: false },
-    { id: "n2", message: "철수 괴 판매", detail: "시장가 판매 완료", timeAgo: "5분 전", read: false },
-    { id: "n3", message: "재료 부족 - 작업 중단", detail: "철광석 재고 부족", timeAgo: "2시간 전", read: false },
-    { id: "n4", message: "강화 성공 / 대출 상환 / 아이템 획득 등", detail: "강화 +2 성공", timeAgo: "3시간 전", read: true },
-  ],
+  alerts: [],
   news: [
     { id: "news1", headline: "속보! [O][O][O]공장 석유 유출 사고...", date: "TODAY 3rd Mar", isBreaking: true, summary: "대규모 환경 오염 우려" },
     { id: "news2", headline: "철강 가격 3개월 만에 최고치 경신", date: "2nd Mar", isBreaking: false },
@@ -80,8 +88,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   activeBuildingPage: null,
   bankData: { loanRate: 5.5, depositRate: 2.3, currentLoan: 500000, currentDeposit: 150000 },
   warehouseItems: [
-    { id: "m1", name: "재료", type: "material", quantity: 100, maxQuantity: 200 },
-    { id: "p1", name: "상품", type: "product", quantity: 99, maxQuantity: 200 },
+    { id: "m1", type: "material", quantity: 47 },
+    { id: "p1", type: "product", quantity: 253 },
   ],
   hrData: { currentLevel: 1, expectedLevel: 2, successRate: 70, materialCurrent: 1, materialMax: 2 },
   isLoading: false,
@@ -89,12 +97,107 @@ export const useGameStore = create<GameState>((set, get) => ({
   openModal: (tab) => set({ activeModal: tab }),
   closeModal: () => set({ activeModal: null }),
   switchTab: (tab) => set({ activeModal: tab }),
+  addAlert: (alertData) => set((state) => {
+    const newAlert: Alert = {
+      ...alertData,
+      id: "alert_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+      timeAgo: "방금 전",
+      read: false
+    };
+    return { alerts: [newAlert, ...state.alerts] };
+  }),
   dismissAlert: (id) => set((state) => ({ 
       alerts: state.alerts.filter(alert => alert.id !== id) 
   })),
   selectBuilding: (building) => set({ selectedBuilding: building }),
   openBuildingPage: (page) => set({ activeBuildingPage: page }),
   closeBuildingPage: () => set({ activeBuildingPage: null }),
+
+  setCompanyInfo: (name, industry) => set({ companyName: name, industry }),
+  
+  getWarehouseUsage: () => {
+    const items = get().warehouseItems;
+    let usedSlots = 0;
+    items.forEach(item => {
+      usedSlots += Math.ceil(item.quantity / MAX_PER_SLOT);
+    });
+    const percent = Math.min((usedSlots / get().warehouseMaxSlots) * 100, 100);
+    return { usedSlots, percent };
+  },
+
+  getIndustryItemNames: () => {
+    const ind = get().industry;
+    if (ind === "금광업") return { material: "광물 찌꺼기", product: "금광석" };
+    if (ind === "금 제련업") return { material: "금광석", product: "금괴" };
+    if (ind === "제조업") return { material: "금괴", product: "광산 드릴" };
+    return { material: "재료", product: "생산품" };
+  },
+
+  updateMoney: (amount) => {
+    if (get().money + amount < 0) return false;
+    set(state => ({ money: state.money + amount }));
+    return true;
+  },
+
+  updateMaterial: (amount) => {
+    // 음수면 차감, 양수면 증가. 창고 여유 슬롯 검사
+    const { usedSlots } = get().getWarehouseUsage();
+    let actualAdded = amount;
+    
+    set(state => {
+      const newItems = [...state.warehouseItems];
+      const matIdx = newItems.findIndex(i => i.type === "material");
+      const currentQty = matIdx >= 0 ? newItems[matIdx].quantity : 0;
+      
+      if (amount < 0) {
+        if (currentQty + amount < 0) return state; // 부족함
+        actualAdded = amount;
+      } else {
+        // 증가 시, 최대 가능한 만큼만 계산
+        const maxCanHold = (state.warehouseMaxSlots * MAX_PER_SLOT) - (state.warehouseItems.filter(i=>i.type !== 'material').reduce((acc, i) => acc + Math.ceil(i.quantity/MAX_PER_SLOT), 0) * MAX_PER_SLOT);
+        // 매우 거친 방법이지만 간단히 슬롯 잔여로 계산
+        // 정확히는 "총 용량 1000 - 총 수량" 이 아니라 슬롯 단위로 나뉘므로 약간 다름. 간단히 총 개수로 제약을 걸 수도 있음.
+        // 여기선 요구사항인 "슬롯당 100개, 총 10슬롯 = 1000개. 즉 전체 아이템 합 < 1000 유지"로 근사함.
+        const totalQty = newItems.reduce((acc, i) => acc + i.quantity, 0);
+        const freeSpace = (state.warehouseMaxSlots * MAX_PER_SLOT) - totalQty;
+        actualAdded = Math.min(amount, freeSpace);
+      }
+
+      if (matIdx >= 0) {
+        newItems[matIdx] = { ...newItems[matIdx], quantity: currentQty + actualAdded };
+      } else {
+        newItems.push({ id: "m1", type: "material", quantity: actualAdded });
+      }
+      return { warehouseItems: newItems };
+    });
+    return actualAdded;
+  },
+
+  updateProduct: (amount) => {
+    let actualAdded = amount;
+    set(state => {
+      const newItems = [...state.warehouseItems];
+      const pIdx = newItems.findIndex(i => i.type === "product");
+      const currentQty = pIdx >= 0 ? newItems[pIdx].quantity : 0;
+      
+      if (amount < 0) {
+        if (currentQty + amount < 0) return state; // 부족함
+        actualAdded = amount;
+      } else {
+        const totalQty = newItems.reduce((acc, i) => acc + i.quantity, 0);
+        const freeSpace = (state.warehouseMaxSlots * MAX_PER_SLOT) - totalQty;
+        actualAdded = Math.min(amount, freeSpace);
+      }
+
+      if (pIdx >= 0) {
+        newItems[pIdx] = { ...newItems[pIdx], quantity: currentQty + actualAdded };
+      } else {
+        newItems.push({ id: "p1", type: "product", quantity: actualAdded });
+      }
+      return { warehouseItems: newItems };
+    });
+    return actualAdded;
+  },
 
   fetchCompanyData: async (companyId: number) => {
     set({ isLoading: true });
@@ -108,7 +211,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           capital: realData?.total_asset ?? get().capital,
           companyName: realData?.name ?? get().companyName,
           industry: realData?.industry_type ?? get().industry,
-          warehouseMax: realData?.slots?.warehouse_slots ?? get().warehouseMax,
+          warehouseMaxSlots: realData?.slots?.warehouse_slots ?? get().warehouseMaxSlots,
           inventoryMax: realData?.slots?.inventory_slots ?? get().inventoryMax,
           isLoading: false 
       });

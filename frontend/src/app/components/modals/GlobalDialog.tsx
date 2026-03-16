@@ -24,20 +24,29 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
   // 장착 일꾼 데이터
   const [equippedWorker, setEquippedWorker] = useState<{id: number, name: string, level: number} | null>(null);
 
-  const { slots, fetchSlots } = useInventoryStore();
+  const [slots, setSlots] = useState<any[]>([]);
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
 
   useEffect(() => {
-    fetchSlots();
-  }, [fetchSlots]);
+    // InventoryModal과 동일하게 목업 데이터를 불러옵니다.
+    import("../../../api/gameApi").then(({ InventoryAPI }) => {
+      InventoryAPI.getInventory(1).then(res => setSlots(res.data));
+    });
+  }, []);
 
   useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
+    const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !isCollecting) onClose();
+      // 스페이스바 직시입장 로직 (일반 건물인 경우)
+      if (e.code === "Space" && !isCollecting && data.type === "building" && data.action) {
+        e.preventDefault();
+        data.action();
+        onClose();
+      }
     };
-    window.addEventListener("keydown", handleEsc);
-    return () => window.removeEventListener("keydown", handleEsc);
-  }, [onClose, isCollecting]);
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose, isCollecting, data]);
 
   if (data.type === "workstation") {
     const materialPerUnit = 3;
@@ -214,20 +223,22 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
               <button onClick={() => setIsInventoryOpen(false)} className="w-12 h-12 rounded-full hover:bg-slate-100 flex items-center justify-center font-bold text-slate-500 text-xl cursor-pointer">X</button>
             </div>
             <div className="flex-1 overflow-y-auto flex flex-col gap-4 pr-2">
-              {slots.length === 0 && <div className="text-center text-slate-400 mt-10">인벤토리가 비어 있습니다.</div>}
-              {slots.map((item) => {
-                const isWorker = item.item_name && (item.item_name.includes("광부") || item.item_name.includes("제련") || item.item_name.includes("대장") || item.item_name.includes("전사") || item.item_name.includes("기사") || item.item_name.includes("도적"));
-                // @ts-ignore (locked is in mock, quantity in real)
+              {(!Array.isArray(slots) || slots.length === 0) && <div className="text-center text-slate-400 mt-10">인벤토리가 비어 있습니다.</div>}
+              {Array.isArray(slots) && slots.map((item) => {
+                const itemName = item.name || item.item_name;
+                const itemId = item.id || item.item_id;
+                const isWorker = itemName && (itemName.includes("광부") || itemName.includes("제련") || itemName.includes("대장") || itemName.includes("전사") || itemName.includes("기사") || itemName.includes("도적") || itemName.includes("대장장이"));
+                // @ts-ignore
                 const isLocked = item.locked !== undefined ? item.locked : false;
                 
                 return (
                   <button
-                    key={item.inventory_id || item.slot_index || Math.random()}
+                    key={itemId || Math.random()}
                     onClick={() => {
                       if (isWorker && !isLocked) {
-                        setEquippedWorker({ id: item.item_id, name: item.item_name, level: (item as any).level || 1 });
+                        setEquippedWorker({ id: itemId, name: itemName, level: (item as any).level || 1 });
                         setIsInventoryOpen(false);
-                      } else if (!isWorker && !isLocked && item.item_name) {
+                      } else if (!isWorker && !isLocked && itemName) {
                         useAlertStore.getState().openAlert("캐릭터(일꾼)만 장착할 수 있습니다.", "장착 불가");
                       }
                     }}
@@ -238,7 +249,7 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                     }`}
                   >
                     <div>
-                      <h3 className={`text-xl font-black ${isWorker && !isLocked ? "text-slate-800" : "text-slate-500"}`}>{item.item_name || (isLocked ? "잠긴 슬롯" : "빈 슬롯")}</h3>
+                      <h3 className={`text-xl font-black ${isWorker && !isLocked ? "text-slate-800" : "text-slate-500"}`}>{itemName || (isLocked ? "잠긴 슬롯" : "빈 슬롯")}</h3>
                       {isWorker && !isLocked && <p className="text-md font-bold text-amber-600 mt-1">Lv. {(item as any).level || 1}</p>}
                     </div>
                     {isWorker && !isLocked && <span className="text-4xl drop-shadow-md">🧑‍🔧</span>}
@@ -303,8 +314,8 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
           <p className="text-sm text-slate-500 font-bold animate-pulse">잠시 후 자동으로 입장합니다...</p>
         </div>
         <div className="flex w-full mt-2 gap-3">
-          <button className="flex-1 py-4 rounded-xl bg-slate-100 text-slate-600 border-2 border-slate-200 font-black text-lg hover:bg-slate-200 active:scale-95 cursor-pointer transition-colors" onClick={onClose}>취소 (나가기)</button>
-          <button className="flex-1 py-4 rounded-xl bg-indigo-500 text-white font-black text-lg hover:bg-indigo-600 active:scale-95 cursor-pointer shadow-lg transition-colors" onClick={handleImmediateEnter}>즉시 입장</button>
+          <button className="flex-1 py-4 rounded-xl bg-slate-100 text-slate-600 border-2 border-slate-200 font-black text-lg hover:bg-slate-200 active:scale-95 cursor-pointer transition-colors" onClick={onClose}>취소 (ESC)</button>
+          <button className="flex-1 py-4 rounded-xl bg-indigo-500 text-white font-black text-lg hover:bg-indigo-600 active:scale-95 cursor-pointer shadow-lg transition-colors" onClick={handleImmediateEnter}>즉시 입장 (SPACE)</button>
         </div>
       </div>
     </div>

@@ -14,7 +14,7 @@ export function AlertModal() {
         </span>
       </div>
 
-      <div className="flex-1 overflow-y-scroll space-y-2 pr-2" style={{ maxHeight: '400px' }}>
+      <div className="flex-1 overflow-y-auto space-y-2 pr-2 [&::-webkit-scrollbar]:hidden" style={{ maxHeight: '400px' }}>
         {state.alerts.map((notification, index) => (
           <div
             key={notification.id}

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Plus, Minus, Package } from "lucide-react";
-import { useGame } from "../../store/gameStore";
+import { useGame, useGameStore, MAX_PER_SLOT } from "../../store/gameStore";
 import { BackButton } from "../../app/components/ui/backbutton";
 
 
@@ -56,6 +56,11 @@ function ShelfItem({
 export function WarehousePage() {
   const { state, closeBuildingPage } = useGame();
   const { warehouseItems } = state;
+  const usedSlots = useGameStore(s => s.getWarehouseUsage().usedSlots);
+  const percent = useGameStore(s => s.getWarehouseUsage().percent);
+  const maxSlots = useGameStore(s => s.warehouseMaxSlots);
+  const material = useGameStore(s => s.getIndustryItemNames().material);
+  const product = useGameStore(s => s.getIndustryItemNames().product);
   const [compactView, setCompactView] = useState(false);
 
   const materials = warehouseItems.filter((i) => i.type === "material");
@@ -83,32 +88,52 @@ export function WarehousePage() {
             {/* Top shelf - Materials */}
             <div className="mb-8">
               <h3 className="text-gray-500 font-bold mb-4 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-yellow-500"></div> 원자재</h3>
-              <div className="flex flex-wrap items-end justify-start gap-8">
-                {materials.map((item) => (
-                  <ShelfItem
-                    key={item.id}
-                    name={item.name}
-                    quantity={item.quantity}
-                    type={item.type}
-                    compact={compactView}
-                  />
-                ))}
+              <div className="flex flex-wrap items-end justify-start gap-4">
+                {materials.map((item) => {
+                  const numSlots = Math.ceil(item.quantity / MAX_PER_SLOT);
+                  const slots = [];
+                  let remaining = item.quantity;
+                  for (let i = 0; i < numSlots; i++) {
+                    const amountInSlot = Math.min(remaining, MAX_PER_SLOT);
+                    slots.push(
+                      <ShelfItem
+                        key={`${item.id}-${i}`}
+                        name={material}
+                        quantity={amountInSlot}
+                        type={item.type}
+                        compact={compactView}
+                      />
+                    );
+                    remaining -= amountInSlot;
+                  }
+                  return slots;
+                })}
               </div>
             </div>
 
             {/* Bottom shelf - Products */}
             <div className="pt-4 border-t border-gray-300/50">
               <h3 className="text-gray-500 font-bold mb-4 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-blue-500"></div> 생산품</h3>
-              <div className="flex flex-wrap items-end justify-start gap-8">
-                {products.map((item) => (
-                  <ShelfItem
-                    key={item.id}
-                    name={item.name}
-                    quantity={item.quantity}
-                    type={item.type}
-                    compact={compactView}
-                  />
-                ))}
+              <div className="flex flex-wrap items-end justify-start gap-4">
+                {products.map((item) => {
+                  const numSlots = Math.ceil(item.quantity / MAX_PER_SLOT);
+                  const slots = [];
+                  let remaining = item.quantity;
+                  for (let i = 0; i < numSlots; i++) {
+                    const amountInSlot = Math.min(remaining, MAX_PER_SLOT);
+                    slots.push(
+                      <ShelfItem
+                        key={`${item.id}-${i}`}
+                        name={product}
+                        quantity={amountInSlot}
+                        type={item.type}
+                        compact={compactView}
+                      />
+                    );
+                    remaining -= amountInSlot;
+                  }
+                  return slots;
+                })}
               </div>
             </div>
           </div>
@@ -117,15 +142,13 @@ export function WarehousePage() {
         {/* Warehouse capacity */}
         <div className="mt-6 flex items-center justify-center gap-3">
           <Package className="w-5 h-5 text-gray-500" />
-          <span className="text-sm text-gray-600">
-            수용량: {state.warehouseUsed} / {state.warehouseMax}
+          <span className="text-sm text-gray-600 font-bold">
+            수용량: {usedSlots} / {maxSlots} 슬롯
           </span>
           <div className="w-40 h-3 bg-gray-200 rounded-full overflow-hidden">
             <div
-              className="h-full bg-amber-500 rounded-full"
-              style={{
-                width: `${(state.warehouseUsed / state.warehouseMax) * 100}%`,
-              }}
+              className={`h-full rounded-full transition-all duration-500 ${percent >= 100 ? 'bg-red-500' : 'bg-amber-500'}`}
+              style={{ width: `${percent}%` }}
             />
           </div>
         </div>

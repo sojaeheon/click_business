@@ -36,6 +36,12 @@ const generateOrderBook = (currentPrice: number) => {
 export function MarketPage() {
   // const { closeBuildingPage } = useGame(); // 커스텀 훅 이름 확인 후 사용
   const closeBuildingPage = useGameStore(state => state.closeBuildingPage); // Zustand 스탠다드 방식 권장
+  const updateMoney = useGameStore(state => state.updateMoney);
+  const updateMaterial = useGameStore(state => state.updateMaterial);
+  const updateProduct = useGameStore(state => state.updateProduct);
+  const material = useGameStore(state => state.getIndustryItemNames().material);
+  const product = useGameStore(state => state.getIndustryItemNames().product);
+  const warehouseItems = useGameStore(state => state.warehouseItems);
 
   const [mode, setMode] = useState<MarketMode>(null);
   const [price, setPrice] = useState<number>(0);
@@ -83,12 +89,40 @@ export function MarketPage() {
   const handleConfirm = async () => {
     if (quantity <= 0 || price <= 0 || !mode) return;
 
+    if (mode === "buy") {
+      const isPaid = updateMoney(-totalAmount);
+      if (!isPaid) {
+        useAlertStore.getState().openAlert("잔액이 부족합니다.", "안내");
+        return;
+      }
+      const added = updateMaterial(quantity);
+      if (added < quantity) {
+        useAlertStore.getState().openAlert(`창고 공간이 부족하여 ${added}개만 담았습니다. (나머지 금액 환불 처리됨)`, "창고 가득 참");
+        // 환불 로직
+        updateMoney((quantity - added) * price);
+      }
+    } else if (mode === "sell") {
+      const prodList = warehouseItems.filter(i => i.type === "product");
+      const currentCount = prodList.reduce((acc, i) => acc + i.quantity, 0);
+      if (currentCount < quantity) {
+        useAlertStore.getState().openAlert("창고에 판매할 생산품이 부족합니다.", "판매 불가");
+        return;
+      }
+      updateProduct(-quantity);
+      updateMoney(totalAmount);
+    }
+
     setIsProcessing(true);
     try {
-      await MarketAPI.createOrder({
-        companyId: 1, itemId: 1, type: mode === "buy" ? "BUY" : "SELL", price: price, qty: quantity
-      });
+      // (목업 API 호출 주석처리 혹은 그대로 둔 상태로 프론트 제어)
+      // await MarketAPI.createOrder({
+      //   companyId: 1, itemId: 1, type: mode === "buy" ? "BUY" : "SELL", price: price, qty: quantity
+      // });
       setShowPopup(true);
+      useGameStore.getState().addAlert({
+        message: mode === "buy" ? "구매 주문 완료" : "판매 주문 완료",
+        detail: `${mode === "buy" ? material : product} ${quantity}개 / 총 ${totalAmount.toLocaleString()}원`
+      });
       setTimeout(() => {
         setShowPopup(false);
         setPrice(0);
@@ -122,17 +156,25 @@ export function MarketPage() {
         // --- DEPTH 1: 메인 화면 ---
         <div className="flex-1 flex flex-col justify-center items-center gap-12 p-6 max-w-4xl mx-auto w-full relative z-10">
           <div className="flex gap-8 w-full h-80">
-            <button onClick={() => setMode("buy")} className="flex-1 bg-white hover:bg-rose-50 border-4 border-slate-300 hover:border-rose-400 rounded-[2rem] shadow-xl flex flex-col items-center justify-center gap-6 group transition-all duration-300 active:scale-95 cursor-pointer">
-              <div className="w-24 h-24 rounded-full bg-rose-100 flex items-center justify-center group-hover:scale-110 transition-transform">
+            <button onClick={() => setMode("buy")} className="flex-1 bg-white hover:bg-rose-50 border-4 border-slate-300 hover:border-rose-400 rounded-[2rem] shadow-xl flex flex-col items-center justify-center gap-6 group transition-all duration-300 active:scale-95 cursor-pointer relative overflow-hidden">
+              <div className="w-24 h-24 rounded-full bg-rose-100 flex items-center justify-center group-hover:scale-110 transition-transform relative z-10">
                 <TrendingUp className="w-12 h-12 text-rose-500" />
               </div>
-              <span className="text-5xl font-black text-slate-800 tracking-widest">구 매</span>
+              <div className="relative z-10 text-center">
+                <span className="text-5xl font-black text-slate-800 tracking-widest block">구 매</span>
+                <span className="text-xl font-bold text-rose-500 mt-2 block opacity-0 group-hover:opacity-100 transition-opacity drop-shadow">{material}</span>
+              </div>
+              <img src="/ui_icons/Coins.png" alt="bg" className="absolute -bottom-10 -right-10 w-48 opacity-10 group-hover:opacity-30 group-hover:scale-110 transition-all pointer-events-none" />
             </button>
-            <button onClick={() => setMode("sell")} className="flex-1 bg-white hover:bg-blue-50 border-4 border-slate-300 hover:border-blue-400 rounded-[2rem] shadow-xl flex flex-col items-center justify-center gap-6 group transition-all duration-300 active:scale-95 cursor-pointer">
-              <div className="w-24 h-24 rounded-full bg-blue-100 flex items-center justify-center group-hover:scale-110 transition-transform">
+            <button onClick={() => setMode("sell")} className="flex-1 bg-white hover:bg-blue-50 border-4 border-slate-300 hover:border-blue-400 rounded-[2rem] shadow-xl flex flex-col items-center justify-center gap-6 group transition-all duration-300 active:scale-95 cursor-pointer relative overflow-hidden">
+              <div className="w-24 h-24 rounded-full bg-blue-100 flex items-center justify-center group-hover:scale-110 transition-transform relative z-10">
                 <TrendingDown className="w-12 h-12 text-blue-500" />
               </div>
-              <span className="text-5xl font-black text-slate-800 tracking-widest">판 매</span>
+              <div className="relative z-10 text-center">
+                <span className="text-5xl font-black text-slate-800 tracking-widest block">판 매</span>
+                <span className="text-xl font-bold text-blue-500 mt-2 block opacity-0 group-hover:opacity-100 transition-opacity drop-shadow">{product}</span>
+              </div>
+              <img src="/ui_icons/star_128x128_4.png" alt="bg" className="absolute -bottom-10 -right-10 w-48 opacity-10 group-hover:opacity-30 group-hover:scale-110 transition-all pointer-events-none grayscale" />
             </button>
           </div>
         </div>
@@ -189,7 +231,7 @@ export function MarketPage() {
                     <div 
                       key={`ask-${idx}`} 
                       className="relative flex justify-between items-center px-4 py-3 cursor-pointer group border-b border-slate-50 hover:bg-slate-50 transition-colors"
-                      onClick={() => setPrice(ask.price)} // ✨ 클릭 시 가격 자동 입력!
+                      onClick={() => { setPrice(ask.price); setQuantity(q => q === 0 ? 1 : q); }} // ✨ 클릭 시 가격 자동 입력!
                     >
                       {/* 가상 잔량 바 그래프 효과 */}
                       <div className="absolute right-0 top-1 bottom-1 bg-blue-100/60 rounded-l-md -z-10 transition-all" style={{ width: `${(ask.quantity / 350) * 100}%` }} />
@@ -213,7 +255,7 @@ export function MarketPage() {
                     <div 
                       key={`bid-${idx}`} 
                       className="relative flex justify-between items-center px-4 py-3 cursor-pointer group border-b border-slate-50 hover:bg-slate-50 transition-colors"
-                      onClick={() => setPrice(bid.price)} // ✨ 클릭 시 가격 자동 입력!
+                      onClick={() => { setPrice(bid.price); setQuantity(q => q === 0 ? 1 : q); }} // ✨ 클릭 시 가격 자동 입력!
                     >
                       {/* 가상 잔량 바 그래프 효과 */}
                       <div className="absolute right-0 top-1 bottom-1 bg-rose-100/60 rounded-l-md -z-10 transition-all" style={{ width: `${(bid.quantity / 350) * 100}%` }} />
@@ -230,7 +272,10 @@ export function MarketPage() {
               <div className="flex flex-col gap-6">
                 <h2 className="text-xl font-black text-slate-800 border-b-2 border-slate-100 pb-3 flex items-center justify-between">
                   <span>{mode === "buy" ? "구매 주문" : "판매 주문"}</span>
-                  <span className={`text-sm px-3 py-1 rounded-full ${mode === "buy" ? "bg-rose-100 text-rose-600" : "bg-blue-100 text-blue-600"}`}>{mode === "buy" ? "BUY" : "SELL"}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-slate-500 mr-2">{mode === "buy" ? material : product}</span>
+                    <span className={`text-sm px-3 py-1 rounded-full ${mode === "buy" ? "bg-rose-100 text-rose-600" : "bg-blue-100 text-blue-600"}`}>{mode === "buy" ? "BUY" : "SELL"}</span>
+                  </div>
                 </h2>
 
                 <div className="flex flex-col gap-2">

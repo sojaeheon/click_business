@@ -45,7 +45,12 @@ export function RankingModal() {
         }));
 
         setRankData(formattedData || []);
-        setLastUpdated("방금 전 업데이트됨"); // 목업이라 시간을 임의로 고정
+        
+        // 매 시 정각 포맷 구하기
+        const now = new Date();
+        const hr = now.getHours().toString().padStart(2, '0');
+        setLastUpdated(`오늘 ${hr}:00 업데이트됨`);
+        
         setError(false);
       })
       .catch((err) => {
@@ -67,7 +72,7 @@ export function RankingModal() {
   const myRank = { rank: 2, amount: state.money.toLocaleString() + " ₵" };
 
   return (
-    <div className="relative h-full flex flex-col pointer-events-auto">
+    <div className="relative flex flex-col pointer-events-auto pb-6">
       <div className="flex items-center justify-between mb-2 flex-shrink-0">
         <div className="flex items-center gap-2">
           <Trophy className="w-5 h-5 text-yellow-600" />
@@ -92,7 +97,7 @@ export function RankingModal() {
           <p className="text-sm">목업 API 설정 또는 서버가 연결되지 않았습니다.</p>
         </div>
       ) : (
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex flex-col w-full">
           <p className="text-xs text-gray-400 mb-2 flex-shrink-0">기준 : {lastUpdated}</p>
 
           {/* Podium — 1, 2, 3위 */}
@@ -137,9 +142,9 @@ export function RankingModal() {
           </div>
 
           {/* 4위 이하 목록 */}
-          <div className="flex-1 overflow-y-auto bg-white rounded-xl border-2 border-gray-300 min-h-0 custom-scrollbar">
+          <div className="w-full bg-white rounded-xl border-2 border-gray-300 mt-2">
             <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-gray-50 z-10 shadow-sm">
+              <thead className="bg-gray-50 shadow-sm border-b border-gray-200">
                 <tr className="border-b border-gray-200">
                   <th className="py-3 px-4 text-left text-gray-500 font-bold">순위</th>
                   <th className="py-3 px-4 text-left text-gray-500 font-bold">기업명</th>
@@ -149,7 +154,7 @@ export function RankingModal() {
               </thead>
               <tbody>
                 {rest.map((entry) => (
-                  <tr key={entry.rank} className="border-b border-gray-100 hover:bg-blue-50 transition-colors">
+                  <tr key={entry.rank} className="border-b border-gray-100 transition-colors">
                     <td className="py-3 px-4 text-gray-600 font-black">{entry.rank}</td>
                     <td className="py-3 px-4 text-gray-800 font-bold">{entry.name}</td>
                     <td className="py-3 px-4 text-center text-blue-500 font-bold">{entry.company}</td>
@@ -165,7 +170,7 @@ export function RankingModal() {
       {/* 내 순위 팝업 */}
       {showMyRank && (
         <div className="absolute inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40 rounded-3xl backdrop-blur-sm" onClick={() => setShowMyRank(false)} />
+          <div className="absolute inset-0 rounded-3xl" onClick={() => setShowMyRank(false)} />
           <div className="relative bg-white rounded-[2rem] border-[4px] border-slate-800 shadow-2xl p-8 w-80 text-center animate-in zoom-in-95 duration-200">
             <button
               onClick={() => setShowMyRank(false)}
