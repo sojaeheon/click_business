@@ -52,8 +52,9 @@ else
 fi
 
 # Jenkins 컨테이너가 K8s API 서버에 접속할 수 있도록 내부 IP 추출 및 Kubeconfig 수정
+# kind 네트워크 IP 사용 (TLS 인증서가 이 IP로 발급됨, Jenkins도 kind 네트워크에 연결됨)
 KUBECONFIG_RAW=$(sudo kind get kubeconfig --name kind)
-KIND_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' kind-control-plane)
+KIND_IP=$(docker inspect kind-control-plane | python3 -c "import json,sys; d=json.load(sys.stdin)[0]; print(d['NetworkSettings']['Networks']['kind']['IPAddress'])")
 
 # Kubeconfig 내의 127.0.0.1:PORT 주소를 컨테이너 간 통신이 가능한 KIND_IP:6443으로 치환
 KUBECONFIG_ADJUSTED=$(echo "$KUBECONFIG_RAW" | sed -E "s|https://127.0.0.1:[0-9]+|https://$KIND_IP:6443|g")
@@ -135,8 +136,8 @@ echo "http://$PUBLIC_IP:8080/project/S14P21B109-Practice-Pipeline"
 echo "===================================================="
 
 # 설정 변경사항 Jenkins에 즉시 반영 시도
-if [ -f .env ]; then
-    . .env
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    . "$SCRIPT_DIR/.env"
     # JCasC 설정 리로드 (네트워크 준비 시간에 따라 실패할 수 있음)
     sleep 5
     curl -s -X POST "http://localhost:8080/jenkins/configuration-as-code/reload" -u "$JENKINS_ADMIN_ID:$JENKINS_ADMIN_PASSWORD" || echo "💡 Jenkins 웹페이지 준비 중... 약 1분 뒤 자동 설정이 완료됩니다."
@@ -154,9 +155,6 @@ KUBECONFIG_APPLY=$(echo "$KUBECONFIG_RAW_APPLY" | sed -E "s|https://127.0.0.1:[0
 apply_k8s() {
     echo "$KUBECONFIG_APPLY" | kubectl apply -f "$1" --kubeconfig=/dev/stdin
 }
-
-# kind-control-plane을 ecosim-network에 연결 (postgres-db, redis 컨테이너에 접근 가능하도록)
-docker network connect ecosim-network kind-control-plane 2>/dev/null || true
 
 # postgres-db, redis의 ecosim-network 상 IP 가져오기
 POSTGRES_IP=$(docker inspect postgres-db --format '{{.NetworkSettings.Networks.ecosim-network.IPAddress}}' 2>/dev/null)

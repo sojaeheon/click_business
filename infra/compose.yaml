@@ -40,8 +40,12 @@ services:
       - KUBECONFIG_CONTENT
     networks:
       - ecosim-network
+      - kind
 
 networks:
   ecosim-network:
     name: ecosim-network
+  kind:
+    external: true
+    name: kind
 
