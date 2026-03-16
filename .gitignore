@@ -83,7 +83,7 @@ tmp/
 
 rule.md
 /postgres_data/
-
+/pjt2/
 hadoop.env
 .claude/
 claude.md
