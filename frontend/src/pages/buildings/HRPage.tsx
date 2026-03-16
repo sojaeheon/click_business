@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
 import { Plus } from "lucide-react";
 import { useGame } from "../../store/gameStore";
 import { Canvas } from "@react-three/fiber";
@@ -11,7 +11,7 @@ function CharacterModel({ url }: { url: string }) {
   const clone = React.useMemo(() => scene.clone(), [scene]);
   const group = useRef<any>(null);
   const { actions } = useAnimations(animations, group);
-  
+
   useEffect(() => {
     if (actions && Object.keys(actions).length > 0) {
       const actionName = Object.keys(actions)[0];
@@ -19,10 +19,12 @@ function CharacterModel({ url }: { url: string }) {
     }
   }, [actions]);
 
-  // Y값을 미세조정하여 발이 플랫폼 위에 닿도록 설정 (기존에는 살짝 떠 있었음)
+  // 애니메이션이 최상위 그룹의 위치를 덮어씌울 수 있으므로 wrapper 그룹으로 위치값을 제어합니다.
   return (
-    <group ref={group}>
-      <primitive object={clone} scale={1.8} position={[0, -0.6, 0]} rotation={[0, 0, 0]} />
+    <group position={[0, 0, 0]}>
+      <group ref={group}>
+        <primitive object={clone} scale={1.8} rotation={[0, 0, 0]} />
+      </group>
     </group>
   );
 }
@@ -49,15 +51,21 @@ function Lever({ onPull }: { onPull: () => void }) {
   };
 
   return (
-    <group ref={group} onClick={handleClick} position={[2.5, -0.8, 0]} scale={2.0} rotation={[0, -Math.PI / 6, 0]}>
-      <primitive object={clone} />
-      <Html position={[0, 2.5, 0]} center zIndexRange={[100, 0]}>
+    <group ref={group} onClick={handleClick} position={[2.8, -0.2, 2.0]} scale={1.5} rotation={[0, -Math.PI / 4, 0]}>
+      <primitive object={clone} position={[0, 0, 0]} />
+      <Html position={[0, 1.8, 0]} center zIndexRange={[100, 0]}>
         <div className="bg-white/90 backdrop-blur rounded-full px-4 py-1.5 font-bold text-slate-800 shadow-lg border-2 border-amber-500 text-sm pointer-events-none animate-bounce whitespace-nowrap">
           👇 강화 시도
         </div>
       </Html>
     </group>
   );
+}
+
+function PlatformModel() {
+  const { scene } = useGLTF("/models/props/platform.glb");
+  const clone = React.useMemo(() => scene.clone(), [scene]);
+  return <primitive object={clone} scale={0.7} position={[0, 0, 0]} />;
 }
 
 function LevelUpEffect() {
@@ -118,9 +126,9 @@ export function HRPage() {
     import("../../api/gameApi").then(({ InventoryAPI }) => {
       // 목업상 여러 개 소유하기 위해 수량을 가상으로 증폭시켜 테스트 가능하게 함
       InventoryAPI.getInventory(1).then(res => {
-         const data = [...res.data];
-         data.forEach(d => { if (!d.quantity && !d.owned) d.quantity = 2; }); // 임시 보유량 세팅
-         setSlots(data);
+        const data = [...res.data];
+        data.forEach((d: any) => { if (!d.quantity && !d.owned) d.quantity = 2; }); // 임시 보유량 세팅
+        setSlots(data);
       });
     });
   }, []);
@@ -135,7 +143,7 @@ export function HRPage() {
       const sLevel = s.level || 1;
       const qty = s.quantity || s.owned || 1;
       if (sName === name && sLevel === level) {
-         count += qty;
+        count += qty;
       }
     });
     return count;
@@ -174,14 +182,14 @@ export function HRPage() {
     }, 1000);
   };
 
-  const { scene: platformScene } = useGLTF("/models/props/platform.glb");
+    // const { scene: platformScene } = useGLTF("/models/props/platform.glb");
 
   const workerCount = getWorkerCount(selectedWorker);
 
   return (
     <div className="absolute inset-0 z-40 flex flex-col pt-8">
       {/* 배경 컨테이너 - 이미지에만 블러 적용 */}
-      <div 
+      <div
         className="absolute inset-0 -z-10"
         style={{
           backgroundImage: "url('/images/HR.png')",
@@ -192,7 +200,7 @@ export function HRPage() {
           filter: 'blur(4px)'
         }}
       />
-      
+
       <BackButton onClick={closeBuildingPage} className="absolute top-6 left-6 z-50" />
 
       {upgradeMessage && (
@@ -209,46 +217,46 @@ export function HRPage() {
 
           {/* 캐릭터 선택 정보창 */}
           {selectedWorker && (
-             <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900/80 backdrop-blur-md px-8 py-4 rounded-3xl border-2 border-slate-600 shadow-xl flex gap-6 items-center z-10 text-white">
-                <div>
-                   <h2 className="text-3xl font-black text-amber-400">{selectedWorker.name || selectedWorker.item_name}</h2>
-                   <p className="text-xl font-bold">Lv. {selectedWorker.level || 1}</p>
-                </div>
-                <div className="h-10 w-px bg-slate-600"></div>
-                <div className="flex flex-col items-center cursor-help" title="강화 시 2개의 동일 캐릭터가 소모(합성)됩니다.">
-                   <span className="text-slate-300 text-sm font-bold">보유 수량</span>
-                   <span className={`text-2xl font-black ${workerCount >= 2 ? 'text-emerald-400' : 'text-rose-400'}`}>{workerCount} / 2</span>
-                </div>
-             </div>
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900/80 backdrop-blur-md px-8 py-4 rounded-3xl border-2 border-slate-600 shadow-xl flex gap-6 items-center z-10 text-white">
+              <div>
+                <h2 className="text-3xl font-black text-amber-400">{selectedWorker.name || selectedWorker.item_name}</h2>
+                <p className="text-xl font-bold">Lv. {selectedWorker.level || 1}</p>
+              </div>
+              <div className="h-10 w-px bg-slate-600"></div>
+              <div className="flex flex-col items-center cursor-help" title="강화 시 2개의 동일 캐릭터가 소모(합성)됩니다.">
+                <span className="text-slate-300 text-sm font-bold">보유 수량</span>
+                <span className={`text-2xl font-black ${workerCount >= 2 ? 'text-emerald-400' : 'text-rose-400'}`}>{workerCount} / 2</span>
+              </div>
+            </div>
           )}
 
           <Canvas shadows camera={{ position: [0, 2.0, 9], fov: 35 }}>
             <ambientLight intensity={1.2} />
             <directionalLight position={[10, 15, 10]} intensity={1.8} castShadow shadow-bias={-0.001} />
 
-            <group position={[0, -1.5, 0]}>
-              {/* 플랫폼의 스케일을 줄여 폭을 캐릭터에 맞게 좁힘 */}
-              <primitive object={platformScene.clone()} scale={0.7} position={[0, 0, 0]} />
+            <Suspense fallback={null}>
+              <group position={[0, -1.5, 0]}>
+                {/* 플랫폼 */}
+                <PlatformModel />
 
-              <group position={[0, 0.45, 0]}>
-                {selectedWorker ? (
-                  <group onClick={(e) => { e.stopPropagation(); setIsInventoryOpen(true); }} onPointerOver={() => document.body.style.cursor = 'pointer'} onPointerOut={() => document.body.style.cursor = 'auto'}>
-                    <CharacterModel url={getModelPathForWorker(selectedWorker.name || selectedWorker.item_name)} />
-                  </group>
-                ) : (
-                  <Html position={[0, 0.8, 0]} center zIndexRange={[100, 0]}>
-                    <button
-                      onClick={() => setIsInventoryOpen(true)}
-                      className="w-24 h-24 bg-amber-200/50 backdrop-blur-sm rounded-full border-[6px] border-amber-400 flex items-center justify-center hover:bg-amber-300/80 hover:scale-110 transition-all cursor-pointer shadow-[0_0_20px_rgba(251,191,36,0.5)] group"
-                    >
-                      <Plus className="w-12 h-12 text-amber-700 group-hover:rotate-90 transition-transform" strokeWidth={3} />
-                    </button>
-                  </Html>
-                )}
+                <group position={[0, 0.05, 0]}>
+                  {selectedWorker ? (
+                    <group onClick={(e) => { e.stopPropagation(); setIsInventoryOpen(true); }} onPointerOver={() => document.body.style.cursor = 'pointer'} onPointerOut={() => document.body.style.cursor = 'auto'}>
+                      <CharacterModel url={getModelPathForWorker(selectedWorker.name || selectedWorker.item_name)} />
+                    </group>
+                  ) : (
+                    <Html position={[0, 0.8, 0]} center zIndexRange={[100, 0]}>
+                      <button
+                        onClick={() => setIsInventoryOpen(true)}
+                        className="w-24 h-24 bg-amber-200/50 backdrop-blur-sm rounded-full border-[6px] border-amber-400 flex items-center justify-center hover:bg-amber-300/80 hover:scale-110 transition-all cursor-pointer shadow-[0_0_20px_rgba(251,191,36,0.5)] group"
+                      >
+                        <Plus className="w-12 h-12 text-amber-700 group-hover:rotate-90 transition-transform" strokeWidth={3} />
+                      </button>
+                    </Html>
+                  )}
+                </group>
               </group>
-
-              <Lever onPull={handleLeverPull} />
-            </group>
+            </Suspense>
 
             <OrbitControls
               enableZoom={false}
@@ -259,6 +267,14 @@ export function HRPage() {
               maxAzimuthAngle={0.3}
             />
           </Canvas>
+
+          {/* 강화 시도 버튼 - Canvas 밖 HTML로 배치 */}
+          <button
+            onClick={handleLeverPull}
+            className="absolute bottom-6 right-6 z-20 bg-gradient-to-b from-amber-400 to-amber-600 hover:from-amber-300 hover:to-amber-500 active:scale-95 text-white font-black text-xl px-8 py-4 rounded-2xl shadow-[0_6px_0_rgb(180,83,9)] border-2 border-amber-700 cursor-pointer transition-all flex items-center gap-3 animate-bounce"
+          >
+            <span className="text-2xl">⚒️</span> 강화 시도
+          </button>
         </div>
       </div>
 
@@ -277,7 +293,7 @@ export function HRPage() {
               const isWorker = itemName && (itemName.includes("광부") || itemName.includes("제련") || itemName.includes("대장") || itemName.includes("전사") || itemName.includes("기사") || itemName.includes("도적") || itemName.includes("대장장이"));
               // @ts-ignore
               const isLocked = item.locked !== undefined ? item.locked : false;
-              
+
               if (!isWorker || isLocked) return null;
 
               return (

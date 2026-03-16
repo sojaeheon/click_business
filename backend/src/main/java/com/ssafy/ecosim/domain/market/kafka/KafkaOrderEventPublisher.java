@@ -11,18 +11,18 @@ import java.util.UUID;
 
 /**
  * 실제 Kafka 연동 이벤트 발행기입니다.
- * DE팀의 OrderMadeEventProducer를 통해 'order.made' 토픽으로 이벤트를 발행합니다.
+ * DE팀의 OrderEventProducer를 통해 'order.made' 토픽으로 이벤트를 발행합니다.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class KafkaOrderEventPublisher implements OrderEventPublisher {
 
-    private final OrderMadeEventProducer orderMadeEventProducer;
+    private final OrderEventProducer orderEventProducer;
 
     @Override
     public void publishOrderEvent(OrderCreationEventDto event) {
-        OrderMadeEvent kafkaEvent = OrderMadeEvent.builder()
+        OrderEventDto kafkaEvent = OrderEventDto.builder()
                 .eventId(UUID.randomUUID().toString())
                 .eventTime(Instant.now())
                 .eventType("ORDER_CREATED")
@@ -39,7 +39,7 @@ public class KafkaOrderEventPublisher implements OrderEventPublisher {
                 .updatedAt(Instant.ofEpochMilli(event.getTimestamp()))
                 .build();
 
-        orderMadeEventProducer.sendOrderEvent(kafkaEvent);
+        orderEventProducer.sendOrderEvent(kafkaEvent);
 
         log.info("[Kafka] order.made published: type={}, item={}, price={}, qty={}, virtual={}",
                 event.getOrderType(), event.getItemId(), event.getPrice(),
