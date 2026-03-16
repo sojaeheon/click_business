@@ -30,18 +30,18 @@ function BuildingModel() {
     if (!groupRef.current) return;
 
     if (groupRef.current.position.z < 0) {
-      groupRef.current.position.z += delta * 150; 
+      groupRef.current.position.z += delta * 150;
       if (groupRef.current.position.z >= 0) {
-        groupRef.current.position.z = 0; 
+        groupRef.current.position.z = 0;
       }
-    } 
+    }
     else if (!hasTurned.current) {
-      const targetRotation = Math.PI / 4; 
+      const targetRotation = Math.PI / 4;
       if (groupRef.current.rotation.y < targetRotation) {
-        groupRef.current.rotation.y += delta * 6; 
+        groupRef.current.rotation.y += delta * 6;
       } else {
-        groupRef.current.rotation.y = targetRotation; 
-        hasTurned.current = true; 
+        groupRef.current.rotation.y = targetRotation;
+        hasTurned.current = true;
       }
     }
   });
@@ -55,12 +55,13 @@ function BuildingModel() {
 
 export function MinigamePage() {
   const closeBuildingPage = useGameStore((state) => state.closeBuildingPage);
-  const buttonRef = useRef<HTMLButtonElement>(null); 
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   const TOTAL_CLICKS = 100;
   const [gameState, setGameState] = useState<"locked" | "playing" | "success" | "failure">("locked");
-  const [timeLeft, setTimeLeft] = useState(30);
+  const [timeLeft, setTimeLeft] = useState(10);
   const [clicksLeft, setClicksLeft] = useState(TOTAL_CLICKS);
+  const [isStarted, setIsStarted] = useState(false);
   const [clickEffects, setClickEffects] = useState<{ id: number; x: number; y: number }[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -69,11 +70,11 @@ export function MinigamePage() {
   // ✨ 잔액 부족 알림용 팝업 상태 추가 (alert 대체)
   const [showErrorAlert, setShowErrorAlert] = useState(false);
 
-  const isFever = gameState === "playing" && clicksLeft > 0 && clicksLeft <= TOTAL_CLICKS / 2;
+  const isFever = false; // Fever 기능 삭제
 
   useEffect(() => {
     let timer: number;
-    if (gameState === "playing" && timeLeft > 0) {
+    if (gameState === "playing" && timeLeft > 0 && isStarted) {
       timer = window.setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
@@ -85,7 +86,22 @@ export function MinigamePage() {
       }, 1000);
     }
     return () => clearInterval(timer);
-  }, [gameState, timeLeft]);
+  }, [gameState, timeLeft, isStarted]);
+
+  // ⌨️ 스페이스바 타격 이벤트 리스너
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (gameState === "playing" && e.code === "Space") {
+        e.preventDefault(); // 스크롤 방지
+        if (!isStarted) {
+          setIsStarted(true);
+        }
+        handleClickBuilding();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [gameState, isStarted]);
 
   // 🚪 뒤로가기 방지 로직 (기본 confirm 창 대체)
   const handleBackClick = () => {
@@ -99,18 +115,19 @@ export function MinigamePage() {
   const handleUnlock = async () => {
     if (isProcessing) return;
     const currentMoney = useGameStore.getState().money;
-    
-    if (currentMoney < 1000) {
+
+    if (currentMoney < 100000) {
       setShowErrorAlert(true); // 잔액 부족 시 기본 alert 대신 shadcn 팝업 열기
       return;
     }
-    
+
     setIsProcessing(true);
     try {
-      useGameStore.setState((prev) => ({ money: prev.money - 1000 }));
+      useGameStore.setState((prev) => ({ money: prev.money - 100000 }));
       setGameState("playing");
-      setTimeLeft(30);
+      setTimeLeft(10);
       setClicksLeft(TOTAL_CLICKS);
+      setIsStarted(false); // 준비 상태
     } catch (e) {
       console.error(e);
       useAlertStore.getState().openAlert("게임 입장에 실패했습니다.", "오류"); // API 에러 같은 심각한 오류는 일단 남겨둡니다.
@@ -121,8 +138,9 @@ export function MinigamePage() {
 
   const handleRetry = () => {
     setGameState("locked");
-    setTimeLeft(30);
+    setTimeLeft(10);
     setClicksLeft(TOTAL_CLICKS);
+    setIsStarted(false);
   };
 
   // 🖱️ 타격 이벤트
@@ -131,16 +149,16 @@ export function MinigamePage() {
 
     if (buttonRef.current) {
       buttonRef.current.classList.remove("hit-shake-anim");
-      void buttonRef.current.offsetWidth; 
+      void buttonRef.current.offsetWidth;
       buttonRef.current.classList.add("hit-shake-anim");
     }
 
-    const hitX = 350; 
-    const hitY = 350; 
-    
+    const hitX = 350;
+    const hitY = 350;
+
     const offsetX = (Math.random() - 0.5) * 200;
     const offsetY = (Math.random() - 0.5) * 200;
-    
+
     const newEffect = { id: Date.now(), x: hitX + offsetX, y: hitY + offsetY };
     setClickEffects((prev) => [...prev, newEffect]);
 
@@ -157,6 +175,10 @@ export function MinigamePage() {
       }
       return next;
     });
+
+    if (!isStarted) {
+      setIsStarted(true);
+    }
   };
 
   const hpPercent = (clicksLeft / TOTAL_CLICKS) * 100;
@@ -211,13 +233,30 @@ export function MinigamePage() {
           <div className="mb-10 flex items-center justify-center animate-bounce bg-white/10 p-10 rounded-full border-2 border-white/20">
             <Lock className="w-24 h-24 text-white drop-shadow-2xl" strokeWidth={2} />
           </div>
-          <h2 className="text-white text-3xl font-black mb-8 tracking-widest drop-shadow-md">폐차장 보너스 스테이지</h2>
           <button
             onClick={handleUnlock}
             className="px-16 py-5 bg-gradient-to-b from-yellow-300 to-yellow-500 border-4 border-yellow-700 rounded-full text-2xl font-black text-yellow-950 hover:from-yellow-200 hover:to-yellow-400 active:scale-95 transition-all shadow-[0_8px_0_rgb(161,98,7)] cursor-pointer tracking-widest"
           >
-            1,000원 투입
+            100,000원 투입
           </button>
+
+          {/* 💡 오른쪽 조작법 패널 */}
+          <div className="absolute right-32 top-1/2 -translate-y-1/2 bg-black/60 backdrop-blur-md rounded-2xl border-2 border-white/10 p-6 max-w-lg flex flex-col gap-4 text-left shadow-2xl whitespace-nowrap">
+            <h3 className="text-xl font-black text-yellow-400 flex items-center gap-2">
+              <span className="text-2xl">💡</span> 게임 조작 방법
+            </h3>
+            <div className="w-full h-0.5 bg-white/10"></div>
+            <ul className="flex flex-col gap-3 text-slate-200 font-bold text-sm leading-relaxed">
+              <li className="flex gap-2">
+                <span className="text-yellow-400">•</span>
+                <span>마우스 <strong className="text-white text-base">클릭</strong>이나 <strong className="text-white text-base">스페이스바</strong>를 누르면 타이머가 시작됩니다!</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="text-yellow-400">•</span>
+                <span>게임이 시작된 후에는 어떤 연사 수단이든 동원하여 차를 부숴보세요 🚗🔥</span>
+              </li>
+            </ul>
+          </div>
         </div>
       )}
 
@@ -245,18 +284,12 @@ export function MinigamePage() {
           </div>
         </div>
 
-        {isFever && (
-          <div className="absolute top-[30%] left-1/2 text-[10rem] font-black text-white italic z-10 pointer-events-none tracking-tighter" style={{ animation: 'textGlowPulse 0.5s ease-in-out infinite' }}>
-            FEVER!
-          </div>
-        )}
-
         <button
-          ref={buttonRef} 
+          ref={buttonRef}
           onClick={handleClickBuilding}
           className={`relative transition-transform outline-none mt-auto mb-20 ${gameState === "locked" ? "cursor-default" : "cursor-pointer"}`}
           style={{
-            transform: `scale(${1 - damagePercent * 0.002})`, 
+            transform: `scale(${1 - damagePercent * 0.002})`,
             filter: `brightness(${isFever ? 70 - damagePercent / 4 : 100 - damagePercent / 4}%) sepia(${isFever ? 0.8 : 0}) hue-rotate(${isFever ? -50 : 0}deg)`,
           }}
         >
@@ -326,7 +359,7 @@ export function MinigamePage() {
               <span className="text-3xl">⚠️</span> 게임을 종료하시겠습니까?
             </AlertDialogTitle>
             <AlertDialogDescription className="text-base font-bold text-slate-600 leading-relaxed mt-4">
-              지금 나가시면 투입된 금액 <span className="text-rose-500 font-black">1,000원</span>은 환불되지 않습니다.<br/>
+              지금 나가시면 투입된 금액 <span className="text-rose-500 font-black">100,000원</span>은 환불되지 않습니다.<br />
               정말 포기하시겠습니까?
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -334,7 +367,7 @@ export function MinigamePage() {
             <AlertDialogCancel className="flex-1 font-bold border-2 border-slate-300 hover:bg-slate-100 py-4 text-lg rounded-xl cursor-pointer">
               계속하기
             </AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={closeBuildingPage}
               className="flex-1 font-bold bg-rose-500 text-white hover:bg-rose-600 py-4 text-lg rounded-xl cursor-pointer"
             >
@@ -354,12 +387,12 @@ export function MinigamePage() {
               <span className="text-3xl">💰</span> 잔액이 부족합니다!
             </AlertDialogTitle>
             <AlertDialogDescription className="text-base font-bold text-slate-600 leading-relaxed mt-4">
-              게임을 시작하려면 1,000원이 필요합니다.<br/>
+              게임을 시작하려면 100,000원이 필요합니다.<br />
               현재 잔액: <span className="text-rose-500 font-black">{useGameStore.getState().money.toLocaleString()}원</span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-6 flex gap-2">
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={() => setShowErrorAlert(false)}
               className="flex-1 font-bold bg-slate-800 text-white hover:bg-slate-700 py-4 text-lg rounded-xl cursor-pointer"
             >

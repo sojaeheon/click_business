@@ -121,7 +121,7 @@ export function MarketPage() {
       setShowPopup(true);
       useGameStore.getState().addAlert({
         message: mode === "buy" ? "구매 주문 완료" : "판매 주문 완료",
-        detail: `${mode === "buy" ? material : product} ${quantity}개 / 총 ${totalAmount.toLocaleString()}원`
+        detail: `${mode === "buy" ? material : product} ${quantity}개 / 총 ₩${totalAmount.toLocaleString()}`
       });
       setTimeout(() => {
         setShowPopup(false);
@@ -192,7 +192,7 @@ export function MarketPage() {
                 <div className="flex items-end gap-2 text-right">
                   <span className="text-sm font-bold text-slate-400 mb-1">현재가</span>
                   <span className={`text-4xl font-black ${isUpTrend ? "text-rose-500" : "text-blue-500"}`}>
-                    {currentMarketPrice.toLocaleString()}원
+                    ₩{currentMarketPrice.toLocaleString()}
                   </span>
                 </div>
               </div>
@@ -288,7 +288,7 @@ export function MarketPage() {
                       placeholder="가격 입력"
                       className={`w-full bg-slate-50 border-2 rounded-xl pl-10 pr-4 py-3 text-right text-xl font-black focus:outline-none transition-colors ${mode === "buy" ? "border-slate-200 focus:border-rose-400 text-rose-600" : "border-slate-200 focus:border-blue-400 text-blue-600"}`}
                     />
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg">₵</span>
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg">₩</span>
                   </div>
                 </div>
 
@@ -309,10 +309,10 @@ export function MarketPage() {
                 <div className={`flex flex-col gap-1 rounded-2xl p-4 border-2 ${mode === "buy" ? "bg-rose-50 border-rose-100" : "bg-blue-50 border-blue-100"}`}>
                   <span className={`font-bold text-xs uppercase tracking-widest ${mode === "buy" ? "text-rose-500" : "text-blue-500"}`}>총 주문 금액</span>
                   <div className="text-right flex items-end justify-end gap-1">
+                    <span className={`text-xl font-bold pb-[4px] ${mode === "buy" ? "text-rose-400" : "text-blue-400"}`}>₩</span>
                     <span className={`text-3xl font-black leading-none tracking-tight ${mode === "buy" ? "text-rose-700" : "text-blue-700"}`}>
                       {totalAmount.toLocaleString()}
                     </span>
-                    <span className={`text-base font-bold pb-[2px] ${mode === "buy" ? "text-rose-400" : "text-blue-400"}`}>원</span>
                   </div>
                 </div>
               </div>
