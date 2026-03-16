@@ -8,13 +8,13 @@ Client
    ↓
 Backend Service API
    ↓
-Kafka (order.event)
+Kafka (order.made)
    ↓
 Redis
    ↓
 Matching Engine
    ↓
-Kafka (trade.event)
+Kafka (order.matched)
    ↓
 DB / HDFS
 ```
@@ -23,15 +23,15 @@ DB / HDFS
 
 | Topic | Description |
 |------|-------------|
-| order.event | 주문 생성 및 취소 이벤트 |
-| trade.event | 주문 체결 이벤트 |
+| order.made | 주문 생성 및 취소 이벤트 |
+| order.matched | 주문 체결 이벤트 |
 
 ## Partition Key
 
 | Topic | Key | Reason |
 |------|------|------|
-| order.event | item | 동일 아이템 주문의 순서를 보장하기 위함 |
-| trade.event | item | 동일 아이템 거래 순서를 유지하기 위함 |
+| order.made | item | 동일 아이템 주문의 순서를 보장하기 위함 |
+| order.matched | item | 동일 아이템 거래 순서를 유지하기 위함 |
 
 ## Event Schema
 ### Topic : order.made
@@ -60,7 +60,7 @@ DB / HDFS
   "event_time": "2026-03-06T10:00:00Z",
   "event_type": "ORDER_CREATED",
   "market_order_id": 123,
-  "item": 1,
+  "item": "GOLD_ORE",
   "company_id": 10,
   "order_type": "BUY",
   "price": 1000,
@@ -81,7 +81,7 @@ DB / HDFS
   "event_time": "2026-03-06T10:00:00Z",
   "event_type": "ORDER_CANCELLED",
   "market_order_id": 123,
-  "item": 1,
+  "item": "GOLD_ORE",
   "company_id": 10,
   "order_type": "BUY",
   "price": 1000,
@@ -102,11 +102,9 @@ DB / HDFS
 ├─ domain
 │  └─ market
 │     └─ kafka
-│        ├─ OrderEventDto.java                # 주문 생성 이벤트
-│        ├─ OrderEventProducer.java           # Kafka Producer
-│        ├─ KafkaOrderEventPublisher.java     # Kafka Producer
-│        ├─ OrderEventProducer.java           # Kafka Producer
-│        └─ TradeEventDto.java          # 주문 체결 이벤트
+│        ├─ OrderMadeEventProducer.java     # Kafka Producer
+│        ├─ OrderMadeEvent.java             # 주문 생성 이벤트
+│        └─ OrderMatchedEvent.java          # 주문 체결 이벤트
 │
 └─ global
    └─ config

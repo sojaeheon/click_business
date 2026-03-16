@@ -25,7 +25,7 @@ WORKDIR /app
 COPY --from=builder /app/build/libs/*.jar app.jar
 
 # 프로파일 설정 등 환경 변수를 받아서 Java 애플리케이션 실행
-ENTRYPOINT ["java", "-Dspring.profiles.active=${SPRING_PROFILES_ACTIVE:-prod}", "-jar", "app.jar"]
+ENTRYPOINT ["sh", "-c", "java -Dspring.profiles.active=${SPRING_PROFILES_ACTIVE:-prod} -jar app.jar"]
 
 # 운영 포트 노출
 EXPOSE 8000

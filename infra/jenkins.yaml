@@ -67,13 +67,13 @@ jobs:
                   url('https://lab.ssafy.com/s14-bigdata-dist-sub1/S14P21B109.git')
                   credentials('gitlab-auth')
                 }
-                branches('*/develop')
+                branches("*/${GIT_BRANCH}")
                 extensions {
                   cleanBeforeCheckout() // 빌드 전 폴더를 깨끗이 비웁니다.
                 }
               }
             }
-            scriptPath('Jenkinsfile') // 저장소 루트의 Jenkinsfile 읽기
+            scriptPath('infra/Jenkinsfile') // infra 폴더 내 Jenkinsfile 읽기
           }
         }
         triggers {

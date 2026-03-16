@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class OrderEventProducer {
+public class OrderMadeEventProducer {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
@@ -21,7 +21,7 @@ public class OrderEventProducer {
     /**
      * 주문 이벤트 전송 (생성 / 취소)
      */
-    public void sendOrderEvent(OrderEventDto event) {
+    public void sendOrderEvent(OrderMadeEvent event) {
 
         kafkaTemplate.send(TOPIC, String.valueOf(event.getItem()), event)
                 .whenComplete((result, ex) -> {

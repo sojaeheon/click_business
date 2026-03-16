@@ -25,6 +25,15 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
+                script {
+                    // changeset 대신 git diff로 직접 변경 파일 목록 추출
+                    // HEAD~1이 없는 경우(첫 커밋 등) fallback으로 마지막 커밋 파일 목록 사용
+                    env.CHANGED_FILES = sh(
+                        script: 'git diff --name-only HEAD~1 HEAD 2>/dev/null || git log --name-only --format="" -1',
+                        returnStdout: true
+                    ).trim()
+                    echo "변경된 파일 목록:\n${env.CHANGED_FILES}"
+                }
             }
         }
 
@@ -33,7 +42,7 @@ pipeline {
                 stage('Backend') {
                     when {
                         anyOf {
-                            changeset "backend/**"
+                            expression { env.CHANGED_FILES?.split('\n')?.any { it.startsWith('backend/') } }
                             buildingTag()
                             triggeredBy 'UserIdCause'
                         }
@@ -57,23 +66,25 @@ pipeline {
                 stage('Frontend') {
                     when {
                         anyOf {
-                            changeset "frontend/**"
+                            expression { env.CHANGED_FILES?.split('\n')?.any { it.startsWith('frontend/') } }
                             buildingTag()
                             triggeredBy 'UserIdCause'
                         }
                     }
                     steps {
                         script {
-                            try {
+                            // catchError: Frontend 빌드 실패해도 전체 파이프라인은 계속 진행
+                            // buildResult: 최종 빌드 상태를 UNSTABLE로 (FAILURE 아님 → K8s stage 스킵 방지)
+                            catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
                                 docker.withRegistry('https://index.docker.io/v1/', DOCKER_HUB_CREDENTIAL_ID) {
                                     def frontendImg = docker.build("${FRONTEND_IMAGE}", "./frontend")
                                     frontendImg.push()
                                     frontendImg.push("latest")
                                 }
                                 stageResults['Frontend Build'] = '✅ Success'
-                            } catch (e) {
+                            }
+                            if (stageResults['Frontend Build'] != '✅ Success') {
                                 stageResults['Frontend Build'] = '❌ Failed'
-                                throw e
                             }
                         }
                     }
@@ -84,9 +95,11 @@ pipeline {
         stage('K8s Infrastructure Deployment') {
             when {
                 anyOf {
-                    changeset "backend/**"
-                    changeset "frontend/**"
-                    changeset "k8s/**"
+                    expression {
+                        env.CHANGED_FILES?.split('\n')?.any {
+                            it.startsWith('backend/') || it.startsWith('frontend/') || it.startsWith('k8s/')
+                        }
+                    }
                     buildingTag()
                     triggeredBy 'UserIdCause'
                 }
@@ -95,21 +108,22 @@ pipeline {
                 script {
                     try {
                         withCredentials([string(credentialsId: K8S_CREDENTIAL_ID, variable: 'KUBE_CONTENT')]) {
-                            writeFile file: 'kubeconfig', text: KUBE_CONTENT
                             sh """
+                                echo "\${KUBE_CONTENT}" | base64 -d > kubeconfig
                                 export KUBECONFIG=kubeconfig
-                                # 배포 파일 내 이미지 및 빌드 번호 치환
-                                sed -i "s|\${BACKEND_IMAGE}|${BACKEND_IMAGE}|g" k8s/infra-test.yaml
-                                sed -i "s|\${FRONTEND_IMAGE}|${FRONTEND_IMAGE}|g" k8s/infra-test.yaml
-                                sed -i "s|\${BUILD_NUMBER}|${env.BUILD_NUMBER}|g" k8s/infra-test.yaml
-                                
-                                # 실제 배포 적용
-                                kubectl apply -f k8s/infra-test.yaml --validate=false
-                                
-                                # 상태 확인 및 강제 재기동
-                                kubectl rollout restart deployment/backend-app || true
-                                kubectl rollout restart deployment/frontend-app || true
-                                
+
+                                # deployment 리소스 생성/업데이트 (없으면 생성, 있으면 apply)
+                                # secret/database는 startup.sh에서 최초 1회 apply — Jenkins는 건드리지 않음
+                                kubectl apply -f infra/k8s/deployment.yaml
+
+                                # 빌드된 이미지로 교체
+                                kubectl set image deployment/backend-app backend=${BACKEND_IMAGE}
+                                kubectl set image deployment/frontend-app frontend=${FRONTEND_IMAGE}
+
+                                # 롤아웃 완료까지 대기
+                                kubectl rollout status deployment/backend-app --timeout=180s
+                                kubectl rollout status deployment/frontend-app --timeout=120s
+
                                 rm kubeconfig
                             """
                         }
@@ -123,7 +137,9 @@ pipeline {
         }
         
         stage('Big Data Integration Test') {
-            when { changeset "bigdata/**" }
+            when {
+                expression { env.CHANGED_FILES?.split('\n')?.any { it.startsWith('bigdata/') } }
+            }
             steps {
                 script {
                     try {
@@ -147,14 +163,12 @@ pipeline {
                 // 상세 리포트 생성
                 def summaryMsg = stageResults.collect { k, v -> "- **${k}**: ${v}" }.join('\n')
                 
-                // 커밋 정보 가져오기
+                // 커밋 정보를 git 명령어로 직접 가져오기 (changeSets가 비어있는 경우 대비)
                 def changeLog = "N/A"
                 try {
-                    def changeLogSets = currentBuild.changeSets
-                    if (changeLogSets.size() > 0 && changeLogSets[0].items.length > 0) {
-                        def entry = changeLogSets[0].items[0]
-                        changeLog = "✍️ **Author:** ${entry.author.fullName}\n💬 **Msg:** ${entry.msg}"
-                    }
+                    def author = sh(script: 'git log -1 --format="%an"', returnStdout: true).trim()
+                    def msg    = sh(script: 'git log -1 --format="%s"',  returnStdout: true).trim()
+                    changeLog = "✍️ **Author:** ${author}\n💬 **Msg:** ${msg}"
                 } catch (e) { /* ignore */ }
 
               def currentStatus = currentBuild.currentResult
@@ -166,7 +180,7 @@ pipeline {
                     endpoint: "https://meeting.ssafy.com/hooks/64bwh9doxpnbfcndhpezpsp9ic",
                     channel: 'b109',
                     message: """
-**🚀 파이프라인 결과: ${currentStatus} (Branch: develop)**
+**🚀 파이프라인 결과: ${currentStatus} (Branch: ${env.GIT_BRANCH ?: env.BRANCH_NAME ?: 'unknown'})**
 ${changeLog}
 
 | Stage | Status |

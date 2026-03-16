@@ -14,14 +14,14 @@ import java.time.Instant;
  * 주문 생성 / 취소 이벤트를 Data Engineering 파이프라인으로 전달하기 위한 메시지 DTO
  *
  * Key: item
- * Value: OrderEventDto (JSON)
+ * Value: OrderMadeEvent (JSON)
  */
 
 @Getter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class OrderEventDto {
+public class OrderMadeEvent {
 
     /** 이벤트 고유 ID (중복 처리용) */
     @JsonProperty("event_id")
