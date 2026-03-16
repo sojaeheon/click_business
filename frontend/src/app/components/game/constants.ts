@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { BuildingPage } from "../../store/gameStore";
+import type { BuildingPage } from "../../../store/gameStore";
 
 // ─── 스케일/크기 상수 ────────────────────────────────────────────
 export const TILE_S = 1.5;

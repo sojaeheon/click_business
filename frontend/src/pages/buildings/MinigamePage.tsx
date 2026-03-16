@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { useGameStore } from "../../store/gameStore";
 import { MinigameAPI } from "../../api/gameApi";
 import { BackButton } from "../../app/components/ui/backbutton";
+import { useAlertStore } from "../../store/useAlertStore";
 
 // ✨ shadcn/ui AlertDialog 임포트 추가 (경로는 프로젝트에 맞게 확인해주세요!)
 import {
@@ -112,7 +113,7 @@ export function MinigamePage() {
       setClicksLeft(TOTAL_CLICKS);
     } catch (e) {
       console.error(e);
-      alert("게임 입장에 실패했습니다."); // API 에러 같은 심각한 오류는 일단 남겨둡니다.
+      useAlertStore.getState().openAlert("게임 입장에 실패했습니다.", "오류"); // API 에러 같은 심각한 오류는 일단 남겨둡니다.
     } finally {
       setIsProcessing(false);
     }

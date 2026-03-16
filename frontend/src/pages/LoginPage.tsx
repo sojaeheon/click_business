@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAlertStore } from "../store/useAlertStore";
 
 // 배경 3D 씬
 import { IsometricScene } from '../app/components/game/IsometricScene';
@@ -10,7 +11,7 @@ export const LoginPage = () => {
   const handleLogin = () => {
     // 💡 [백엔드 연동: 구글 로그인 요청]
     // window.location.href = 'http://localhost:8080/api/v1/auth/google/login';
-    alert('실제 구현 시 GET /api/v1/auth/google/login 으로 리다이렉트 됩니다.');
+    useAlertStore.getState().openAlert('실제 구현 시 GET /api/v1/auth/google/login 으로 리다이렉트 됩니다.', "로그인 안내");
     navigate('/industry-selection');
   };
 

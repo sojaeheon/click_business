@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { UserPlus } from "lucide-react";
 import { useGame } from "../../../store/gameStore"; // ⚠️ 경로를 프로젝트에 맞게 수정해 주세요!
+import { useInventoryStore } from "../../../store/useAppStore";
+import { useAlertStore } from "../../../store/useAlertStore";
 
 // 다른 곳에서도 쓸 수 있게 export 해줍니다.
 export interface ConfirmData {
@@ -21,6 +23,13 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
 
   // 장착 일꾼 데이터
   const [equippedWorker, setEquippedWorker] = useState<{id: number, name: string, level: number} | null>(null);
+
+  const { slots, fetchSlots } = useInventoryStore();
+  const [isInventoryOpen, setIsInventoryOpen] = useState(false);
+
+  useEffect(() => {
+    fetchSlots();
+  }, [fetchSlots]);
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -105,7 +114,7 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
               <label className="text-xs font-black text-blue-500 uppercase tracking-widest mb-2 block">담당 일꾼 배치</label>
               <button 
                 onClick={() => {
-                  setEquippedWorker(prev => prev ? null : { id: 101, name: "숙련된 광부", level: 2 });
+                  setIsInventoryOpen(true);
                 }}
                 className={`w-full h-20 rounded-xl border-[3px] flex items-center px-4 cursor-pointer transition-all hover:-translate-y-1 active:scale-95 group
                   ${equippedWorker 
@@ -196,6 +205,56 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
             <button className="px-6 py-4 rounded-xl bg-slate-100 text-slate-500 border-2 border-slate-200 font-black hover:bg-slate-200 cursor-pointer" onClick={() => !isCollecting && onClose()}>닫기</button>
           </div>
         </div>
+
+        {/* 인벤토리 오른쪽 팝업 */}
+        {isInventoryOpen && (
+          <div className="absolute inset-y-0 right-0 w-[400px] bg-white/95 backdrop-blur-xl shadow-[-20px_0_50px_rgba(0,0,0,0.2)] p-6 z-[200] flex flex-col border-l-4 border-slate-200 animate-[slideInRight_0.3s_ease-out]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6 pb-4 border-b-2 border-slate-200">
+              <h2 className="text-2xl font-black text-slate-800">보유 아이템</h2>
+              <button onClick={() => setIsInventoryOpen(false)} className="w-12 h-12 rounded-full hover:bg-slate-100 flex items-center justify-center font-bold text-slate-500 text-xl cursor-pointer">X</button>
+            </div>
+            <div className="flex-1 overflow-y-auto flex flex-col gap-4 pr-2">
+              {slots.length === 0 && <div className="text-center text-slate-400 mt-10">인벤토리가 비어 있습니다.</div>}
+              {slots.map((item) => {
+                const isWorker = item.item_name && (item.item_name.includes("광부") || item.item_name.includes("제련") || item.item_name.includes("대장") || item.item_name.includes("전사") || item.item_name.includes("기사") || item.item_name.includes("도적"));
+                // @ts-ignore (locked is in mock, quantity in real)
+                const isLocked = item.locked !== undefined ? item.locked : false;
+                
+                return (
+                  <button
+                    key={item.inventory_id || item.slot_index || Math.random()}
+                    onClick={() => {
+                      if (isWorker && !isLocked) {
+                        setEquippedWorker({ id: item.item_id, name: item.item_name, level: (item as any).level || 1 });
+                        setIsInventoryOpen(false);
+                      } else if (!isWorker && !isLocked && item.item_name) {
+                        useAlertStore.getState().openAlert("캐릭터(일꾼)만 장착할 수 있습니다.", "장착 불가");
+                      }
+                    }}
+                    className={`w-full text-left rounded-3xl border-[4px] p-5 flex justify-between items-center transition-all ${
+                      isWorker && !isLocked
+                        ? "bg-white border-slate-200 hover:border-amber-400 hover:shadow-xl hover:-translate-y-1 cursor-pointer"
+                        : isLocked ? "bg-slate-50 border-slate-200 opacity-50 cursor-not-allowed grayscale" : "bg-slate-50 border-slate-200 hover:border-slate-300 cursor-not-allowed"
+                    }`}
+                  >
+                    <div>
+                      <h3 className={`text-xl font-black ${isWorker && !isLocked ? "text-slate-800" : "text-slate-500"}`}>{item.item_name || (isLocked ? "잠긴 슬롯" : "빈 슬롯")}</h3>
+                      {isWorker && !isLocked && <p className="text-md font-bold text-amber-600 mt-1">Lv. {(item as any).level || 1}</p>}
+                    </div>
+                    {isWorker && !isLocked && <span className="text-4xl drop-shadow-md">🧑‍🔧</span>}
+                  </button>
+                );
+              })}
+            </div>
+            <style dangerouslySetInnerHTML={{
+              __html: `
+              @keyframes slideInRight {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+              }
+            `}} />
+          </div>
+        )}
       </div>
     );
   }

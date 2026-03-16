@@ -1,9 +1,11 @@
 import React, { useState, useRef } from "react";
-import { ArrowLeft, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useGame } from "../../store/gameStore";
 import { Canvas } from "@react-three/fiber";
 import { Html, useGLTF, useAnimations, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
+import { BackButton } from "../../app/components/ui/backbutton";
+import { useAlertStore } from "../../store/useAlertStore";
 
 // --- Types ---
 interface WorkerItem {
@@ -23,18 +25,6 @@ const MOCK_INVENTORY: WorkerItem[] = [
   { id: 5, name: "도적", model: "/models/characters/Rogue.glb", level: 2, owned: 1, maxOwned: 2 },
 ];
 
-function BackBtn({ onClick }: { onClick: () => void }) {
-  const [err, setErr] = useState(false);
-  return (
-    <button onClick={onClick} className="absolute top-6 left-6 z-50 w-12 h-12 rounded-full bg-white border-2 border-slate-300 flex items-center justify-center hover:bg-slate-50 shadow-sm cursor-pointer hover:scale-105 active:scale-95 transition-all">
-      {!err ? (
-        <img src="/ui_icons/Button_Exit_Blue.png" alt="back" className="w-10 h-10 object-contain" onError={() => setErr(true)} />
-      ) : (
-        <ArrowLeft className="w-6 h-6 text-slate-700" />
-      )}
-    </button>
-  );
-}
 
 // --- 3D Components ---
 function IsometricRoom() {
@@ -142,7 +132,7 @@ export function HRPage() {
         backgroundColor: '#cddeed' // 여백을 채워줄 파란 하늘 비슷한 색
       }}
     >
-      <BackBtn onClick={closeBuildingPage} />
+      <BackButton onClick={closeBuildingPage} className="absolute top-6 left-6 z-50" />
 
       {upgradeMessage && (
         <div className="absolute top-24 left-1/2 -translate-x-1/2 z-50 bg-black/80 text-white font-black text-3xl px-12 py-5 rounded-full shadow-[0_0_30px_rgba(0,0,0,0.5)] animate-bounce border-4 border-amber-400">

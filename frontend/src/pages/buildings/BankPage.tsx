@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { ArrowLeft, Delete, HelpCircle } from "lucide-react";
+import { Delete, HelpCircle } from "lucide-react";
 import { useGame } from "../../store/gameStore";
 import { BankAPI } from "../../api/gameApi";
+import { BackButton } from "../../app/components/ui/backbutton";
+import { useAlertStore } from "../../store/useAlertStore";
 
 type BankMode = "loan" | "repay" | "deposit" | "withdraw" | null;
 type StepMode = "input" | "confirm" | "done" | "thanks";
@@ -55,7 +57,7 @@ export function BankPage() {
 
     } catch (e: any) {
       console.error(e);
-      alert(e?.response?.data?.message || "서버 통신 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+      useAlertStore.getState().openAlert(e?.response?.data?.message || "서버 통신 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.", "경고");
       setStep("input");
     } finally {
       setIsProcessing(false);
@@ -95,21 +97,13 @@ export function BankPage() {
       }}
     >
       {/* Header - 뒤로가기 버튼만 */}
-      <div className="absolute top-6 left-6 z-50">
-        <button
-          onClick={() => {
-            if (step !== "input" && step !== "confirm") return;
-            mode ? setMode(null) : closeBuildingPage();
-          }}
-          className="w-12 h-12 rounded-full bg-white border-2 border-slate-300 flex items-center justify-center hover:bg-slate-50 transition-all shadow-sm hover:scale-105 active:scale-95 cursor-pointer"
-        >
-          {!errImg ? (
-            <img src="/ui_icons/Button_Exit_Blue.png" alt="back" className="w-10 h-10 object-contain" onError={() => setErrImg(true)} />
-          ) : (
-            <ArrowLeft className="w-6 h-6 text-slate-700" />
-          )}
-        </button>
-      </div>
+      <BackButton
+        onClick={() => {
+          if (step !== "input" && step !== "confirm") return;
+          mode ? setMode(null) : closeBuildingPage();
+        }}
+        className="absolute top-6 left-6 z-50"
+      />
 
       {!mode ? (
         // --- DEPTH 1: 메인 메뉴 ---

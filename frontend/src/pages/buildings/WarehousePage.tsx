@@ -72,7 +72,7 @@ export function WarehousePage() {
         backgroundColor: '#cee7be' // 적당한 배경색
       }}
     >
-      <BackButton onClick={handleBackClick} className="absolute top-6 left-6" />
+      <BackButton onClick={closeBuildingPage} className="absolute top-6 left-6" />
 
 
       {/* Shelves */}

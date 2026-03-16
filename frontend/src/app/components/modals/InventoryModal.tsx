@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Lock, ShoppingBag, HelpCircle, X, Loader2 } from "lucide-react";
 import { InventoryAPI } from "../../../api/gameApi";
+import { useAlertStore } from "../../../store/useAlertStore";
 
 interface InventorySlot {
   id: number;
@@ -60,7 +61,7 @@ export function InventoryModal() {
         prev.map((slot) => (slot.id === slotId ? { ...slot, locked: false } : slot))
       );
     } catch (err: any) {
-      alert(err?.response?.data?.message || "슬롯 확장에 실패했습니다.");
+      useAlertStore.getState().openAlert(err?.response?.data?.message || "슬롯 확장에 실패했습니다.", "경고");
     }
   };
 

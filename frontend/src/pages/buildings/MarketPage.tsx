@@ -4,6 +4,7 @@ import { useGameStore } from "../../store/gameStore"; // 경로 확인 필요
 import { MarketAPI } from "../../api/gameApi";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { BackButton } from "../../app/components/ui/backbutton";
+import { useAlertStore } from "../../store/useAlertStore";
 
 type MarketMode = "buy" | "sell" | null;
 
@@ -96,7 +97,7 @@ export function MarketPage() {
       }, 2000);
     } catch (e) {
       console.error(e);
-      alert("주문 처리 중 오류가 발생했습니다.");
+      useAlertStore.getState().openAlert("주문 처리 중 오류가 발생했습니다.", "주문 오류");
     } finally {
       setIsProcessing(false);
     }
@@ -116,7 +117,7 @@ export function MarketPage() {
         backgroundPosition: 'center',
       }}
     >
-      <BackButton onClick={closeBuildingPage} className="absolute top-6 left-6" />
+      <BackButton onClick={() => { if (mode) setMode(null); else closeBuildingPage(); }} className="absolute top-6 left-6" />
       {!mode ? (
         // --- DEPTH 1: 메인 화면 ---
         <div className="flex-1 flex flex-col justify-center items-center gap-12 p-6 max-w-4xl mx-auto w-full relative z-10">

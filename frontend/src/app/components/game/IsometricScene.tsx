@@ -20,6 +20,7 @@ import { Workstation } from "./Workstation";
 
 // ✨ 잘 분리해둔 모달을 불러옵니다!
 import { GlobalDialog, ConfirmData } from "../modals/GlobalDialog";
+import { useAlertStore } from "../../../store/useAlertStore";
 
 // ─────────────────────────────────────────────────────────────────
 // 🌊 수정된 바다(Ocean) 컴포넌트
@@ -433,17 +434,17 @@ export function GameScene({
           setIsWorkstationWorking(true);
         } catch (e) {
           console.error(e);
-          alert("작업 시작에 실패했습니다.");
+          useAlertStore.getState().openAlert("작업 시작에 실패했습니다.", "경고");
         }
       },
       onStop: async () => {
         try {
           await WorkstationAPI.collect(1);
           setIsWorkstationWorking(false);
-          alert("결과물을 성공적으로 수령하여 창고에 보관했습니다.");
+          useAlertStore.getState().openAlert("결과물을 성공적으로 수령하여 창고에 보관했습니다.", "수령 완료");
         } catch (e) {
           console.error(e);
-          alert("수령에 실패했습니다.");
+          useAlertStore.getState().openAlert("수령에 실패했습니다.", "경고");
         }
       },
     });
@@ -489,7 +490,7 @@ export function GameScene({
         onOpenModal={handleWorkstationClick}
         onStoreGold={(count) => {
           console.log(`금괴 ${count}개 창고 저장 요청`);
-          alert(`금괴 ${count}개를 창고에 저장했습니다!`);
+          useAlertStore.getState().openAlert(`금괴 ${count}개를 창고에 저장했습니다!`, "아이템 획득");
         }}
       />
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAlertStore } from "../store/useAlertStore";
 
 const IndustryCard = ({ title, iconLabel, onSelect }: { title: string; iconLabel: string; onSelect: () => void }) => {
   const [isHovered, setIsHovered] = useState(false);
@@ -38,7 +39,7 @@ export const IndustrySelectionPage = () => {
 
   const handleConfirm = () => {
     if (companyName.trim() === '') {
-      alert('회사 이름을 입력해주세요.');
+      useAlertStore.getState().openAlert('회사 이름을 입력해주세요.', "경고");
       return;
     }
     // 💡 [백엔드 연동: 기업 설정 내역 전송]
