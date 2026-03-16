@@ -41,3 +41,9 @@ logging:
   level:
     org.springframework.web: DEBUG
     # org.springframework.security: DEBUG (필요시 보안 필터 로그도 볼 수 있습니다)
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
