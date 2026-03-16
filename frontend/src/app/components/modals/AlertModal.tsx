@@ -1,5 +1,5 @@
 import { X, Bell } from "lucide-react";
-import { useGame } from "../../store/gameStore";
+import { useGame } from "../../../store/gameStore";
 
 export function AlertModal() {
   const { state, dismissAlert } = useGame();

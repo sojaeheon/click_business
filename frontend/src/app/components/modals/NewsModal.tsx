@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ImageOff, ArrowLeft } from "lucide-react";
-import { useGame } from "../../store/gameStore";
-import type { NewsItem } from "../../store/gameStore";
+import { useGame } from "../../../store/gameStore";
+import type { NewsItem } from "../../../store/gameStore";
 
 // 뉴스 상세 페이지 뷰
 function NewsDetail({ news, onBack }: { news: NewsItem; onBack: () => void }) {

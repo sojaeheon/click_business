@@ -1,6 +1,6 @@
 import { X, Building2, Newspaper, Trophy, Backpack, Bell, Settings, LucideIcon } from "lucide-react";
-import { useGame } from "../../store/gameStore";
-import type { ModalTab } from "../../store/gameStore";
+import { useGame } from "../../../store/gameStore";
+import type { ModalTab } from "../../../store/gameStore";
 import { CompanyProfile } from "./CompanyProfile";
 import { NewsModal } from "./NewsModal";
 import { RankingModal } from "./RankingModal";

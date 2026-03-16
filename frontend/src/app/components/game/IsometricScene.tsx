@@ -4,7 +4,7 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { MapControls, useGLTF, useAnimations, Html } from "@react-three/drei";
 import * as THREE from "three";
 import { SkeletonUtils } from "three-stdlib";
-import { useGame } from "../../store/gameStore";
+import { useGame } from "../../../store/gameStore";
 import { WorkstationAPI } from "../../../api/gameApi";
 
 import {
@@ -18,258 +18,48 @@ import { WorldBounds } from "./SceneHelpers";
 import { AreaLabel, BuildingTile, Minigame } from "./BuildingComponents";
 import { Workstation } from "./Workstation";
 
+// ✨ 잘 분리해둔 모달을 불러옵니다!
+import { GlobalDialog, ConfirmData } from "../modals/GlobalDialog";
+
+// ─────────────────────────────────────────────────────────────────
+// 🌊 수정된 바다(Ocean) 컴포넌트
+// ─────────────────────────────────────────────────────────────────
 function Ocean() {
   const group = useRef<THREE.Group>(null);
   const { scene, animations } = useGLTF(M.ocean);
-
-  // 독립적인 애니메이션을 위해 클론 생성
-  const clonedScene = useMemo(() => {
-    const clone = SkeletonUtils.clone(scene);
-    clone.traverse((child: any) => {
-      if (child.isMesh) {
-        child.receiveShadow = true;
-        const mat = child.material as THREE.MeshStandardMaterial;
-        // 바다 모델이 흰색일 경우 EnvModel에서 갈색으로 바뀌는 현상을 재질 조정을 통해 방지
-        if (mat) {
-          mat.roughness = 0.2;
-          mat.metalness = 0.1;
-          // 바다 색상을 명시적인 파란색 계열로 설정하여 가시성 확보
-          mat.color.set("#4dabf7"); 
-        }
-      }
-    });
-    return clone;
-  }, [scene]);
-
   const { actions } = useAnimations(animations, group);
 
   useEffect(() => {
-    if (actions) {
-      Object.values(actions).forEach((action) => {
-        action?.reset().fadeIn(0.5).play();
-      });
+    // 1. 애니메이션 강제 실행
+    if (actions && actions["AnimCtrlAction"]) {
+      actions["AnimCtrlAction"].play();
     }
-  }, [actions]);
+
+    // 2. 복제(Clone)하지 않고 원본 씬에 직접 파란색 바다 재질을 덮어씌웁니다.
+    scene.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const mesh = child as THREE.Mesh;
+        mesh.material = new THREE.MeshStandardMaterial({ 
+          color: "#0a4b7f", // 짙은 바다색
+          roughness: 0.2,   // 살짝 반짝거리게
+          metalness: 0.1,
+          side: THREE.DoubleSide // 양면 렌더링
+        });
+        mesh.receiveShadow = true; // 그림자도 받게 설정
+      }
+    });
+  }, [scene, actions]);
 
   return (
-    <group ref={group} position={[0, -2, 0]} scale={50}>
-
-      <primitive object={clonedScene} />
+    <group ref={group} position={[0, -0.5, 0]} scale={40}>
+      <primitive object={scene} />
     </group>
   );
 }
 
-interface ConfirmData {
-  type: "building" | "workstation";
-  label: string;
-  action?: () => void;
-  isWorking?: boolean;
-  onStart?: (quantity: number) => void;
-  onStop?: () => void;
-}
-
-function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: () => void }) {
-  const R: React.CSSProperties = { fontFamily: "'KerisKeduR', sans-serif" };
-  const { state } = useGame();
-  const [qty, setQty] = useState(1);
-  const [isCollecting, setIsCollecting] = useState(false);
-  const [particles, setParticles] = useState<{ id: number, x: number, y: number, tx: number, ty: number, delay: number }[]>([]);
-
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !isCollecting) onClose();
-    };
-    window.addEventListener("keydown", handleEsc);
-    return () => window.removeEventListener("keydown", handleEsc);
-  }, [onClose, isCollecting]);
-
-  if (data.type === "workstation") {
-    const materialPerUnit = 3;
-    const warehouseStock = state.warehouseItems.find(i => i.type === "material")?.quantity || 0;
-    const totalMaterial = qty * materialPerUnit;
-    const canProduce = Math.floor(warehouseStock / materialPerUnit);
-    const hasEnough = warehouseStock >= totalMaterial;
-
-    const handleCollect = (e: React.MouseEvent) => {
-      setIsCollecting(true);
-      const rect = (e.target as HTMLButtonElement).getBoundingClientRect();
-      const newParticles = Array.from({ length: 15 }).map((_, i) => ({
-        id: Date.now() + i,
-        x: rect.left + rect.width / 2,
-        y: rect.top + rect.height / 2,
-        tx: (Math.random() - 0.5) * 150,
-        ty: (Math.random() - 0.5) * 150 - 50,
-        delay: Math.random() * 0.15
-      }));
-      setParticles(newParticles);
-
-      setTimeout(() => {
-        data.onStop?.();
-        onClose();
-      }, 1000);
-    };
-
-    return (
-      <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50 backdrop-blur-sm" onClick={() => !isCollecting && onClose()}>
-        {particles.map((p) => (
-          <React.Fragment key={p.id}>
-            <style dangerouslySetInnerHTML={{
-              __html: `
-               @keyframes particleFly_${p.id} {
-                 0% { transform: scale(0) translate(0, 0); opacity: 0; }
-                 20% { transform: scale(1.5) translate(${p.tx}px, ${p.ty}px); opacity: 1; }
-                 100% { transform: scale(0.5) translate(400px, -400px); opacity: 0; }
-               }
-             `}} />
-            <div
-              className="fixed w-8 h-8 bg-amber-400 rounded-full shadow-[0_0_20px_rgba(251,191,36,0.8)] pointer-events-none z-[100] flex items-center justify-center text-xl"
-              style={{
-                left: p.x, top: p.y,
-                animation: `particleFly_${p.id} 1s cubic-bezier(0.25, 1, 0.5, 1) forwards`,
-                animationDelay: p.delay + "s"
-              }}
-            >
-              ⭐️
-            </div>
-          </React.Fragment>
-        ))}
-        <style dangerouslySetInnerHTML={{
-          __html: `
-          @keyframes spinSlow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        `}} />
-
-        <div className="bg-white rounded-[2rem] shadow-2xl p-8 flex flex-col gap-6 border-4 border-slate-200" style={{ ...R, minWidth: 360 }} onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center gap-4 border-b-2 border-slate-100 pb-4">
-            <div className={`w-16 h-16 flex items-center justify-center rounded-2xl shadow-inner ${data.isWorking ? 'bg-orange-100 border-2 border-orange-300' : 'bg-slate-100 border-2 border-slate-300'}`}>
-              <span className={`text-4xl ${data.isWorking ? 'animate-[spinSlow_4s_linear_infinite]' : ''}`}>⚙️</span>
-            </div>
-            <div>
-              <h2 className="text-2xl font-black text-slate-800 tracking-widest">작업장</h2>
-              <p className={`text-sm font-bold mt-1 ${data.isWorking ? 'text-orange-500 animate-pulse' : 'text-slate-400'}`}>
-                {data.isWorking ? '🔥 기계 가동 중...' : '💤 대기 중'}
-              </p>
-            </div>
-          </div>
-
-          {!data.isWorking ? (
-            <div className="bg-slate-50 rounded-2xl p-6 flex flex-col gap-4 border-2 border-slate-100">
-              <label className="text-sm font-bold text-slate-500 uppercase tracking-widest">생산 수량 설정</label>
-              <div className="flex items-center gap-4">
-                <button className="w-12 h-12 rounded-xl bg-white border-2 border-slate-200 font-black text-slate-700 hover:bg-slate-50 active:scale-95 transition-all text-xl shadow-sm cursor-pointer" onClick={() => setQty(q => Math.max(1, q - 1))}>−</button>
-                <input
-                  type="number" min={1} value={qty}
-                  onChange={e => setQty(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="flex-1 text-center text-3xl font-black border-2 border-slate-200 rounded-xl py-2 bg-white text-slate-800 focus:outline-none focus:border-indigo-400"
-                />
-                <button className="w-12 h-12 rounded-xl bg-white border-2 border-slate-200 font-black text-slate-700 hover:bg-slate-50 active:scale-95 transition-all text-xl shadow-sm cursor-pointer" onClick={() => setQty(q => q + 1)}>+</button>
-              </div>
-              <div className="flex flex-col gap-2 pt-4 border-t-2 border-slate-200 mt-2">
-                <div className="flex justify-between text-sm font-bold">
-                  <span className="text-slate-500">필요 재료</span>
-                  <span className={`${hasEnough ? 'text-slate-800' : 'text-rose-500'}`}>{totalMaterial}개</span>
-                </div>
-                <div className="flex justify-between text-sm font-bold">
-                  <span className="text-slate-500">창고 재고</span>
-                  <span className="text-slate-800">{warehouseStock}개</span>
-                </div>
-                {!hasEnough && (
-                  <p className="text-xs font-bold text-rose-500 mt-2 bg-rose-50 border-2 border-rose-100 rounded-xl p-3">
-                    ⚠️ 재료가 부족합니다. ({totalMaterial - warehouseStock}개 더 필요)
-                  </p>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="bg-orange-50 rounded-2xl p-8 flex flex-col items-center justify-center border-2 border-orange-200 gap-4">
-              <div className="relative w-24 h-24 flex items-center justify-center">
-                <div className="absolute inset-0 border-8 border-orange-200 rounded-full" />
-                <div className="absolute inset-0 border-8 border-transparent border-t-orange-500 rounded-full animate-spin" />
-                <span className="text-4xl relative z-10 animate-bounce">🎁</span>
-              </div>
-              <span className="text-orange-600 font-black tracking-widest text-lg">생산이 완료되었습니다!</span>
-            </div>
-          )}
-
-          <div className="flex gap-3 mt-2">
-            {!data.isWorking ? (
-              <button
-                className={`flex-1 py-4 rounded-xl font-black text-lg transition-all shadow-lg ${hasEnough ? 'bg-indigo-500 hover:bg-indigo-600 active:scale-95 text-white shadow-indigo-200 cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}`}
-                disabled={!hasEnough}
-                onClick={() => { if (hasEnough) { data.onStart?.(qty); onClose(); } }}
-              >작업 시작 ▶</button>
-            ) : (
-              <button
-                className="flex-1 py-4 rounded-xl bg-gradient-to-r from-emerald-400 to-emerald-500 text-white font-black text-lg hover:from-emerald-500 active:scale-95 cursor-pointer shadow-lg shadow-emerald-200"
-                onClick={handleCollect}
-              >결과물 수령</button>
-            )}
-            <button className="px-6 py-4 rounded-xl bg-slate-100 text-slate-500 border-2 border-slate-200 font-black hover:bg-slate-200 cursor-pointer" onClick={() => !isCollecting && onClose()}>닫기</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const [progress, setProgress] = useState(0);
-
-  useEffect(() => {
-    if (data.type !== "building" || !data.action) return;
-
-    let frameId: number;
-    let start = performance.now();
-    const duration = 2000;
-
-    const animate = (time: number) => {
-      let passed = time - start;
-      if (passed >= duration) {
-        setProgress(100);
-        data.action?.();
-        onClose();
-      } else {
-        setProgress((passed / duration) * 100);
-        frameId = requestAnimationFrame(animate);
-      }
-    };
-    frameId = requestAnimationFrame(animate);
-
-    return () => cancelAnimationFrame(frameId);
-  }, [data, onClose]);
-
-  const handleImmediateEnter = () => {
-    setProgress(100);
-    data.action?.();
-    onClose();
-  };
-
-  return (
-    <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/40 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white rounded-[2rem] shadow-2xl p-8 flex flex-col items-center gap-6 min-w-[320px] border-4 border-slate-200 relative overflow-hidden" style={R} onClick={(e) => e.stopPropagation()}>
-
-        {/* 상단 프로그레스 바 영역 */}
-        <div className="absolute top-0 left-0 right-0 h-3 bg-slate-100">
-          <div className="h-full bg-indigo-500 transition-all duration-75 ease-linear" style={{ width: `${progress}%` }} />
-        </div>
-
-        <div className="w-20 h-20 rounded-full bg-indigo-50 flex items-center justify-center border-4 border-indigo-100 shadow-inner mt-4 px-2 py-2">
-          {/* Replace emoji with img or just simple emoji as fallback */}
-          <span className="text-4xl animate-bounce">🏛️</span>
-        </div>
-        <div className="flex flex-col items-center gap-2">
-          <p className="text-xl font-black text-slate-800 text-center leading-relaxed">
-            <span className="text-indigo-600 text-2xl">[{data.label}]</span> 입장을 보실 수 있습니다.
-          </p>
-          <p className="text-sm text-slate-500 font-bold animate-pulse">잠시 후 자동으로 입장합니다...</p>
-        </div>
-
-        <div className="flex w-full mt-2 gap-3">
-          <button className="flex-1 py-4 rounded-xl bg-slate-100 text-slate-600 border-2 border-slate-200 font-black text-lg hover:bg-slate-200 active:scale-95 cursor-pointer transition-colors" onClick={onClose}>취소 (나가기)</button>
-          <button className="flex-1 py-4 rounded-xl bg-indigo-500 text-white font-black text-lg hover:bg-indigo-600 active:scale-95 cursor-pointer shadow-lg transition-colors" onClick={handleImmediateEnter}>즉시 입장</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
+// ─────────────────────────────────────────────────────────────────
+// 캐릭터 컴포넌트
+// ─────────────────────────────────────────────────────────────────
 function PlayerCharacter({
   isWorkstationWorking,
   onEnterBuilding,
@@ -402,8 +192,11 @@ function PlayerCharacter({
     if (isMoving) {
       dir.normalize().multiplyScalar(10 * delta);
       posRef.current.add(dir);
-      posRef.current.x = THREE.MathUtils.clamp(posRef.current.x, -outerX + 1, outerX - 1);
-      posRef.current.z = THREE.MathUtils.clamp(posRef.current.z, -outerZ + 1, outerZ - 1);
+      
+      const buffer = 0.2; 
+      posRef.current.x = THREE.MathUtils.clamp(posRef.current.x, -outerX + buffer, outerX - buffer);
+      posRef.current.z = THREE.MathUtils.clamp(posRef.current.z, -outerZ + buffer, outerZ - buffer);
+      
       groupRef.current.rotation.y = Math.atan2(dir.x, dir.z);
     }
 
@@ -463,6 +256,9 @@ function PlayerCharacter({
   );
 }
 
+// ─────────────────────────────────────────────────────────────────
+// 환경 및 기타 컴포넌트
+// ─────────────────────────────────────────────────────────────────
 function AnimatedCar({
   modelKey, path, speed = 4, initialProgress = 0,
 }: {
@@ -600,18 +396,21 @@ function MapEnvironment() {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────
+// 게임 씬 메인 (조명, 객체 배치)
+// ─────────────────────────────────────────────────────────────────
 export function GameScene({
   isWorkstationWorking,
   setIsWorkstationWorking,
-  onEnterBuilding,
   isPaused,
   onDialog,
+  isLoginMode,
 }: {
   isWorkstationWorking: boolean;
   setIsWorkstationWorking: (v: boolean) => void;
-  onEnterBuilding: (name: string, label: string) => void;
   isPaused: boolean;
   onDialog?: (d: ConfirmData) => void;
+  isLoginMode?: boolean;
 }) {
   const { openBuildingPage } = useGame();
   const [inWorkstation, setInWorkstation] = useState(false);
@@ -653,10 +452,10 @@ export function GameScene({
   return (
     <>
       <color attach="background" args={['#a5e1f9']} />
-      {/* 바다가 고르게 보이도록 안개를 멀리 설정하거나 제거 */}
       <fog attach="fog" args={['#a5e1f9', 300, 1000]} />
       <ambientLight intensity={0.8} color="#ffffff" />
 
+      {/* ✨ 바다 컴포넌트 추가 */}
       <React.Suspense fallback={null}>
         <Ocean />
       </React.Suspense>
@@ -676,34 +475,35 @@ export function GameScene({
 
       <MapEnvironment />
 
-      {/* onClick 플롭스로 마우스 클릭으로 대화창 열기 */}
-      <BuildingTile position={[-BX, 0, -BZ]} modelUrl={M.hr} label="인력소" onClick={() => go("hr", "인력소")} />
-      <BuildingTile position={[0, 0, -BZ]} modelUrl={M.bank} label="은행" onClick={() => go("bank", "은행")} />
-      <BuildingTile position={[BX, 0, -BZ]} modelUrl={M.warehouse} label="창고" onClick={() => go("warehouse", "창고")} />
-      <BuildingTile position={[BX, 0, BZ]} modelUrl={M.market} label="마켓" onClick={() => go("market", "마켓")} />
+      <BuildingTile position={[-BX, 0, -BZ]} modelUrl={M.hr} label="인력소" />
+      <BuildingTile position={[0, 0, -BZ]} modelUrl={M.bank} label="은행" />
+      <BuildingTile position={[BX, 0, -BZ]} modelUrl={M.warehouse} label="창고" />
+      <BuildingTile position={[BX, 0, BZ]} modelUrl={M.market} label="마켓" />
 
-      <Minigame position={[-BX, 0, BZ]} onClick={() => go("minigame", "미니게임")} />
+      <Minigame position={[-BX, 0, BZ]} />
 
       <Workstation
         position={[0, 0, BZ]}
         isWorking={isWorkstationWorking}
         inWorkstation={inWorkstation}
-        onClick={handleWorkstationClick}
+        onOpenModal={handleWorkstationClick}
         onStoreGold={(count) => {
           console.log(`금괴 ${count}개 창고 저장 요청`);
           alert(`금괴 ${count}개를 창고에 저장했습니다!`);
         }}
       />
 
-      <React.Suspense fallback={null}>
-        <PlayerCharacter
-          isWorkstationWorking={isWorkstationWorking}
-          onEnterBuilding={go}
-          isPaused={isPaused}
-          onInWorkstation={setInWorkstation}
-          onOpenWorkstationModal={!isWorkstationWorking ? handleWorkstationClick : undefined}
-        />
-      </React.Suspense>
+      {!isLoginMode && (
+        <React.Suspense fallback={null}>
+          <PlayerCharacter
+            isWorkstationWorking={isWorkstationWorking}
+            onEnterBuilding={go}
+            isPaused={isPaused}
+            onInWorkstation={setInWorkstation}
+            onOpenWorkstationModal={!isWorkstationWorking ? handleWorkstationClick : undefined}
+          />
+        </React.Suspense>
+      )}
     </>
   );
 }
@@ -716,13 +516,67 @@ function refocusCanvas(wrap: HTMLDivElement | null) {
   }
 }
 
-export function IsometricScene() {
-  const { state } = useGame();
+// ─────────────────────────────────────────────────────────────────
+// 최상위 캔버스 컴포넌트 (App에서 호출됨)
+// ─────────────────────────────────────────────────────────────────
+export function IsometricScene({ isLoginMode = false }: {isLoginMode?: boolean}={}) {
+  const { state, openModal, closeModal } = useGame();
   const [dialogData, setDialogData] = useState<ConfirmData | null>(null);
   const [isWorkstationWorking, setIsWorkstationWorking] = useState(false);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
 
-  const isGlobalPaused = !!dialogData || !!state.activeModal || !!state.activeBuildingPage;
+  const isGlobalPaused = isLoginMode || !!dialogData || !!state.activeModal || !!state.activeBuildingPage;
+  
+  // ────────────────────────────────────────────────────────────
+  // ⌨️ UI 모달 전용 단축키 (자유로운 스위칭 & 토글 기능 탑재!)
+  // ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const handleHotkeys = (e: KeyboardEvent) => {
+      // 1. 채팅이나 인풋창 타이핑 중이면 단축키 무시
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      
+      // 2. 🚨 완전 차단 (Hard Block): 건물 입장 창, 작업장 모달, 로그인 화면이 떠있을 때는 단축키 안 먹힘!
+      // (기존의 isGlobalPaused 대신, HUD 모달이 켜진 경우는 차단 조건에서 제외했습니다)
+      if (isLoginMode || !!dialogData || !!state.activeBuildingPage) return;
+
+      // 💡 핵심 기능: 현재 열린 창을 또 누르면 '닫기', 다른 창을 누르면 '바로 전환' 해주는 스마트 함수!
+      const toggleModal = (targetModal: "profile" | "news" | "ranking" | "inventory" | "alert" | "settings") => {
+        e.preventDefault();
+        if (state.activeModal === targetModal) {
+          closeModal(); // 열려있는 창의 단축키를 또 누르면 닫힘
+        } else {
+          openModal(targetModal); // 다른 창 단축키를 누르면 바로 그 창으로 덮어씌움(전환)
+        }
+      };
+
+      // 3. 키보드 입력 매핑
+      switch (e.key.toLowerCase()) {
+        // 🎒 인벤토리
+        case 'e':
+        case 'i': toggleModal("inventory"); break;
+        
+        // 🏆 명예의 전당
+        case 'r': toggleModal("ranking"); break;
+          
+        // 📰 뉴스
+        case 'n': toggleModal("news"); break;
+
+        // 👤 기업 프로필
+        case 'p': toggleModal("profile"); break;
+
+        // ⚙️ 설정
+        case 'o': toggleModal("settings"); break;
+
+        // 🔔 알림 (Alert / Notification)
+        // ⚠️ 'A' 키는 캐릭터 왼쪽 이동과 겹치므로 'L' 키를 사용합니다!
+        case 'l': toggleModal("alert"); break;
+      }
+    };
+
+    window.addEventListener('keydown', handleHotkeys);
+    return () => window.removeEventListener('keydown', handleHotkeys);
+  }, [isLoginMode, dialogData, state.activeBuildingPage, state.activeModal, openModal, closeModal]);
+  // ────────────────────────────────────────────────────────────
 
   const d = CONFIG.CAMERA.distance;
   const pA = CONFIG.CAMERA.polarAngle;
@@ -774,7 +628,7 @@ export function IsometricScene() {
       >
         <Canvas
           flat orthographic
-          camera={{ position: [cx, cy, cz], zoom: CONFIG.CAMERA.initialZoom }}
+          camera={{ position: [cx, cy, cz], zoom: isLoginMode ? 40 : CONFIG.CAMERA.initialZoom }}
           shadows
           gl={{ antialias: true, alpha: true }}
           tabIndex={0}
@@ -788,23 +642,25 @@ export function IsometricScene() {
             isPaused={isGlobalPaused}
             isWorkstationWorking={isWorkstationWorking}
             setIsWorkstationWorking={setIsWorkstationWorking}
-            onEnterBuilding={() => { }}
+            isLoginMode={isLoginMode}
           />
           <WorldBounds />
           <MapControls
-            makeDefault enableRotate={false} enableZoom enablePan
+            makeDefault enabled={!isLoginMode} enableRotate={false} enableZoom enablePan
             minZoom={CONFIG.CAMERA.minZoom} maxZoom={CONFIG.CAMERA.maxZoom}
             maxPolarAngle={pA} minPolarAngle={pA}
             minAzimuthAngle={aA} maxAzimuthAngle={aA}
             mouseButtons={{ LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY }}
           />
         </Canvas>
+        {/* ✨ 불러온 GlobalDialog를 여기에 렌더링합니다! */}
         {dialogData && <GlobalDialog data={dialogData} onClose={closeDialog} />}
       </div>
     </div>
   );
 }
 
+// ✨ 프리로드 목록
 [
   M.base, M.bank, M.hr, M.market, M.warehouse,
   M.roadStraight, M.roadCornerCurved,

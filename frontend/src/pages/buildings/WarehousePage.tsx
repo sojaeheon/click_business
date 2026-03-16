@@ -1,6 +1,8 @@
 import React, { useState } from "react";
-import { ArrowLeft, Plus, Minus, Package } from "lucide-react";
-import { useGame } from "../../app/store/gameStore";
+import { Plus, Minus, Package } from "lucide-react";
+import { useGame } from "../../store/gameStore";
+import { BackButton } from "../../app/components/ui/backbutton";
+
 
 function ShelfItem({
   name,
@@ -70,24 +72,7 @@ export function WarehousePage() {
         backgroundColor: '#cee7be' // 적당한 배경색
       }}
     >
-      {/* Header - 뒤로가기 버튼만 */}
-      <div className="absolute top-6 left-6 z-50">
-        <button
-          onClick={closeBuildingPage}
-          className="w-12 h-12 rounded-full bg-white border-2 border-slate-300 flex items-center justify-center hover:bg-slate-50 transition-all shadow-sm hover:scale-105 active:scale-95 cursor-pointer"
-        >
-          <img
-            src="/ui_icons/Button_Exit_Blue.png"
-            alt="back"
-            className="w-10 h-10 object-contain"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
-              (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
-            }}
-          />
-          <ArrowLeft className="w-6 h-6 text-slate-700 hidden" />
-        </button>
-      </div>
+      <BackButton onClick={handleBackClick} className="absolute top-6 left-6" />
 
 
       {/* Shelves */}

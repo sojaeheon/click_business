@@ -1,5 +1,5 @@
 import { Building2, Package, Backpack, BarChart3, Factory } from "lucide-react";
-import { useGame } from "../../store/gameStore";
+import { useGame } from "../../../store/gameStore";
 
 export function CompanyProfile() {
   const { state } = useGame();

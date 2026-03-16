@@ -1,5 +1,5 @@
 import { http, HttpResponse, delay } from 'msw'
-import { defaultGameState } from '../app/store/gameStore'
+import { defaultGameState } from '../store/gameStore'
 
 export const handlers = [
   // 최초 진입 시 전체 게임 상태(Status)

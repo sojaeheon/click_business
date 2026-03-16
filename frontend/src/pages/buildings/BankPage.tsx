@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { ArrowLeft, Delete, HelpCircle } from "lucide-react";
-import { useGame } from "../../app/store/gameStore";
+import { useGame } from "../../store/gameStore";
 import { BankAPI } from "../../api/gameApi";
 
 type BankMode = "loan" | "repay" | "deposit" | "withdraw" | null;

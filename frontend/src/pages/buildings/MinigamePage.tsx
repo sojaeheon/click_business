@@ -1,41 +1,60 @@
 import React, { useState, useEffect, Suspense, useRef } from "react";
-import { ArrowLeft, Lock } from "lucide-react";
+import { Lock, Timer } from "lucide-react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { useGLTF, Stage } from "@react-three/drei";
+import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
-import { useGame } from "../../app/store/gameStore";
+import { useGameStore } from "../../store/gameStore";
 import { MinigameAPI } from "../../api/gameApi";
+import { BackButton } from "../../app/components/ui/backbutton";
 
-// 모델 로드 헬퍼용 컴포넌트 (드리프트 애니메이션)
-function BuildingModel({ isPlaying }: { isPlaying: boolean }) {
+// ✨ shadcn/ui AlertDialog 임포트 추가 (경로는 프로젝트에 맞게 확인해주세요!)
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../app/components/ui/alert-dialog";
+
+// 🚗 거대 자동차 모델
+function BuildingModel() {
   const { scene } = useGLTF("/models/environments/car_hatchback.gltf");
   const groupRef = useRef<THREE.Group>(null);
+  const hasTurned = useRef(false);
 
-  // 초기 엉덩이뷰가 아닌 정면뷰를 위해 Math.PI 추가
   useFrame((state, delta) => {
     if (!groupRef.current) return;
 
-    // 계속 앞으로 반복해서 다가오는 연출 (루핑 애니메이션)
-    groupRef.current.position.z += delta * 15;
-
-    // 타격 시 흔들리는 rotation 추가 효과를 위해 기본 로테이션 적용
-    // 엉덩이뷰 -> 정면으로 오게 하려면 기본 rotation y에 Math.PI
-    groupRef.current.rotation.y = Math.PI;
-
-    if (groupRef.current.position.z > 20) {
-      groupRef.current.position.z = -40; // 화면 뒤로 리셋
+    if (groupRef.current.position.z < 0) {
+      groupRef.current.position.z += delta * 150; 
+      if (groupRef.current.position.z >= 0) {
+        groupRef.current.position.z = 0; 
+      }
+    } 
+    else if (!hasTurned.current) {
+      const targetRotation = Math.PI / 4; 
+      if (groupRef.current.rotation.y < targetRotation) {
+        groupRef.current.rotation.y += delta * 6; 
+      } else {
+        groupRef.current.rotation.y = targetRotation; 
+        hasTurned.current = true; 
+      }
     }
   });
 
   return (
-    <group ref={groupRef}>
-      <primitive object={scene} />
+    <group ref={groupRef} position={[0, 0, -150]} rotation={[0, 0, 0]}>
+      <primitive object={scene} scale={[12, 12, 12]} position={[0, 0, 0]} />
     </group>
   );
 }
 
 export function MinigamePage() {
-  const { closeBuildingPage } = useGame();
+  const closeBuildingPage = useGameStore((state) => state.closeBuildingPage);
+  const buttonRef = useRef<HTMLButtonElement>(null); 
 
   const TOTAL_CLICKS = 100;
   const [gameState, setGameState] = useState<"locked" | "playing" | "success" | "failure">("locked");
@@ -43,12 +62,14 @@ export function MinigamePage() {
   const [clicksLeft, setClicksLeft] = useState(TOTAL_CLICKS);
   const [clickEffects, setClickEffects] = useState<{ id: number; x: number; y: number }[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [shakeTrigger, setShakeTrigger] = useState(0);
-  const [errImg, setErrImg] = useState(false);
+
+  // ✨ 게임 종료 확인용 팝업 상태 추가
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  // ✨ 잔액 부족 알림용 팝업 상태 추가 (alert 대체)
+  const [showErrorAlert, setShowErrorAlert] = useState(false);
 
   const isFever = gameState === "playing" && clicksLeft > 0 && clicksLeft <= TOTAL_CLICKS / 2;
 
-  // 타이머 로직
   useEffect(() => {
     let timer: number;
     if (gameState === "playing" && timeLeft > 0) {
@@ -65,17 +86,33 @@ export function MinigamePage() {
     return () => clearInterval(timer);
   }, [gameState, timeLeft]);
 
+  // 🚪 뒤로가기 방지 로직 (기본 confirm 창 대체)
+  const handleBackClick = () => {
+    if (gameState === "playing") {
+      setShowExitConfirm(true); // shadcn 팝업 열기
+    } else {
+      closeBuildingPage();
+    }
+  };
+
   const handleUnlock = async () => {
     if (isProcessing) return;
+    const currentMoney = useGameStore.getState().money;
+    
+    if (currentMoney < 1000) {
+      setShowErrorAlert(true); // 잔액 부족 시 기본 alert 대신 shadcn 팝업 열기
+      return;
+    }
+    
     setIsProcessing(true);
     try {
-      await MinigameAPI.unlockGame({ companyId: 1, amount: 1000 });
+      useGameStore.setState((prev) => ({ money: prev.money - 1000 }));
       setGameState("playing");
       setTimeLeft(30);
       setClicksLeft(TOTAL_CLICKS);
     } catch (e) {
       console.error(e);
-      alert("게임 입장에 실패했습니다. 재화를 확인해주세요.");
+      alert("게임 입장에 실패했습니다."); // API 에러 같은 심각한 오류는 일단 남겨둡니다.
     } finally {
       setIsProcessing(false);
     }
@@ -87,18 +124,23 @@ export function MinigamePage() {
     setClicksLeft(TOTAL_CLICKS);
   };
 
-  const handleClickBuilding = (e: React.MouseEvent) => {
+  // 🖱️ 타격 이벤트
+  const handleClickBuilding = () => {
     if (gameState !== "playing") return;
 
-    setShakeTrigger(Date.now()); // CSS 애니메이션 리트리거용
+    if (buttonRef.current) {
+      buttonRef.current.classList.remove("hit-shake-anim");
+      void buttonRef.current.offsetWidth; 
+      buttonRef.current.classList.add("hit-shake-anim");
+    }
 
-    const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const offsetX = (Math.random() - 0.5) * 100;
-    const offsetY = (Math.random() - 0.5) * 100;
-    const newEffect = { id: Date.now(), x: x + offsetX, y: y + offsetY };
+    const hitX = 350; 
+    const hitY = 350; 
+    
+    const offsetX = (Math.random() - 0.5) * 200;
+    const offsetY = (Math.random() - 0.5) * 200;
+    
+    const newEffect = { id: Date.now(), x: hitX + offsetX, y: hitY + offsetY };
     setClickEffects((prev) => [...prev, newEffect]);
 
     setTimeout(() => {
@@ -116,6 +158,7 @@ export function MinigamePage() {
     });
   };
 
+  const hpPercent = (clicksLeft / TOTAL_CLICKS) * 100;
   const damagePercent = ((TOTAL_CLICKS - clicksLeft) / TOTAL_CLICKS) * 100;
 
   return (
@@ -123,224 +166,208 @@ export function MinigamePage() {
       className={`absolute inset-0 z-40 flex flex-col font-sans select-none overflow-hidden transition-colors duration-500`}
       style={{
         backgroundImage: "url('/images/minigame.png')",
-        backgroundSize: 'contain',
+        backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundRepeat: 'no-repeat',
         backgroundColor: '#161924'
       }}
     >
-      {isFever && <div className="absolute inset-0 bg-red-950/40 pointer-events-none mix-blend-multiply transition-colors" />}
+      {isFever && <div className="absolute inset-0 bg-red-950/60 pointer-events-none mix-blend-multiply transition-colors" />}
 
       <style dangerouslySetInnerHTML={{
         __html: `
         @keyframes feverBgShake {
           0%, 100% { transform: translate(0, 0); }
-          25% { transform: translate(3px, 3px); }
-          50% { transform: translate(-3px, -3px); }
-          75% { transform: translate(-3px, 3px); }
+          25% { transform: translate(2px, 2px); }
+          50% { transform: translate(-2px, -2px); }
+          75% { transform: translate(-2px, 2px); }
         }
         @keyframes textGlowPulse {
-          0%, 100% { text-shadow: 0 0 10px #ef4444, 0 0 20px #ef4444; transform: scale(1) translateX(-50%); }
-          50% { text-shadow: 0 0 20px #ef4444, 0 0 40px #ef4444, 0 0 60px #ef4444; transform: scale(1.1) translateX(-45%); }
+          0%, 100% { text-shadow: 0 0 20px #ef4444, 0 0 40px #ef4444; transform: scale(1) translateX(-50%); }
+          50% { text-shadow: 0 0 40px #ef4444, 0 0 80px #ef4444; transform: scale(1.1) translateX(-45%); }
         }
         @keyframes damageFloat {
-          0% { opacity: 1; transform: translateY(0) scale(1.5) rotate(-10deg); }
-          50% { transform: translateY(-30px) scale(2.5) rotate(15deg); }
-          100% { opacity: 0; transform: translateY(-80px) scale(1) rotate(0deg); }
+          0% { opacity: 1; transform: translateY(0) scale(1.5) rotate(-15deg); }
+          50% { transform: translateY(-40px) scale(2.5) rotate(15deg); }
+          100% { opacity: 0; transform: translateY(-100px) scale(1) rotate(0deg); }
+        }
+        .hit-shake-anim {
+          animation: hitShake 0.1s ease-in-out;
         }
         @keyframes hitShake {
           0% { transform: translate(0, 0) rotate(0); }
-          20% { transform: translate(10px, -10px) rotate(2deg); }
-          40% { transform: translate(-10px, 10px) rotate(-2deg); }
-          60% { transform: translate(10px, 10px) rotate(2deg); }
-          80% { transform: translate(-10px, -10px) rotate(-2deg); }
+          25% { transform: translate(8px, -8px) rotate(1deg); }
+          50% { transform: translate(-8px, 8px) rotate(-1deg); }
+          75% { transform: translate(8px, 8px) rotate(1deg); }
           100% { transform: translate(0, 0) rotate(0); }
         }
       `}} />
 
-      {/* 상단 뒤로가기 버튼 */}
-      <div className="absolute top-6 left-6 z-[60]">
-        <button
-          onClick={closeBuildingPage}
-          className="w-12 h-12 rounded-full bg-white border-2 border-gray-300 flex items-center justify-center hover:bg-gray-100 transition-colors cursor-pointer shadow-sm hover:scale-105 active:scale-95"
-        >
-          {!errImg ? (
-            <img src="/ui_icons/Button_Exit_Blue.png" alt="back" className="w-10 h-10 object-contain" onError={() => setErrImg(true)} />
-          ) : (
-            <ArrowLeft className="w-6 h-6 text-slate-700" />
-          )}
-        </button>
-      </div>
+      <BackButton onClick={handleBackClick} className="absolute top-6 left-6" />
 
-      {/* 잠금 팝업 오버레이 */}
       {gameState === "locked" && (
-        <div className="absolute inset-0 z-50 bg-gray-900/60 flex flex-col items-center justify-center backdrop-blur-sm animate-fade-in pointer-events-auto">
-          {/* 자물쇠 다시 Lucide Icon 으로 변경 */}
-          <div className="mb-12 flex items-center justify-center animate-bounce bg-white/20 p-8 rounded-full shadow-[0_0_40px_rgba(255,255,255,0.2)]">
-            <Lock className="w-32 h-32 text-white drop-shadow-2xl" strokeWidth={1.5} />
+        <div className="absolute inset-0 z-50 bg-gray-950/80 flex flex-col items-center justify-center backdrop-blur-sm pointer-events-auto">
+          <div className="mb-10 flex items-center justify-center animate-bounce bg-white/10 p-10 rounded-full border-2 border-white/20">
+            <Lock className="w-24 h-24 text-white drop-shadow-2xl" strokeWidth={2} />
           </div>
-
+          <h2 className="text-white text-3xl font-black mb-8 tracking-widest drop-shadow-md">폐차장 보너스 스테이지</h2>
           <button
             onClick={handleUnlock}
-            className="px-14 py-4 bg-white border-[4px] border-slate-800 rounded-full text-2xl font-black text-slate-800 hover:bg-slate-100 hover:scale-105 active:scale-95 transition-all shadow-[0_10px_0_theme(colors.slate.800)] cursor-pointer tracking-widest"
+            className="px-16 py-5 bg-gradient-to-b from-yellow-300 to-yellow-500 border-4 border-yellow-700 rounded-full text-2xl font-black text-yellow-950 hover:from-yellow-200 hover:to-yellow-400 active:scale-95 transition-all shadow-[0_8px_0_rgb(161,98,7)] cursor-pointer tracking-widest"
           >
-            1,000 원
+            1,000원 투입
           </button>
         </div>
       )}
 
-      {/* 게임 화면 본체 */}
-      <div className={`flex-1 flex flex-col items-center justify-center relative z-0 transition-all duration-500 ${gameState === "locked" ? "opacity-30 blur-sm pointer-events-none" : ""} ${isFever ? "animate-[feverBgShake_0.1s_linear_infinite]" : ""}`}>
+      <div className={`flex-1 flex flex-col items-center relative z-0 transition-all duration-500 pt-10 ${gameState === "locked" ? "opacity-100" : "opacity-100"} ${isFever ? "animate-[feverBgShake_0.1s_linear_infinite]" : ""}`}>
+        <div className={`w-full max-w-3xl flex flex-col items-center gap-4 px-6 z-20 transition-opacity duration-300 ${gameState === "locked" ? "opacity-0" : "opacity-100"}`}>
+          <div className={`flex items-center gap-3 px-8 py-3 rounded-full border-4 shadow-xl ${timeLeft <= 10 ? 'bg-red-600 border-red-900 text-white animate-pulse' : 'bg-slate-800 border-slate-950 text-yellow-400'}`}>
+            <Timer className="w-8 h-8" />
+            <span className="text-4xl font-black tracking-widest font-mono">
+              00:{String(timeLeft).padStart(2, "0")}
+            </span>
+          </div>
 
-        {/* 피버 텍스트 오버레이 */}
+          <div className="w-full flex flex-col gap-1">
+            <div className="flex justify-between items-end px-2">
+              <span className="text-white font-black text-2xl tracking-widest drop-shadow-[0_2px_2px_rgba(0,0,0,1)]">TARGET: JUNK CAR</span>
+              <span className="text-white font-bold text-xl drop-shadow-[0_2px_2px_rgba(0,0,0,1)]">{clicksLeft} / {TOTAL_CLICKS}</span>
+            </div>
+            <div className="w-full h-10 bg-slate-950 border-4 border-slate-300 rounded-full overflow-hidden shadow-2xl relative">
+              <div
+                className={`h-full transition-all duration-300 ease-out ${isFever ? 'bg-red-500' : hpPercent > 50 ? 'bg-green-500' : 'bg-yellow-500'}`}
+                style={{ width: `${hpPercent}%` }}
+              />
+              <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, #000 10px, #000 20px)' }}></div>
+            </div>
+          </div>
+        </div>
+
         {isFever && (
-          <div
-            className="absolute top-[15%] left-1/2 text-8xl font-black text-white italic z-10 pointer-events-none tracking-widest"
-            style={{ animation: 'textGlowPulse 0.5s ease-in-out infinite' }}
-          >
+          <div className="absolute top-[30%] left-1/2 text-[10rem] font-black text-white italic z-10 pointer-events-none tracking-tighter" style={{ animation: 'textGlowPulse 0.5s ease-in-out infinite' }}>
             FEVER!
           </div>
         )}
 
-        {/* 타이머 및 클릭수 */}
-        <div className="absolute top-6 right-6 flex flex-col gap-3 items-end z-20">
-          <div className={`px-8 py-3 outline-none border-[3px] rounded-full font-black text-xl shadow-md transition-colors ${isFever ? 'bg-red-600 border-red-800 text-white' : 'bg-white border-gray-800 text-gray-800'}`}>
-            남은 시간 : {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, "0")}
-          </div>
-          <div className={`px-8 py-3 border-[3px] rounded-full font-black text-xl shadow-md transition-colors ${isFever ? 'bg-orange-500 border-orange-700 text-white' : 'bg-white border-gray-800 text-gray-800'}`}>
-            HP : {clicksLeft} / {TOTAL_CLICKS}
-          </div>
-        </div>
-
-        {/* 중앙 모델 타겟 */}
         <button
+          ref={buttonRef} 
           onClick={handleClickBuilding}
-          key={shakeTrigger} // 리렌더링마다 애니메이션 리트리거 위해 키값 설정
-          className="relative transition-transform cursor-pointer outline-none"
+          className={`relative transition-transform outline-none mt-auto mb-20 ${gameState === "locked" ? "cursor-default" : "cursor-pointer"}`}
           style={{
-            transform: `scale(${1 - damagePercent * 0.003})`,
-            filter: `brightness(${isFever ? 60 - damagePercent / 3 : 100 - damagePercent / 3}%) sepia(${isFever ? 0.8 : 0}) hue-rotate(${isFever ? -50 : 0}deg) saturate(${isFever ? 3 : 1})`,
-            animation: shakeTrigger ? 'hitShake 0.1s ease-in-out' : 'none'
+            transform: `scale(${1 - damagePercent * 0.002})`, 
+            filter: `brightness(${isFever ? 70 - damagePercent / 4 : 100 - damagePercent / 4}%) sepia(${isFever ? 0.8 : 0}) hue-rotate(${isFever ? -50 : 0}deg)`,
           }}
         >
-          {/* 타격 이펙트 오버레이 */}
           {clickEffects.map((ef) => (
             <span
               key={ef.id}
-              className={`absolute z-50 text-6xl font-black pointer-events-none drop-shadow-md ${isFever ? 'text-yellow-300' : 'text-rose-500'}`}
-              style={{
-                left: ef.x - 30,
-                top: ef.y - 30,
-                animation: 'damageFloat 0.5s ease-out forwards'
-              }}
+              className={`absolute z-50 text-7xl font-black pointer-events-none drop-shadow-2xl ${isFever ? 'text-yellow-300' : 'text-rose-500'}`}
+              style={{ left: ef.x - 40, top: ef.y - 40, animation: 'damageFloat 0.5s ease-out forwards' }}
             >
               {isFever ? "🔥" : "💥"}
             </span>
           ))}
 
-          {/* 3D 캔버스 영역 */}
-          <div className="w-[600px] h-[600px] relative flex items-center justify-center pointer-events-none transition-transform">
-            <Canvas shadows dpr={[1, 2]} camera={{ position: [0, 5, -20], fov: 45 }}>
+          <div className="w-[700px] h-[700px] relative flex items-center justify-center pointer-events-none">
+            {/* ✨ 카메라 위치를 거대해진 차 크기에 맞게 [0, 8, 40]으로 뺐습니다! */}
+            <Canvas shadows dpr={[1, 2]} camera={{ position: [0, 5, 15], fov: 45 }}>
               <ambientLight intensity={1.5} />
-              <directionalLight position={[10, 20, -10]} intensity={2} castShadow />
+              <directionalLight position={[10, 20, 10]} intensity={2} castShadow />
               <Suspense fallback={null}>
-                <BuildingModel isPlaying={true} />
+                <BuildingModel />
               </Suspense>
             </Canvas>
-
-            {/* 데미지에 따른 크랙 */}
-            <div
-              className="absolute inset-0 pointer-events-none transition-opacity duration-300 drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]"
-              style={{ opacity: damagePercent > 10 ? 1 : 0 }}
-            >
-              <div className="absolute top-[10%] left-[35%] w-2 h-48 bg-slate-900 transform -rotate-[25deg] origin-top-left" />
-            </div>
-            <div
-              className="absolute inset-0 pointer-events-none transition-opacity duration-300 drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]"
-              style={{ opacity: damagePercent > 30 ? 1 : 0 }}
-            >
-              <div className="absolute top-[25%] right-[10%] w-56 h-2 bg-slate-900 transform rotate-[15deg] origin-top-right" />
-              <div className="absolute top-[45%] right-[25%] w-2 h-32 bg-slate-900 transform rotate-[45deg] origin-bottom-right" />
-            </div>
-            <div
-              className="absolute inset-0 pointer-events-none transition-opacity duration-300 drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]"
-              style={{ opacity: damagePercent > 50 ? 1 : 0 }}
-            >
-              <div className="absolute bottom-[10%] left-[25%] w-2 h-56 bg-slate-900 transform rotate-[35deg] origin-bottom-left" />
-              <div className="absolute bottom-[25%] left-[30%] w-32 h-2 bg-slate-900 transform rotate-[15deg] origin-bottom-left" />
-            </div>
-            <div
-              className="absolute inset-0 pointer-events-none transition-opacity duration-300 drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]"
-              style={{ opacity: damagePercent > 70 ? 1 : 0 }}
-            >
-              <div className="absolute top-[45%] left-[5%] w-64 h-2.5 bg-slate-900 transform -rotate-[10deg] origin-top-left" />
-            </div>
-            <div
-              className="absolute inset-0 pointer-events-none transition-opacity duration-300 drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]"
-              style={{ opacity: damagePercent > 85 ? 1 : 0 }}
-            >
-              <div className="absolute top-1/4 left-1/4 w-3.5 h-64 bg-slate-900 transform rotate-[65deg]" />
-              <div className="absolute bottom-1/4 right-1/4 w-64 h-3.5 bg-slate-900 transform -rotate-[55deg]" />
-            </div>
           </div>
         </button>
       </div>
 
-      {/* 성공 팝업 */}
+      {/* 성공/실패 팝업 생략 (기존과 동일) */}
       {gameState === "success" && (
-        <div className="absolute inset-0 z-50 bg-black/60 flex flex-col items-center justify-center backdrop-blur-sm animate-fade-in pointer-events-auto">
-          <div className="bg-white rounded-[32px] p-10 max-w-md w-full border-[6px] border-slate-800 shadow-2xl flex flex-col items-center transform scale-105 transition-transform">
-            <h2 className="text-4xl font-black text-slate-800 mb-8 tracking-wider">성 공 !</h2>
-            <div className="w-40 h-40 bg-yellow-50 rounded-3xl border-4 border-amber-400 flex flex-col items-center justify-center mb-8 shadow-inner relative overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-tr from-amber-200/40 to-white/60"></div>
-              <span className="text-6xl mb-3 relative z-10 drop-shadow-md">🎁</span>
-              <span className="font-bold text-amber-800 text-xl relative z-10">아이템 획득</span>
+        <div className="absolute inset-0 z-50 bg-black/80 flex flex-col items-center justify-center backdrop-blur-sm animate-fade-in pointer-events-auto">
+          <div className="bg-white rounded-[32px] p-10 max-w-md w-full border-[6px] border-slate-800 shadow-2xl flex flex-col items-center">
+            <h2 className="text-5xl font-black text-slate-800 mb-8 tracking-wider">성 공 !</h2>
+            <div className="w-40 h-40 bg-yellow-50 rounded-3xl border-4 border-amber-400 flex flex-col items-center justify-center mb-8 shadow-inner">
+              <span className="text-6xl mb-3 drop-shadow-md">🎁</span>
+              <span className="font-bold text-amber-800 text-xl">아이템 획득</span>
             </div>
             <div className="w-full flex flex-col gap-4">
-              <button
-                onClick={handleRetry}
-                className="w-full py-5 bg-blue-50 border-[3px] border-blue-400 rounded-2xl font-black text-blue-800 text-xl hover:bg-blue-100 active:scale-95 transition-all shadow-sm cursor-pointer"
-              >
-                한번 더 도전하기
-              </button>
-              <button
-                onClick={closeBuildingPage}
-                className="w-full py-5 bg-slate-100 border-[3px] border-slate-300 rounded-2xl font-black text-slate-600 text-xl hover:bg-slate-200 active:scale-95 transition-all shadow-sm cursor-pointer"
-              >
-                취소
-              </button>
+              <button onClick={handleRetry} className="w-full py-5 bg-blue-50 border-[3px] border-blue-400 rounded-2xl font-black text-blue-800 text-xl hover:bg-blue-100 active:scale-95 transition-all shadow-sm cursor-pointer">한번 더 도전하기</button>
+              <button onClick={closeBuildingPage} className="w-full py-5 bg-slate-100 border-[3px] border-slate-300 rounded-2xl font-black text-slate-600 text-xl hover:bg-slate-200 active:scale-95 transition-all shadow-sm cursor-pointer">나가기</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 실패 팝업 */}
       {gameState === "failure" && (
-        <div className="absolute inset-0 z-50 bg-black/60 flex flex-col items-center justify-center backdrop-blur-sm animate-fade-in pointer-events-auto">
-          <div className="bg-white rounded-[32px] p-10 max-w-md w-full border-[6px] border-slate-800 shadow-2xl flex flex-col items-center transform scale-105 transition-transform">
-            <h2 className="text-4xl font-black text-rose-600 mb-8 tracking-wider">실 패 !</h2>
-            <div className="w-40 h-40 bg-slate-100 rounded-3xl border-4 border-slate-300 flex flex-col items-center justify-center mb-8 shadow-inner relative overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-br from-slate-200/50 to-transparent"></div>
-              <span className="text-6xl mb-3 relative z-10 opacity-70">💦</span>
-              <span className="font-bold text-slate-500 text-xl relative z-10">시간 초과</span>
+        <div className="absolute inset-0 z-50 bg-black/80 flex flex-col items-center justify-center backdrop-blur-sm animate-fade-in pointer-events-auto">
+          <div className="bg-white rounded-[32px] p-10 max-w-md w-full border-[6px] border-slate-800 shadow-2xl flex flex-col items-center">
+            <h2 className="text-5xl font-black text-rose-600 mb-8 tracking-wider">실 패 !</h2>
+            <div className="w-40 h-40 bg-slate-100 rounded-3xl border-4 border-slate-300 flex flex-col items-center justify-center mb-8 shadow-inner">
+              <span className="text-6xl mb-3 opacity-70">💦</span>
+              <span className="font-bold text-slate-500 text-xl">시간 초과</span>
             </div>
             <div className="w-full flex flex-col gap-4">
-              <button
-                onClick={handleRetry}
-                className="w-full py-5 bg-slate-800 border-[3px] border-slate-800 rounded-2xl font-black text-white text-xl hover:bg-slate-700 active:scale-95 transition-all shadow-sm cursor-pointer"
-              >
-                다시 도전하기
-              </button>
-              <button
-                onClick={closeBuildingPage}
-                className="w-full py-5 bg-slate-100 border-[3px] border-slate-300 rounded-2xl font-black text-slate-600 text-xl hover:bg-slate-200 active:scale-95 transition-all shadow-sm cursor-pointer"
-              >
-                취소
-              </button>
+              <button onClick={handleRetry} className="w-full py-5 bg-slate-800 border-[3px] border-slate-800 rounded-2xl font-black text-white text-xl hover:bg-slate-700 active:scale-95 transition-all shadow-sm cursor-pointer">다시 도전하기</button>
+              <button onClick={closeBuildingPage} className="w-full py-5 bg-slate-100 border-[3px] border-slate-300 rounded-2xl font-black text-slate-600 text-xl hover:bg-slate-200 active:scale-95 transition-all shadow-sm cursor-pointer">나가기</button>
             </div>
           </div>
         </div>
       )}
+
+      {/* ──────────────────────────────────────────────────────────── */}
+      {/* ✨ shadcn/ui: 게임 종료 경고 팝업 (기존 confirm 창 대체) */}
+      {/* ──────────────────────────────────────────────────────────── */}
+      <AlertDialog open={showExitConfirm} onOpenChange={setShowExitConfirm}>
+        <AlertDialogContent className="z-[999] border-4 border-slate-800 rounded-2xl max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-2xl font-black text-slate-800 flex items-center gap-2">
+              <span className="text-3xl">⚠️</span> 게임을 종료하시겠습니까?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-base font-bold text-slate-600 leading-relaxed mt-4">
+              지금 나가시면 투입된 금액 <span className="text-rose-500 font-black">1,000원</span>은 환불되지 않습니다.<br/>
+              정말 포기하시겠습니까?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-6 flex gap-2">
+            <AlertDialogCancel className="flex-1 font-bold border-2 border-slate-300 hover:bg-slate-100 py-4 text-lg rounded-xl cursor-pointer">
+              계속하기
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={closeBuildingPage}
+              className="flex-1 font-bold bg-rose-500 text-white hover:bg-rose-600 py-4 text-lg rounded-xl cursor-pointer"
+            >
+              포기하기
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ──────────────────────────────────────────────────────────── */}
+      {/* ✨ shadcn/ui: 잔액 부족 경고 팝업 (기존 alert 창 대체) */}
+      {/* ──────────────────────────────────────────────────────────── */}
+      <AlertDialog open={showErrorAlert} onOpenChange={setShowErrorAlert}>
+        <AlertDialogContent className="border-4 border-slate-800 rounded-2xl max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-2xl font-black text-slate-800 flex items-center gap-2">
+              <span className="text-3xl">💰</span> 잔액이 부족합니다!
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-base font-bold text-slate-600 leading-relaxed mt-4">
+              게임을 시작하려면 1,000원이 필요합니다.<br/>
+              현재 잔액: <span className="text-rose-500 font-black">{useGameStore.getState().money.toLocaleString()}원</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-6 flex gap-2">
+            <AlertDialogAction 
+              onClick={() => setShowErrorAlert(false)}
+              className="flex-1 font-bold bg-slate-800 text-white hover:bg-slate-700 py-4 text-lg rounded-xl cursor-pointer"
+            >
+              확인
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </div>
   );
 }

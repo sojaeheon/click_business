@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import { ArrowLeft, Plus } from "lucide-react";
-import { useGame } from "../../app/store/gameStore";
+import { useGame } from "../../store/gameStore";
 import { Canvas } from "@react-three/fiber";
 import { Html, useGLTF, useAnimations, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";

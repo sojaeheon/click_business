@@ -19,7 +19,7 @@ index 798b856..fd6b916 100644
 +++ b/frontend/src/pages/buildings/BankPage.tsx
 @@ -2,6 +2,7 @@ import React, { useState } from "react";
  import { HelpCircle, ArrowLeft, Delete } from "lucide-react";
- import { useGame } from "../../app/store/gameStore";
+ import { useGame } from "../../store/gameStore";
  import { BankAPI } from "../../api/gameApi";
 +import '../../index.css';
  

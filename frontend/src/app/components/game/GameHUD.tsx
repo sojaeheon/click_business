@@ -1,5 +1,5 @@
-import { useGame } from "../../store/gameStore";
-import type { ModalTab } from "../../store/gameStore";
+import { useGame } from "../../../store/gameStore";
+import type { ModalTab } from "../../../store/gameStore";
 
 interface HudButton {
   key: ModalTab;
