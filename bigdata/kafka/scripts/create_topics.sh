@@ -8,17 +8,17 @@
 
   # Kafka Broker 준비 대기 (최대 20초)
   echo "Waiting for Kafka..."
-  cub kafka-ready -b $BOOTSTRAP 1 20
+cub kafka-ready -b $BOOTSTRAP 1 20
 
-  # Kafka Topic 생성
-  echo "Creating topics..."
-  /usr/bin/kafka-topics --create --if-not-exists \
-    --bootstrap-server $BOOTSTRAP \
-    --topic order.events \
-    --partitions 3 \
-    --replication-factor 1
-  echo "Topic creation completed."
+# Kafka Topic 생성
+echo "Creating topics..."
+/usr/bin/kafka-topics --create --if-not-exists \
+  --bootstrap-server $BOOTSTRAP \
+  --topic market.events \
+  --partitions 3 \
+  --replication-factor 1
+echo "Topic creation completed."
 
-  # Kakfa Topic 조회
-  echo "Current topics:"
-  /usr/bin/kafka-topics --bootstrap-server $BOOTSTRAP --list
+# Kakfa Topic 조회
+echo "Current topics:"
+/usr/bin/kafka-topics --bootstrap-server $BOOTSTRAP --list

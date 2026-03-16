@@ -6,9 +6,13 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 /**
- * 'order.made' Kafka 토픽으로 주문 생성/취소 이벤트를 발행하는 프로듀서입니다.
+ * 주문 관련 Kafka 이벤트를 발행하는 프로듀서입니다.
+ *
+ * Topics:
+ *   - market.order.created  : 주문 생성 이벤트 (key = item_id)
+ *   - market.order.cancelled: 주문 취소 이벤트 (key = item_id)
+ *   - market.trade.executed : 주문 체결 이벤트 (key = item_id)
  */
-
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -16,24 +20,42 @@ public class OrderEventProducer {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
-    private static final String TOPIC = "order.made";
+    private static final String TOPIC_MARKET_EVENTS = "market.events";
 
-    /**
-     * 주문 이벤트 전송 (생성 / 취소)
-     */
-    public void sendOrderEvent(OrderEventDto event) {
-
-        kafkaTemplate.send(TOPIC, String.valueOf(event.getItem()), event)
+    /** 주문 생성 이벤트 전송 */
+    public void sendOrderCreatedEvent(OrderEventEnvelope event) {
+        String key = String.valueOf(event.getPayload().getItemId());
+        kafkaTemplate.send(TOPIC_MARKET_EVENTS, key, event)
                 .whenComplete((result, ex) -> {
                     if (ex == null) {
-                        log.info("Kafka order.made sent: eventType={}, orderId={}, item={}, partition={}",
+                        log.info("[Kafka] {} sent ({}): orderId={}, itemId={}, partition={}",
+                                TOPIC_MARKET_EVENTS,
                                 event.getEventType(),
-                                event.getMarketOrderId(),
-                                event.getItem(),
+                                event.getPayload().getOrderId(),
+                                event.getPayload().getItemId(),
                                 result.getRecordMetadata().partition());
                     } else {
-                        log.error("Kafka send failed", ex);
+                        log.error("[Kafka] {} send failed ({})", TOPIC_MARKET_EVENTS, event.getEventType(), ex);
                     }
                 });
     }
+
+    /** 주문 취소 이벤트 전송 */
+    public void sendOrderCancelledEvent(OrderEventEnvelope event) {
+        String key = String.valueOf(event.getPayload().getItemId());
+        kafkaTemplate.send(TOPIC_MARKET_EVENTS, key, event)
+                .whenComplete((result, ex) -> {
+                    if (ex == null) {
+                        log.info("[Kafka] {} sent ({}): orderId={}, itemId={}, partition={}",
+                                TOPIC_MARKET_EVENTS,
+                                event.getEventType(),
+                                event.getPayload().getOrderId(),
+                                event.getPayload().getItemId(),
+                                result.getRecordMetadata().partition());
+                    } else {
+                        log.error("[Kafka] {} send failed ({})", TOPIC_MARKET_EVENTS, event.getEventType(), ex);
+                    }
+                });
+    }
+
 }
