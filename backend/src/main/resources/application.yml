@@ -2,6 +2,9 @@ server:
   port: 8000
 
 spring:
+  docker:
+    compose:
+      enabled: false
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/ecosim}
     driver-class-name: org.postgresql.Driver
@@ -14,6 +17,10 @@ spring:
     show-sql: true
   flyway:
     enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
   security:
     oauth2:
       client:
@@ -27,8 +34,6 @@ jwt:
   secret: ${JWT_SECRET:vmsrehkbuckettestbacktokenKeyforEcoSimulationProject2026SSAFY}
   expiration-time: 2592000000 # 30일 (테스트 편의를 위해 연장)
 
-spring.autoconfigure.exclude: org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
-
 # 창고 도메인 설정
 warehouse:
   initial-slot-count: 20
@@ -40,6 +45,7 @@ warehouse:
 logging:
   level:
     org.springframework.web: DEBUG
+    org.flywaydb: DEBUG
     # org.springframework.security: DEBUG (필요시 보안 필터 로그도 볼 수 있습니다)
 
 management:
