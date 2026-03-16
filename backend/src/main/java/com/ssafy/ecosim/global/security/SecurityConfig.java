@@ -43,7 +43,9 @@ public class SecurityConfig {
                                                 .requestMatchers("/", "/h2-console/**", "/oauth2/**", "/login/**",
                                                                 "/api/v1/users/signup",
                                                                 "/api/v1/users/guest",
-                                                                "/error")
+                                                                "/error",
+                                                                "/actuator/**",
+                                                                )
                                                 .permitAll()
                                                 .anyRequest().authenticated())
                                 .headers(headers -> headers.frameOptions(options -> options.disable())) // H2 콘솔 프레임 허용
