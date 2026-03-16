@@ -1,0 +1,124 @@
+# Kafka Event Contract
+
+이 문서는 Backend (Java) ↔ Data Engineering (Python) 간의 Kafka 이벤트 스트림 구조와 이벤트 스키마를 정의한다. Backend는 이벤트를 Kafka로 발행(Producer)하며, Data Engineering은 Kafka 이벤트를 소비(Consumer)하여 데이터 처리 및 적재에 활용한다.
+
+## Event Flow
+```
+Client
+   ↓
+Backend Service API
+   ↓
+Kafka (order.event)
+   ↓
+Redis
+   ↓
+Matching Engine
+   ↓
+Kafka (trade.event)
+   ↓
+DB / HDFS
+```
+
+## Kafka Topic
+
+| Topic | Description |
+|------|-------------|
+| order.event | 주문 생성 및 취소 이벤트 |
+| trade.event | 주문 체결 이벤트 |
+
+## Partition Key
+
+| Topic | Key | Reason |
+|------|------|------|
+| order.event | item | 동일 아이템 주문의 순서를 보장하기 위함 |
+| trade.event | item | 동일 아이템 거래 순서를 유지하기 위함 |
+
+## Event Schema
+### Topic : order.made
+| Field | Type | Required | Description |
+|------|------|------|-------------|
+| event_id | string (UUID) | Y | 이벤트 고유 ID |
+| event_time | timestamp | Y | 이벤트 발생 시각 |
+| event_type | enum | Y | ORDER_CREATED / ORDER_CANCELLED |
+| market_order_id | long | Y | 주문 ID |
+| item | string | Y | 거래 아이템 |
+| company_id | long | Y | 기업 ID |
+| order_type | enum | Y | BUY / SELL |
+| price | int | Y | 주문 가격 |
+| total_quantity | int | Y | 주문 총 수량 |
+| remaining_quantity | int | Y | 미체결 수량 |
+| status | enum | Y | OPEN / PARTIALLY_FILLED / FILLED / CANCELLED |
+| is_virtual | boolean | Y | 봇 주문 여부 |
+| created_at | timestamp | Y | 주문 생성 시각 |
+| updated_at | timestamp | Y | 주문 수정 시각 |
+
+#### Event : ORDER_CREATED
+주문 생성 시 발생하는 이벤트
+```json
+{
+  "event_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "event_time": "2026-03-06T10:00:00Z",
+  "event_type": "ORDER_CREATED",
+  "market_order_id": 123,
+  "item": 1,
+  "company_id": 10,
+  "order_type": "BUY",
+  "price": 1000,
+  "total_quantity": 5,
+  "remaining_quantity": 5,
+  "status": "OPEN",
+  "is_virtual": false,
+  "created_at": "2026-03-06T10:00:00Z",
+  "updated_at": "2026-03-06T10:00:00Z"
+}
+```
+
+#### Event : ORDER_CANCELLED
+주문 취소 시 발생하는 이벤트
+```json
+{
+  "event_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "event_time": "2026-03-06T10:00:00Z",
+  "event_type": "ORDER_CANCELLED",
+  "market_order_id": 123,
+  "item": 1,
+  "company_id": 10,
+  "order_type": "BUY",
+  "price": 1000,
+  "total_quantity": 5,
+  "remaining_quantity": 5,
+  "status": "CANCELLED",
+  "is_virtual": false,
+  "created_at": "2026-03-06T10:00:00Z",
+  "updated_at": "2026-03-06T10:05:00Z"
+}
+```
+
+## 디렉토리 구조
+### backend
+```
+/S14P21B109/backend/src/main/java/com/ssafy/ecosim/
+├─ kafka_event_contract.md                  # Event Contract 파일
+├─ domain
+│  └─ market
+│     └─ kafka
+│        ├─ OrderEventDto.java                # 주문 생성 이벤트
+│        ├─ OrderEventProducer.java           # Kafka Producer
+│        ├─ KafkaOrderEventPublisher.java     # Kafka Producer
+│        ├─ OrderEventProducer.java           # Kafka Producer
+│        └─ TradeEventDto.java          # 주문 체결 이벤트
+│
+└─ global
+   └─ config
+      ├─ KafkaProducerConfig.java           # Kafka Producer 설정
+      └─ RedisConfig.java                   # Redis 설정
+```
+### bigdata
+```
+/S14P21B109/bigdata/kafka/
+├── configs                                 # Kafka 설정
+├── consumers                               # Kafka Consumer
+├── producers                               # Kafka Producer
+├── scripts
+└── kafkaReadme.md
+```

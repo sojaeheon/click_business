@@ -78,6 +78,19 @@ services:
       # ZooKeeper와 동일 네트워크
       - ecosim-network
 
+  # -----------------------------
+  # Kafka Topic Init
+  # -----------------------------
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: kafka-init
+    depends_on:
+      - kafka
+    volumes:
+      - ./kafka/scripts/create_topics.sh:/usr/local/bin/create_topics.sh
+    entrypoint: ["/bin/bash", "/usr/local/bin/create_topics.sh"]
+    networks:
+      - ecosim-network
 
 # -----------------------------
 # Docker 네트워크 설정
