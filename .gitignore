@@ -5,6 +5,8 @@
 /secrets/
 secret.key
 infra/k8s/secret.yaml
+**/secret.yaml
+**/secret.yml
 secret.key.not-so-secret
 credentials.xml
 users/
@@ -16,6 +18,7 @@ users/
 *.main
 *.pyc
 .gradle/
+**/.gradle/
 build/
 bin/
 out/
@@ -28,7 +31,7 @@ target/
 application*.properties
 application*.yml
 # 기본 설정 파일은 커밋 허용 (env var 기반이라 시크릿 없음)
-!**/resources/application.yml
+
 .mvn/wrapper/maven-wrapper.jar
 
 ### --- [3. Jenkins & CI/CD] --- ###
@@ -83,7 +86,10 @@ tmp/
 
 rule.md
 /postgres_data/
+**/postgres_data/
+**/redis_data/
 /pjt2/
 hadoop.env
 .claude/
 claude.md
+*/secret
