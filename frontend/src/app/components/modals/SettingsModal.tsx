@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Mail, Volume2, LogOut, UserX } from "lucide-react";
+import { useAlertStore } from "../../../store/useAlertStore";
 
 // 💡 [백엔드 연동] 실제 구현 시 로그인된 유저 정보를 props 또는 context에서 받아오세요.
 const MOCK_USER = {
@@ -14,14 +15,14 @@ export function SettingsModal() {
   const handleLogout = () => {
     // 💡 [백엔드 연동] POST /api/v1/auth/logout
     if (window.confirm("로그아웃 하시겠습니까?")) {
-      alert("로그아웃 되었습니다. (로그인 페이지로 이동 예정)");
+      useAlertStore.getState().openAlert("로그아웃 되었습니다. (로그인 페이지로 이동 예정)", "알림");
       // navigate("/")
     }
   };
 
   const handleWithdraw = () => {
     // 💡 [백엔드 연동] 회원 탈퇴 API 연동 필요
-    alert("회원 탈퇴가 완료되었습니다. 모든 데이터가 삭제됩니다.");
+    useAlertStore.getState().openAlert("회원 탈퇴가 완료되었습니다. 모든 데이터가 삭제됩니다.", "안내");
     setShowWithdrawConfirm(false);
   };
 

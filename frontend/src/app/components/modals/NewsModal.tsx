@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { ImageOff, ArrowLeft } from "lucide-react";
-import { useGame } from "../../store/gameStore";
-import type { NewsItem } from "../../store/gameStore";
+import { useGame } from "../../../store/gameStore";
+import type { NewsItem } from "../../../store/gameStore";
 
 // 뉴스 상세 페이지 뷰
 function NewsDetail({ news, onBack }: { news: NewsItem; onBack: () => void }) {
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col pb-8">
       {/* 상단: 뒤로가기 */}
       <button
         onClick={onBack}
@@ -46,7 +46,7 @@ function NewsDetail({ news, onBack }: { news: NewsItem; onBack: () => void }) {
       </div>
 
       {/* 본문 */}
-      <div className="flex-1 bg-white rounded-2xl border-2 border-gray-200 p-6 overflow-auto">
+      <div className="bg-white rounded-2xl border-2 border-gray-200 p-6 w-full">
         {news.summary ? (
           <p className="text-gray-700 text-base leading-relaxed">{news.summary}</p>
         ) : (
@@ -67,7 +67,7 @@ function NewsList({ onSelect }: { onSelect: (news: NewsItem) => void }) {
   const otherNews = state.news.filter((n) => !n.isBreaking);
 
   return (
-    <div className="flex gap-6 h-full">
+    <div className="flex gap-6 items-start pb-6">
       {/* 왼쪽: 속보 */}
       <div className="flex-[3]">
         {breakingNews && (
@@ -100,7 +100,7 @@ function NewsList({ onSelect }: { onSelect: (news: NewsItem) => void }) {
       </div>
 
       {/* 오른쪽: 과거 뉴스 목록 */}
-      <div className="flex-[2] space-y-4 overflow-y-auto pr-2">
+      <div className="flex-[2] space-y-4 w-full">
         {otherNews.map((news) => (
           <button
             key={news.id}
@@ -127,8 +127,9 @@ function NewsList({ onSelect }: { onSelect: (news: NewsItem) => void }) {
 export function NewsModal() {
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
 
+  // 뉴스 모달 전체 레이아웃
   return (
-    <div className="h-full flex flex-col">
+    <div className="flex flex-col">
       {selectedNews ? (
         <NewsDetail news={selectedNews} onBack={() => setSelectedNews(null)} />
       ) : (

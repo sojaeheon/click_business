@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { BuildingPage } from "../../store/gameStore";
+import type { BuildingPage } from "../../../store/gameStore";
 
 // ─── 스케일/크기 상수 ────────────────────────────────────────────
 export const TILE_S = 1.5;
@@ -62,6 +62,7 @@ export const M = {
     carStationwagon: `${ENV}car_stationwagon.gltf`,
     carTaxi: `${ENV}car_taxi.gltf`,
     minigame: `${ENV}minecraft_pickaxe.gltf`,
+    ocean: `${ENV}ocean_lowpoly.glb`,
 };
 
 // ─── 자동차 경로 ─────────────────────────────────────────────────

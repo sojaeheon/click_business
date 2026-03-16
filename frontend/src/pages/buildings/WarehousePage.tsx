@@ -1,6 +1,8 @@
 import React, { useState } from "react";
-import { ArrowLeft, Plus, Minus, Package } from "lucide-react";
-import { useGame } from "../../app/store/gameStore";
+import { Plus, Minus, Package } from "lucide-react";
+import { useGame, useGameStore, MAX_PER_SLOT } from "../../store/gameStore";
+import { BackButton } from "../../app/components/ui/backbutton";
+
 
 function ShelfItem({
   name,
@@ -29,7 +31,7 @@ function ShelfItem({
       >
         <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity" />
 
-        <Package 
+        <Package
           className={`w-1/2 h-1/2 drop-shadow-md transition-transform group-hover:scale-110 ${isMaterial ? "text-yellow-600" : "text-blue-500"}`}
         />
 
@@ -40,7 +42,7 @@ function ShelfItem({
           </span>
         </div>
       </div>
-      
+
       {/* Quantity label */}
       <div className="mt-3 bg-white/90 backdrop-blur border border-white/50 shadow-md rounded-xl px-4 py-1.5 text-center transform transition-all group-hover:scale-105">
         <span className="text-sm text-gray-800 font-black tracking-wide">
@@ -54,54 +56,29 @@ function ShelfItem({
 export function WarehousePage() {
   const { state, closeBuildingPage } = useGame();
   const { warehouseItems } = state;
+  const usedSlots = useGameStore(s => s.getWarehouseUsage().usedSlots);
+  const percent = useGameStore(s => s.getWarehouseUsage().percent);
+  const maxSlots = useGameStore(s => s.warehouseMaxSlots);
+  const material = useGameStore(s => s.getIndustryItemNames().material);
+  const product = useGameStore(s => s.getIndustryItemNames().product);
   const [compactView, setCompactView] = useState(false);
 
   const materials = warehouseItems.filter((i) => i.type === "material");
   const products = warehouseItems.filter((i) => i.type === "product");
 
   return (
-    <div className="absolute inset-0 z-40 bg-[#f5f0e8] flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b-2 border-gray-300">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={closeBuildingPage}
-            className="w-10 h-10 rounded-full border-2 border-gray-400 flex items-center justify-center hover:bg-gray-200 transition-colors cursor-pointer"
-          >
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
-          </button>
-          <span className="text-gray-500">창고</span>
-        </div>
-        <h1 className="text-2xl" style={{ fontWeight: 800 }}>
-          창 고
-        </h1>
-        <div className="w-10" />
-      </div>
+    <div
+      className="absolute inset-0 z-40 bg-[#f5f0e8] flex flex-col pt-8"
+      style={{
+        backgroundImage: "url('/images/warehouse.머ㅗ')",
+        backgroundSize: 'contain',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'center',
+        backgroundColor: '#cee7be' // 적당한 배경색
+      }}
+    >
+      <BackButton onClick={closeBuildingPage} className="absolute top-6 left-6" />
 
-      {/* View toggle */}
-      <div className="flex items-center gap-2 px-6 pt-4">
-        <button
-          onClick={() => setCompactView(false)}
-          className={`w-8 h-8 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors ${!compactView
-              ? "border-gray-800 bg-gray-800 text-white"
-              : "border-gray-400 text-gray-500 hover:bg-gray-200"
-            }`}
-        >
-          <Plus className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => setCompactView(true)}
-          className={`w-8 h-8 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors ${compactView
-              ? "border-gray-800 bg-gray-800 text-white"
-              : "border-gray-400 text-gray-500 hover:bg-gray-200"
-            }`}
-        >
-          <Minus className="w-4 h-4" />
-        </button>
-        <span className="text-xs text-gray-400 ml-2">
-          {compactView ? "작게보기" : "크게보기"}
-        </span>
-      </div>
 
       {/* Shelves */}
       <div className="flex-1 p-6 flex flex-col justify-center max-w-4xl mx-auto w-full">
@@ -111,32 +88,52 @@ export function WarehousePage() {
             {/* Top shelf - Materials */}
             <div className="mb-8">
               <h3 className="text-gray-500 font-bold mb-4 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-yellow-500"></div> 원자재</h3>
-              <div className="flex flex-wrap items-end justify-start gap-8">
-                {materials.map((item) => (
-                  <ShelfItem
-                    key={item.id}
-                    name={item.name}
-                    quantity={item.quantity}
-                    type={item.type}
-                    compact={compactView}
-                  />
-                ))}
+              <div className="flex flex-wrap items-end justify-start gap-4">
+                {materials.map((item) => {
+                  const numSlots = Math.ceil(item.quantity / MAX_PER_SLOT);
+                  const slots = [];
+                  let remaining = item.quantity;
+                  for (let i = 0; i < numSlots; i++) {
+                    const amountInSlot = Math.min(remaining, MAX_PER_SLOT);
+                    slots.push(
+                      <ShelfItem
+                        key={`${item.id}-${i}`}
+                        name={material}
+                        quantity={amountInSlot}
+                        type={item.type}
+                        compact={compactView}
+                      />
+                    );
+                    remaining -= amountInSlot;
+                  }
+                  return slots;
+                })}
               </div>
             </div>
 
             {/* Bottom shelf - Products */}
             <div className="pt-4 border-t border-gray-300/50">
               <h3 className="text-gray-500 font-bold mb-4 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-blue-500"></div> 생산품</h3>
-              <div className="flex flex-wrap items-end justify-start gap-8">
-                {products.map((item) => (
-                  <ShelfItem
-                    key={item.id}
-                    name={item.name}
-                    quantity={item.quantity}
-                    type={item.type}
-                    compact={compactView}
-                  />
-                ))}
+              <div className="flex flex-wrap items-end justify-start gap-4">
+                {products.map((item) => {
+                  const numSlots = Math.ceil(item.quantity / MAX_PER_SLOT);
+                  const slots = [];
+                  let remaining = item.quantity;
+                  for (let i = 0; i < numSlots; i++) {
+                    const amountInSlot = Math.min(remaining, MAX_PER_SLOT);
+                    slots.push(
+                      <ShelfItem
+                        key={`${item.id}-${i}`}
+                        name={product}
+                        quantity={amountInSlot}
+                        type={item.type}
+                        compact={compactView}
+                      />
+                    );
+                    remaining -= amountInSlot;
+                  }
+                  return slots;
+                })}
               </div>
             </div>
           </div>
@@ -145,15 +142,13 @@ export function WarehousePage() {
         {/* Warehouse capacity */}
         <div className="mt-6 flex items-center justify-center gap-3">
           <Package className="w-5 h-5 text-gray-500" />
-          <span className="text-sm text-gray-600">
-            수용량: {state.warehouseUsed} / {state.warehouseMax}
+          <span className="text-sm text-gray-600 font-bold">
+            수용량: {usedSlots} / {maxSlots} 슬롯
           </span>
           <div className="w-40 h-3 bg-gray-200 rounded-full overflow-hidden">
             <div
-              className="h-full bg-amber-500 rounded-full"
-              style={{
-                width: `${(state.warehouseUsed / state.warehouseMax) * 100}%`,
-              }}
+              className={`h-full rounded-full transition-all duration-500 ${percent >= 100 ? 'bg-red-500' : 'bg-amber-500'}`}
+              style={{ width: `${percent}%` }}
             />
           </div>
         </div>

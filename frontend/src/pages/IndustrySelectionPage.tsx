@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useGameStore } from "../store/gameStore";
+import { useAlertStore } from "../store/useAlertStore";
 
 const IndustryCard = ({ title, iconLabel, onSelect }: { title: string; iconLabel: string; onSelect: () => void }) => {
   const [isHovered, setIsHovered] = useState(false);
@@ -29,6 +31,7 @@ const IndustryCard = ({ title, iconLabel, onSelect }: { title: string; iconLabel
 
 export const IndustrySelectionPage = () => {
   const navigate = useNavigate();
+  const setCompanyInfo = useGameStore(state => state.setCompanyInfo);
   const [selectedIndustry, setSelectedIndustry] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState('');
 
@@ -38,7 +41,7 @@ export const IndustrySelectionPage = () => {
 
   const handleConfirm = () => {
     if (companyName.trim() === '') {
-      alert('회사 이름을 입력해주세요.');
+      useAlertStore.getState().openAlert('회사 이름을 입력해주세요.', "경고");
       return;
     }
     // 💡 [백엔드 연동: 기업 설정 내역 전송]
@@ -47,6 +50,11 @@ export const IndustrySelectionPage = () => {
     // - 이름 설정 parameter: { company_id, company_name }
     // (이곳에서 fetch/axios를 통해 위 값을 백엔드로 전송하시면 됩니다.)
 
+    if (!selectedIndustry) {
+      useAlertStore.getState().openAlert('산업을 선택해주세요.', "경고");
+      return;
+    }
+    setCompanyInfo(companyName, selectedIndustry);
     navigate('/main');
   };
 

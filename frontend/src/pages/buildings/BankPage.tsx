@@ -1,17 +1,22 @@
-import React, { useState } from "react";
-import { HelpCircle, ArrowLeft, Delete } from "lucide-react";
-import { useGame } from "../../app/store/gameStore";
+import React, { useState, useEffect } from "react";
+import { Delete, HelpCircle } from "lucide-react";
+import { useGame } from "../../store/gameStore";
 import { BankAPI } from "../../api/gameApi";
+import { BackButton } from "../../app/components/ui/backbutton";
+import { useAlertStore } from "../../store/useAlertStore";
 
 type BankMode = "loan" | "repay" | "deposit" | "withdraw" | null;
+type StepMode = "input" | "confirm" | "done" | "thanks";
 
 export function BankPage() {
   const { state, closeBuildingPage } = useGame();
-  const { bankData, news, companyName } = state;
+  const { bankData, news } = state;
 
   const [mode, setMode] = useState<BankMode>(null);
+  const [step, setStep] = useState<StepMode>("input");
   const [inputValue, setInputValue] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [errImg, setErrImg] = useState(false);
 
   const handleNumpad = (num: string) => {
     if (inputValue.length < 12) {
@@ -20,64 +25,89 @@ export function BankPage() {
   };
 
   const handleBackspace = () => {
-    setInputValue((prev) => prev.slice(0, -1));
+    setInputValue((prev) => prev.length > 0 ? prev.slice(0, -1) : prev);
   };
 
   const handleUnit = (unit: number) => {
     setInputValue((prev) => (Number(prev) * unit).toString());
   };
 
-  const handleConfirm = async () => {
+  const handleConfirmInput = () => {
     const amount = Number(inputValue);
     if (!amount || !mode) return;
-    
+    setStep("confirm");
+  };
+
+  const processTransaction = async () => {
+    const amount = Number(inputValue);
     setIsProcessing(true);
     try {
-      // TODO: 실제 companyId 사용 (현재는 임시 1)
       const mappedType = mode === "loan" ? "BORROW" : mode === "repay" ? "REPAY" : mode === "deposit" ? "DEPOSIT" : "WITHDRAW";
       await BankAPI.processLoan({ companyId: 1, type: mappedType, amount });
-      
-      console.log(`${mappedType} 요청: ${amount}원`);
-      alert("은행 처리가 완료되었습니다.");
-      setMode(null);
-      setInputValue("");
+      setStep("done");
+
+      // done 화면 후 1.5초 뒤 thanks 화면
+      setTimeout(() => {
+        setStep("thanks");
+        // thanks 화면 후 2초 뒤 종료
+        setTimeout(() => {
+          closeBuildingPage();
+        }, 2000);
+      }, 1500);
+
     } catch (e: any) {
       console.error(e);
-      // 예외처리: 백엔드 미구축 또는 통신 에러 시 피드백
-      alert(e?.response?.data?.message || "서버 통신 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+      useAlertStore.getState().openAlert(e?.response?.data?.message || "서버 통신 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.", "경고");
+      setStep("input");
     } finally {
       setIsProcessing(false);
     }
   };
 
+  // 키보드 이벤트 연동
+  useEffect(() => {
+    if (!mode || step !== "input") return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key >= "0" && e.key <= "9") {
+        handleNumpad(e.key);
+      } else if (e.key === "Backspace") {
+        handleBackspace();
+      } else if (e.key === "Enter") {
+        handleConfirmInput();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mode, step, inputValue]);
+
   const currentRate = mode === "loan" || mode === "repay" ? bankData.loanRate : bankData.depositRate;
   const estimatedInterest = Math.floor(Number(inputValue || 0) * (currentRate / 100));
 
+  const modeText = mode === "loan" ? "대출" : mode === "repay" ? "상환" : mode === "deposit" ? "예금" : "인출";
+
   return (
-    <div className="absolute inset-0 z-40 bg-[#f5f0e8] flex flex-col pt-8">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => { mode ? setMode(null) : closeBuildingPage() }}
-            className="w-12 h-12 rounded-full bg-white border-2 border-slate-300 flex items-center justify-center hover:bg-slate-50 transition-colors shadow-sm"
-          >
-            <ArrowLeft className="w-6 h-6 text-slate-700" />
-          </button>
-        </div>
-        <div className="text-center">
-          <h1 className="text-4xl tracking-widest text-slate-800" style={{ fontWeight: 900 }}>
-            DK <span className="font-light text-slate-600">BANK</span>
-          </h1>
-        </div>
-        <button className="w-12 h-12 rounded-full bg-white border-2 border-slate-300 flex items-center justify-center hover:bg-slate-50 transition-colors shadow-sm">
-          <HelpCircle className="w-6 h-6 text-slate-700" />
-        </button>
-      </div>
+    <div
+      className="absolute inset-0 z-40 flex flex-col pt-8"
+      style={{
+        backgroundImage: "url('/images/bank.png')",
+        backgroundSize: 'cover',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'center',
+        backgroundColor: '#cee7be'
+      }}
+    >
+      {/* Header - 뒤로가기 버튼만 */}
+      <BackButton
+        onClick={() => {
+          if (step !== "input" && step !== "confirm") return;
+          mode ? setMode(null) : closeBuildingPage();
+        }}
+        className="absolute top-6 left-6 z-50"
+      />
 
       {!mode ? (
         // --- DEPTH 1: 메인 메뉴 ---
-        <div className="flex flex-1 p-6 gap-6 max-w-5xl mx-auto w-full items-center justify-center">
+        <div className="flex flex-1 p-6 gap-6 max-w-5xl mx-auto w-full items-center justify-center relative z-10">
           {/* Left Buttons */}
           <div className="flex flex-col gap-6 w-1/4">
             <button onClick={() => setMode("loan")} className="h-32 bg-white rounded-2xl border-4 border-slate-300 shadow-xl flex items-center justify-center hover:scale-105 transition-transform active:scale-95">
@@ -112,7 +142,7 @@ export function BankPage() {
                 Ads
               </div>
               <p className="text-lg font-bold text-slate-700 leading-snug">
-                {news[0]?.headline || "[광고] 최고 우대 금리 적용! 지금 바로 상담하세요."}
+                {news && news.length > 0 ? news[0].headline : "[광고] 최고 우대 금리 적용! 지금 바로 상담하세요."}
               </p>
             </div>
           </div>
@@ -127,9 +157,9 @@ export function BankPage() {
             </button>
           </div>
         </div>
-      ) : (
+      ) : step === "input" ? (
         // --- DEPTH 2: Numpad & Detail ---
-        <div className="flex-1 p-6 flex flex-col items-center justify-start max-w-lg mx-auto w-full mt-4">
+        <div className="flex-1 p-6 flex flex-col items-center justify-start max-w-lg mx-auto w-full mt-4 relative z-10">
           <div className="w-full text-center mb-8">
             <h2 className="text-2xl font-black text-slate-700 bg-white inline-block px-8 py-3 rounded-full shadow-sm border-2 border-slate-200">
               {mode === "loan" ? "대출하기" : mode === "repay" ? "상환하기" : mode === "deposit" ? "예금하기" : "인출하기"}
@@ -147,8 +177,8 @@ export function BankPage() {
 
           {/* Interest estimate */}
           <div className="w-full flex justify-between items-center px-4 mb-8">
-            <span className="text-slate-500 font-bold">예상 발생 이자</span>
-            <span className="text-rose-500 font-black text-lg">+{estimatedInterest.toLocaleString()}원</span>
+            <span className="text-slate-800 font-bold bg-white/70 px-3 py-1 rounded-full">예상 발생 이자</span>
+            <span className="text-rose-600 font-black text-xl bg-white/70 px-3 py-1 rounded-full">+{estimatedInterest.toLocaleString()}원</span>
           </div>
 
           {/* Numpad */}
@@ -157,17 +187,17 @@ export function BankPage() {
               <button key={n} onClick={() => handleNumpad(n.toString())} className="h-16 bg-slate-100 rounded-xl text-2xl font-black text-slate-700 hover:bg-slate-200 active:scale-95 transition-all">{n}</button>
             ))}
             <button onClick={() => handleUnit(10000)} className="h-16 bg-indigo-50 rounded-xl text-lg font-black text-indigo-600 hover:bg-indigo-100 active:scale-95 transition-all">만</button>
-            
+
             {[4, 5, 6].map(n => (
               <button key={n} onClick={() => handleNumpad(n.toString())} className="h-16 bg-slate-100 rounded-xl text-2xl font-black text-slate-700 hover:bg-slate-200 active:scale-95 transition-all">{n}</button>
             ))}
             <button onClick={() => handleUnit(100000000)} className="h-16 bg-indigo-50 rounded-xl text-lg font-black text-indigo-600 hover:bg-indigo-100 active:scale-95 transition-all">억</button>
-            
+
             {[7, 8, 9].map(n => (
               <button key={n} onClick={() => handleNumpad(n.toString())} className="h-16 bg-slate-100 rounded-xl text-2xl font-black text-slate-700 hover:bg-slate-200 active:scale-95 transition-all">{n}</button>
             ))}
-            <button onClick={() => setInputValue("")} className="h-16 bg-rose-50 rounded-xl text-lg font-black text-rose-600 hover:bg-rose-100 active:scale-95 transition-all">전액<br/><span className="text-xs">초기화</span></button>
-            
+            <button onClick={() => setInputValue("")} className="h-16 bg-rose-50 rounded-xl text-lg font-black text-rose-600 hover:bg-rose-100 active:scale-95 transition-all">전액<br /><span className="text-xs">초기화</span></button>
+
             <button onClick={() => handleNumpad("00")} className="h-16 bg-slate-100 rounded-xl text-2xl font-black text-slate-700 hover:bg-slate-200 active:scale-95 transition-all">00</button>
             <button onClick={() => handleNumpad("0")} className="h-16 bg-slate-100 rounded-xl text-2xl font-black text-slate-700 hover:bg-slate-200 active:scale-95 transition-all">0</button>
             <button onClick={handleBackspace} className="h-16 flex items-center justify-center col-span-2 bg-slate-200 rounded-xl text-slate-700 hover:bg-slate-300 active:scale-95 transition-all">
@@ -180,9 +210,53 @@ export function BankPage() {
             <button onClick={() => setMode(null)} className="flex-1 py-4 bg-slate-200 rounded-xl text-slate-700 font-black text-xl hover:bg-slate-300 active:scale-95 transition-all">
               취소
             </button>
-            <button onClick={handleConfirm} disabled={!inputValue || isProcessing} className="flex-1 py-4 bg-slate-800 rounded-xl text-white font-black text-xl hover:bg-slate-700 active:scale-95 transition-all shadow-lg disabled:opacity-50">
-              {isProcessing ? "처리중..." : "확인"}
+            <button onClick={handleConfirmInput} disabled={!inputValue || Number(inputValue) === 0} className="flex-1 py-4 bg-slate-800 rounded-xl text-white font-black text-xl hover:bg-slate-700 active:scale-95 transition-all shadow-lg disabled:opacity-50">
+              확인
             </button>
+          </div>
+        </div>
+      ) : step === "confirm" ? (
+        <div className="flex-1 p-6 flex flex-col items-center justify-center max-w-lg mx-auto w-full relative z-10">
+          <div className="bg-white rounded-3xl border-4 border-slate-300 p-10 shadow-xl flex flex-col items-center text-center w-full">
+            <h2 className="text-3xl font-black text-slate-800 mb-6">입력 내용 확인</h2>
+            <p className="text-2xl text-slate-600 mb-8 break-keep">
+              <strong className="text-4xl text-indigo-600 block mb-2">{Number(inputValue).toLocaleString()} 원</strong>을<br />
+              정말 <strong>{modeText}</strong> 하시겠습니까?
+            </p>
+            <div className="flex w-full gap-4">
+              <button
+                onClick={() => setStep("input")}
+                disabled={isProcessing}
+                className="flex-1 py-4 bg-slate-200 rounded-xl text-slate-700 font-black text-xl hover:bg-slate-300 active:scale-95 transition-all disabled:opacity-50"
+              >
+                아니오
+              </button>
+              <button
+                onClick={processTransaction}
+                disabled={isProcessing}
+                className="flex-1 py-4 bg-indigo-600 rounded-xl text-white font-black text-xl hover:bg-indigo-700 active:scale-95 transition-all shadow-lg disabled:opacity-50"
+              >
+                {isProcessing ? "처리중..." : "예"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : step === "done" ? (
+        <div className="flex-1 p-6 flex flex-col items-center justify-center max-w-lg mx-auto w-full relative z-10">
+          <div className="bg-white rounded-3xl border-4 border-slate-300 p-10 shadow-xl flex flex-col items-center text-center w-full animate-pulse opacity-90">
+            <div className="text-6xl mb-6">✅</div>
+            <h2 className="text-3xl font-black text-slate-800 break-keep">
+              {Number(inputValue).toLocaleString()}원<br /> {modeText} 했습니다.
+            </h2>
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 p-6 flex flex-col items-center justify-center max-w-lg mx-auto w-full relative z-10">
+          <div className="bg-white rounded-3xl border-4 border-slate-300 p-10 shadow-xl flex flex-col items-center text-center w-full">
+            <div className="text-6xl mb-6 animate-bounce">💖</div>
+            <h2 className="text-4xl font-black text-slate-800">
+              감사합니다
+            </h2>
           </div>
         </div>
       )}
