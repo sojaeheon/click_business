@@ -44,6 +44,7 @@ export interface HRData {
 }
 
 export interface GameState {
+  companyId: number | null;  // 백엔드 company PK (API 호출에 사용)
   companyName: string;
   industry: string;
   money: number;
@@ -66,10 +67,11 @@ export interface GameState {
 }
 
 export const defaultGameState: GameState = {
-  companyName: "철 좀 들자",
-  industry: "제철업",
-  money: 1000000,
-  currency: "₵",
+  companyId: null,
+  companyName: "",
+  industry: "",
+  money: 0,
+  currency: "$",
   capital: 5000000,
   debt: 2000000,
   warehouseUsed: 448,

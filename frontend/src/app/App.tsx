@@ -10,6 +10,7 @@ const MarketPage = lazy(() => import("../pages/buildings/MarketPage").then(modul
 import { GameContext, defaultGameState } from "./store/gameStore";
 import type { GameState, ModalTab, BuildingPage, GameContextType } from "./store/gameStore";
 import { CompanyAPI } from "../api/gameApi";
+import { companyApi } from "../api/services";
 
 export default function App() {
   const [state, setState] = useState<GameState>(defaultGameState);
@@ -18,11 +19,25 @@ export default function App() {
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const response = await CompanyAPI.getStatus(1);
-        if (response.data) {
+        const token = localStorage.getItem('accessToken');
+        if (!token) return;
+
+        // userId로 회사 조회 후 companyId 획득
+        const meRes = await companyApi.getMe();
+        const companyId: number = meRes.data.data.id;
+
+        const statusRes = await CompanyAPI.getStatus(companyId);
+        const status = statusRes.data.data; // ApiResponse<GameStatusResponse> 언래핑
+
+        if (status) {
           setState((prev) => ({
             ...prev,
-            ...response.data
+            companyId: status.companyId,
+            companyName: status.companyName,
+            industry: status.industry,
+            money: status.money,
+            capital: status.capital,
+            currency: status.currency,
           }));
         }
       } catch (error) {

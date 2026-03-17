@@ -1,13 +1,6 @@
 import { http, HttpResponse, delay } from 'msw'
-import { defaultGameState } from '../app/store/gameStore'
 
 export const handlers = [
-  // 최초 진입 시 전체 게임 상태(Status)
-  http.get('*/api/v1/companies/:companyId/status', async () => {
-    await delay(800);
-    return HttpResponse.json(defaultGameState); // store에 정의된 초기 상태를 그대로 사용하여 덮어씀
-  }),
-
   // 시장 거래 (Market)
   http.post('*/api/v1/market/orders', async () => {
     await delay(600);

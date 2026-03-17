@@ -2,6 +2,7 @@ package com.ssafy.ecosim.domain.company.controller;
 
 import com.ssafy.ecosim.domain.company.dto.request.CompanyCreateRequest;
 import com.ssafy.ecosim.domain.company.dto.response.CompanyResponse;
+import com.ssafy.ecosim.domain.company.dto.response.GameStatusResponse;
 import com.ssafy.ecosim.domain.company.entity.Company;
 import com.ssafy.ecosim.domain.company.service.CompanyService;
 import com.ssafy.ecosim.global.common.ApiResponse;
@@ -41,5 +42,14 @@ public class CompanyController {
         Company company = companyService.getCompanyByUserId(userId);
 
         return ApiResponse.success(new CompanyResponse(company));
+    }
+
+    /**
+     * 메인 게임 화면에 필요한 기업 상태 데이터를 조회합니다.
+     */
+    @GetMapping("/{id}/status")
+    public ApiResponse<GameStatusResponse> getCompanyStatus(@PathVariable Long id) {
+        Company company = companyService.getCompanyById(id);
+        return ApiResponse.success(new GameStatusResponse(company));
     }
 }
