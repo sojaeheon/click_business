@@ -41,12 +41,6 @@ public class Company extends BaseEntity {
     @Column(name = "output_item_id")
     private Long outputItemId;
 
-    @Column(name = "production_requirement", nullable = false)
-    private Integer productionRequirement; // 소모되는 재료량
-
-    @Column(name = "production_yield", nullable = false)
-    private Integer productionYield; // 산출되는 결과물량
-
     // ERD 기준 추가 필드
     @Column(name = "level", nullable = false)
     private Integer level;
@@ -63,8 +57,6 @@ public class Company extends BaseEntity {
         this.industryId = industryType.getIndustryId();
         this.inputItemId = industryType.getInputItemId();
         this.outputItemId = industryType.getOutputItemId();
-        this.productionRequirement = 1;
-        this.productionYield = 1;
         this.level = 1;
         this.cash = 1_000_000L;   // 초기 지급 현금 100만원
         this.totalAsset = 1_000_000L;
