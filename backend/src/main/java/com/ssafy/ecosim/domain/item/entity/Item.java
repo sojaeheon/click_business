@@ -27,10 +27,14 @@ public class Item {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    @Column(name = "max_stack_size", nullable = false)
+    private Long maxStackSize;
+
     @Builder
-    public Item(String name, ItemType type, String description) {
+    public Item(String name, ItemType type, String description, Long maxStackSize) {
         this.name = name;
         this.type = type;
         this.description = description;
+        this.maxStackSize = maxStackSize;
     }
 }
