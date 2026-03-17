@@ -45,7 +45,6 @@ class InventoryServiceTest {
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(inventoryService, "initialSlotCount", 20);
-        ReflectionTestUtils.setField(inventoryService, "maxStackSize", 100L);
         ReflectionTestUtils.setField(inventoryService, "expandSlotAmount", 5);
         ReflectionTestUtils.setField(inventoryService, "maxExpandableLimit", 100);
     }
@@ -77,7 +76,7 @@ class InventoryServiceTest {
         slots.add(new InventorySlot(inventory, 1)); // 빈 슬롯
         ReflectionTestUtils.setField(inventory, "slots", slots);
 
-        Item item = Item.builder().name("철광석").type(ItemType.MATERIAL).build();
+        Item item = Item.builder().name("철광석").type(ItemType.MATERIAL).maxStackSize(100L).build();
 
         when(companyInventoryRepository.findByCompanyId(1L)).thenReturn(Optional.of(inventory));
         when(itemRepository.findById(10L)).thenReturn(Optional.of(item));
@@ -104,7 +103,7 @@ class InventoryServiceTest {
         List<InventorySlot> slots = new ArrayList<>();
         InventorySlot slot = new InventorySlot(inventory, 0);
 
-        Item item = Item.builder().name("철광석").type(ItemType.MATERIAL).build();
+        Item item = Item.builder().name("철광석").type(ItemType.MATERIAL).maxStackSize(100L).build();
         slot.addItem(item, 80L); // 0번 슬롯에 80개
         slots.add(slot);
         ReflectionTestUtils.setField(inventory, "slots", slots);
@@ -128,7 +127,7 @@ class InventoryServiceTest {
         List<InventorySlot> slots = new ArrayList<>();
         InventorySlot slot = new InventorySlot(inventory, 0);
 
-        Item item = Item.builder().name("철광석").type(ItemType.MATERIAL).build();
+        Item item = Item.builder().name("철광석").type(ItemType.MATERIAL).maxStackSize(100L).build();
         slot.addItem(item, 50L);
         slots.add(slot);
         ReflectionTestUtils.setField(inventory, "slots", slots);
@@ -152,7 +151,7 @@ class InventoryServiceTest {
         List<InventorySlot> slots = new ArrayList<>();
         InventorySlot slot = new InventorySlot(inventory, 0);
 
-        Item item = Item.builder().name("철광석").type(ItemType.MATERIAL).build();
+        Item item = Item.builder().name("철광석").type(ItemType.MATERIAL).maxStackSize(100L).build();
         slot.addItem(item, 10L);
         slots.add(slot);
         ReflectionTestUtils.setField(inventory, "slots", slots);
@@ -206,7 +205,7 @@ class InventoryServiceTest {
         slots.add(slot1);
         ReflectionTestUtils.setField(inventory, "slots", slots);
 
-        Item item = Item.builder().name("철광석").type(ItemType.MATERIAL).build();
+        Item item = Item.builder().name("철광석").type(ItemType.MATERIAL).maxStackSize(100L).build();
         // ID 부여를 위해 Reflection 사용 (Mock 대신 실제 엔티티에 ID 세팅)
         ReflectionTestUtils.setField(item, "id", 10L);
 
