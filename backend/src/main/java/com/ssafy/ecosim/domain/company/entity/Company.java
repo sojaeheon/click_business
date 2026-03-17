@@ -25,6 +25,16 @@ public class Company extends BaseEntity {
     @Column(nullable = false, length = 100)
     private String name;
 
+    @Column(name = "industry_id")
+    private Long industryId;
+
+    public IndustryType getIndustryType() {
+        for (IndustryType type : IndustryType.values()) {
+            if (type.getIndustryId().equals(this.industryId)) return type;
+        }
+        return null;
+    }
+
     @Column(name = "input_item_id")
     private Long inputItemId;
 
@@ -47,11 +57,12 @@ public class Company extends BaseEntity {
     @Column(name = "total_asset", nullable = false)
     private Long totalAsset;
 
-    public Company(User user, String name, Long inputItemId, Long outputItemId) {
+    public Company(User user, String name, IndustryType industryType) {
         this.user = user;
         this.name = name;
-        this.inputItemId = inputItemId;
-        this.outputItemId = outputItemId;
+        this.industryId = industryType.getIndustryId();
+        this.inputItemId = industryType.getInputItemId();
+        this.outputItemId = industryType.getOutputItemId();
         this.productionRequirement = 1;
         this.productionYield = 1;
         this.level = 1;
