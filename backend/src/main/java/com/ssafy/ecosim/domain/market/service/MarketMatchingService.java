@@ -4,7 +4,7 @@ import com.ssafy.ecosim.domain.market.dto.event.TradeEventDto;
 import com.ssafy.ecosim.domain.market.entity.MarketOrder;
 import com.ssafy.ecosim.domain.market.entity.OrderStatus;
 import com.ssafy.ecosim.domain.market.entity.OrderType;
-import com.ssafy.ecosim.domain.market.kafka.TradeEventProducer;
+import com.ssafy.ecosim.domain.market.kafka.TradeEventPublisher;
 import com.ssafy.ecosim.domain.market.repository.redis.OrderBookManager;
 import com.ssafy.ecosim.domain.market.repository.redis.OrderDetailsCacheManager;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +21,7 @@ public class MarketMatchingService {
 
     private final OrderBookManager orderBookManager;
     private final OrderDetailsCacheManager orderDetailsCacheManager;
-    private final TradeEventProducer tradeEventProducer;
+    private final TradeEventPublisher tradeEventPublisher;
 
     /**
      * 특정 아이템에 대해 매칭을 수행합니다.
@@ -102,7 +102,7 @@ public class MarketMatchingService {
                 .timestamp(System.currentTimeMillis())
                 .build();
 
-        tradeEventProducer.publishTradeEvent(tradeEvent);
+        tradeEventPublisher.publishTradeEvent(tradeEvent);
     }
 
     private void updateOrRemoveCache(MarketOrder order) {

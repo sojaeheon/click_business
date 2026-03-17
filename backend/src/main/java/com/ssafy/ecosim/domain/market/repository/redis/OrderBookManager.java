@@ -100,21 +100,4 @@ public class OrderBookManager {
         }
         return totalVolume;
     }
-    /**
-     * 현재 호가창이 존재하는 활성 아이템 ID 목록을 조회합니다.
-     */
-    public Set<Integer> getActiveItemIds() {
-        Set<String> keys = stringRedisTemplate.keys("market:orderbook:*:buy");
-        java.util.Set<Integer> itemIds = new java.util.HashSet<>();
-        if (keys != null) {
-            for (String key : keys) {
-                try {
-                    // key format: market:orderbook:{item_id}:buy
-                    String[] parts = key.split(":");
-                    itemIds.add(Integer.parseInt(parts[2]));
-                } catch (Exception ignored) {}
-            }
-        }
-        return itemIds;
-    }
 }

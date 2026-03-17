@@ -7,6 +7,13 @@
 
 set -e # 오류 발생 시 즉시 중단
 
+# 스크립트 위치 기준으로 레포 루트 경로 설정 ($0: bash/sh 모두 호환)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# 이후 모든 상대경로(compose.yaml, .env 등)가 infra/ 기준으로 동작하도록 이동
+cd "$SCRIPT_DIR"
+
 echo "🔍 [1/5] 필수 도구 설치 확인 및 설치 시작..."
 
 # Docker 설치 확인
@@ -39,14 +46,15 @@ echo "☸️ [2/5] 로컬 Kubernetes 클러스터 준비..."
 # Kind 클러스터 생성 (이미 있으면 스킵)
 if ! sudo kind get clusters | grep -q "kind"; then
     echo "🚀 Kind 클러스터를 생성 중입니다 (약 1~2분 소요)..."
-    sudo kind create cluster --name kind
+    sudo kind create cluster --name kind --config "$SCRIPT_DIR/k8s/kind-config.yaml"
 else
     echo "✅ 이미 실행 중인 Kind 클러스터가 있습니다."
 fi
 
 # Jenkins 컨테이너가 K8s API 서버에 접속할 수 있도록 내부 IP 추출 및 Kubeconfig 수정
+# kind 네트워크 IP 사용 (TLS 인증서가 이 IP로 발급됨, Jenkins도 kind 네트워크에 연결됨)
 KUBECONFIG_RAW=$(sudo kind get kubeconfig --name kind)
-KIND_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' kind-control-plane)
+KIND_IP=$(docker inspect -f '{{.NetworkSettings.Networks.kind.IPAddress}}' kind-control-plane)
 
 # Kubeconfig 내의 127.0.0.1:PORT 주소를 컨테이너 간 통신이 가능한 KIND_IP:6443으로 치환
 KUBECONFIG_ADJUSTED=$(echo "$KUBECONFIG_RAW" | sed -E "s|https://127.0.0.1:[0-9]+|https://$KIND_IP:6443|g")
@@ -84,18 +92,18 @@ else
     echo "✅ 감지된 퍼블릭 IP: $PUBLIC_IP"
 fi
 
-# .env 파일 업데이트 (YAML 잔재 및 잘못된 설정 제거)
+# .env 파일 업데이트
 sed -i '/JENKINS_URL=/d' .env
-echo "JENKINS_URL=http://$PUBLIC_IP/jenkins" >> .env
-sed -i '/KUBECONFIG_CONTENT\|clusters:\|contexts:\|users:\|current-context:\|kind:\|apiVersion:/d' .env 2>/dev/null || true
-# 공백으로 시작하는 라인(YAML 인덴트) 삭제
-sed -i '/^[[:space:]]\+/d' .env 2>/dev/null || true
+echo "JENKINS_URL=http://$PUBLIC_IP:8080/jenkins" >> .env
+
+# KUBECONFIG_CONTENT: base64 인코딩해서 한 줄로 .env에 저장 (멀티라인 YAML 문제 해결)
+KUBECONFIG_B64=$(echo "$KUBECONFIG_ADJUSTED" | base64 | tr -d '\n')
+sed -i '/KUBECONFIG_CONTENT=/d' .env
+echo "KUBECONFIG_CONTENT=$KUBECONFIG_B64" >> .env
+
 # 빈 줄 정리
 sed -i '/^$/d' .env 2>/dev/null || true
 echo "" >> .env
-
-# 변수를 메모리에 올림
-export KUBECONFIG_CONTENT="$KUBECONFIG_ADJUSTED"
 
 # 사용할 Docker Compose 명령어 확인
 if docker compose version >/dev/null 2>&1; then
@@ -104,13 +112,20 @@ else
     DOCKER_COMPOSE_CMD="docker-compose"
 fi
 
-echo "🚀 [4/5] Jenkins 실행 중 (사용 명령어: $DOCKER_COMPOSE_CMD)..."
+echo "📥 [4/6] 최신 코드 Pull 중..."
+git -C "$REPO_ROOT" pull
+echo "✅ 코드 Pull 완료"
 
-# 기존 인프라 종료 및 재시작 (ngrok 제외)
-$DOCKER_COMPOSE_CMD -f docker-compose.infra.yaml down || true
-$DOCKER_COMPOSE_CMD -f docker-compose.infra.yaml up -d --build
+echo "🚀 [5/6] Jenkins 실행 중 (사용 명령어: $DOCKER_COMPOSE_CMD)..."
 
-echo "✅ [5/5] 모든 인프라 구축 완료!"
+# 기존 컨테이너 강제 제거 (이름 충돌 방지)
+docker rm -f nginx-router jenkins 2>/dev/null || true
+# 혹시 남은 것들도 정리
+$DOCKER_COMPOSE_CMD -f compose.yaml down --remove-orphans --timeout 10 2>/dev/null || true
+# 최신 코드로 재빌드 및 실행
+$DOCKER_COMPOSE_CMD -f compose.yaml up -d --build
+
+echo "✅ [6/6] 모든 인프라 구축 완료!"
 echo "===================================================="
 echo "🌐 Jenkins 접속 주소: http://$PUBLIC_IP:8080"
 echo " (참고: 나중에 Nginx 설정을 통해 80/443 포트로 접속 가능하게 변경될 예정입니다.)"
@@ -121,9 +136,100 @@ echo "http://$PUBLIC_IP:8080/project/S14P21B109-Practice-Pipeline"
 echo "===================================================="
 
 # 설정 변경사항 Jenkins에 즉시 반영 시도
-if [ -f .env ]; then
-    source .env
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    . "$SCRIPT_DIR/.env"
     # JCasC 설정 리로드 (네트워크 준비 시간에 따라 실패할 수 있음)
     sleep 5
-    curl -s -X POST "http://localhost:8080/configuration-as-code/reload" -u "$JENKINS_ADMIN_ID:$JENKINS_ADMIN_PASSWORD" || echo "💡 Jenkins 웹페이지 준비 중... 약 1분 뒤 자동 설정이 완료됩니다."
+    curl -s -X POST "http://localhost:8080/jenkins/configuration-as-code/reload" -u "$JENKINS_ADMIN_ID:$JENKINS_ADMIN_PASSWORD" || echo "💡 Jenkins 웹페이지 준비 중... 약 1분 뒤 자동 설정이 완료됩니다."
 fi
+
+echo "🗄️ [6/7] data/compose.yaml (postgres, redis, kafka) 시작 중..."
+$DOCKER_COMPOSE_CMD -f "$REPO_ROOT/data/compose.yaml" up -d
+echo "✅ DB 컨테이너 시작 완료"
+
+echo "☸️ [7/8] K8s 초기 매니페스트 적용 중..."
+KUBECONFIG_RAW_APPLY=$(sudo kind get kubeconfig --name kind 2>/dev/null)
+KIND_IP_APPLY=$(docker inspect -f '{{.NetworkSettings.Networks.kind.IPAddress}}' kind-control-plane 2>/dev/null)
+KUBECONFIG_APPLY=$(echo "$KUBECONFIG_RAW_APPLY" | sed -E "s|https://127.0.0.1:[0-9]+|https://$KIND_IP_APPLY:6443|g")
+
+echo "  🌐 nginx-ingress-controller 설치 중..."
+echo "$KUBECONFIG_APPLY" | kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml --kubeconfig=/dev/stdin
+
+echo "  ⏳ ingress-nginx 준비 대기 중..."
+echo "$KUBECONFIG_APPLY" | kubectl wait --namespace ingress-nginx \
+    --for=condition=ready pod \
+    --selector=app.kubernetes.io/component=controller \
+    --timeout=120s \
+    --kubeconfig=/dev/stdin || echo "⚠️ ingress-nginx 준비 타임아웃 (계속 진행)"
+
+echo "☸️ [8/8] K8s 리소스 적용 중..."
+
+apply_k8s() {
+    echo "$KUBECONFIG_APPLY" | kubectl apply -f "$1" --kubeconfig=/dev/stdin
+}
+
+# postgres-db, redis를 kind 네트워크에 연결 (파드 → DB 통신 가능하게)
+for container in postgres-db redis; do
+    if ! docker network inspect kind | grep -q "\"$container\""; then
+        echo "  🔗 $container → kind 네트워크 연결 중..."
+        docker network connect kind $container
+    fi
+done
+
+# postgres-db, redis의 kind 네트워크 IP 가져오기
+POSTGRES_IP=$(docker inspect postgres-db --format '{{.NetworkSettings.Networks.kind.IPAddress}}' 2>/dev/null)
+REDIS_IP=$(docker inspect redis --format '{{.NetworkSettings.Networks.kind.IPAddress}}' 2>/dev/null)
+
+if [ -z "$POSTGRES_IP" ] || [ -z "$REDIS_IP" ]; then
+    echo "⚠️ postgres-db 또는 redis 컨테이너 IP를 가져오지 못했습니다. data/compose.yaml이 실행 중인지 확인하세요."
+else
+    echo "  📌 postgres-db IP: $POSTGRES_IP / redis IP: $REDIS_IP"
+    # IP placeholder를 실제 값으로 치환해서 임시 파일로 저장 후 적용
+    sed -e "s/POSTGRES_IP/$POSTGRES_IP/g" -e "s/REDIS_IP/$REDIS_IP/g" \
+        "$SCRIPT_DIR/k8s/external-services.yaml" > /tmp/ext-svc.yaml
+    apply_k8s /tmp/ext-svc.yaml || echo "⚠️ external-services 적용 실패"
+fi
+
+# secret.yaml 적용 (git에 없으므로 서버에 직접 존재해야 함)
+if [ -f "$SCRIPT_DIR/k8s/secret.yaml" ]; then
+    echo "  🔐 secret 적용 중..."
+    apply_k8s "$SCRIPT_DIR/k8s/secret.yaml" || echo "⚠️ secret 적용 실패"
+else
+    echo "  ⚠️ secret.yaml 없음 — infra/k8s/secret.yaml에 실제 값 채워서 생성 필요"
+fi
+
+# jenkins service/endpoints 적용
+echo "  🔧 Jenkins 서비스 엔드포인트 생성 중..."
+if ! docker network inspect kind | grep -q '"jenkins"'; then
+    docker network connect kind jenkins
+fi
+JENKINS_IP=$(docker inspect -f '{{.NetworkSettings.Networks.kind.IPAddress}}' jenkins)
+echo "$KUBECONFIG_APPLY" | kubectl apply --kubeconfig=/dev/stdin -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: jenkins-service
+spec:
+  ports:
+  - port: 8080
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: jenkins-service
+subsets:
+- addresses:
+  - ip: $JENKINS_IP
+  ports:
+  - port: 8080
+EOF
+
+# deployment 적용
+echo "  🚀 deployment 적용 중..."
+apply_k8s "$SCRIPT_DIR/k8s/deployment.yaml" || echo "⚠️ deployment 적용 실패 (Jenkins가 이후 자동 갱신)"
+
+# ingress 적용
+echo "  🌐 ingress 적용 중..."
+apply_k8s "$SCRIPT_DIR/k8s/ingress.yaml" || echo "⚠️ ingress 적용 실패"
+
+echo "✅ K8s 초기 구성 완료 (이후 push → Jenkins → 자동 이미지 교체)"

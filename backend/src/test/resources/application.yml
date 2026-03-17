@@ -1,0 +1,26 @@
+spring:
+  datasource:
+    # Testcontainers JDBC URL (tc prefix)
+    url: jdbc:tc:postgresql:17:///ecosim
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: fake-id
+            client-secret: fake-secret
+        provider:
+          google:
+            authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: create-drop # 테스트마다 깔끔하게 생성/삭제
+    show-sql: true
+
+jwt:
+  secret: test-secret-key-for-unit-testing-purposes-only-32chars
+  expiration-time: 3600000
+
+spring.autoconfigure.exclude: org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration

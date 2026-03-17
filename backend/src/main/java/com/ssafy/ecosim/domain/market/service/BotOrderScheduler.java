@@ -46,7 +46,7 @@ public class BotOrderScheduler {
 
     private static final Integer ITEM_ID_GOLD = 1;
 
-    // @Scheduled(fixedRate = 1000) // 1초마다 정확히 실행
+    @Scheduled(fixedRate = 1000) // 1초마다 정확히 실행
     public void generateVirtualOrderTick() {
         if (currentTick == 0) {
             initNewDayCycle();
