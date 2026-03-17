@@ -143,8 +143,9 @@ public class WorkstationService {
                 long potentialProduction = secondsPassed * productionPerSecond; // 이번 틱에 가능한 최대 생산 횟수(Laps)
 
                 Company company = workstation.getCompany();
-                int requirement = company.getProductionRequirement();
-                int yield = company.getProductionYield();
+                
+                int requirement = company.getIndustryType().getBaseRequirement();
+                int yield = company.getIndustryType().getBaseYield();
 
                 // 예약된 재료로 실제 가능한 생산 횟수(Laps) 계산
                 long availableLaps = workstation.getReservedQuantity() / requirement;
