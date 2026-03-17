@@ -27,7 +27,7 @@ public class CompanyController {
             @Valid @RequestBody CompanyCreateRequest request) {
 
         Long userId = Long.parseLong(userDetails.getUsername());
-        Company company = companyService.createCompanyForUser(userId, request.getName());
+        Company company = companyService.createCompanyForUser(userId, request.getName(), request.getIndustryType());
 
         return ApiResponse.success(new CompanyResponse(company));
     }

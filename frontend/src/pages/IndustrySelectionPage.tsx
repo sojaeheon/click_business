@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { companyApi } from '../api/services';
+import type { IndustryType } from '../api/types';
 
 const IndustryCard = ({ title, iconLabel, onSelect }: { title: string; iconLabel: string; onSelect: () => void }) => {
   const [isHovered, setIsHovered] = useState(false);
@@ -29,24 +31,19 @@ const IndustryCard = ({ title, iconLabel, onSelect }: { title: string; iconLabel
 
 export const IndustrySelectionPage = () => {
   const navigate = useNavigate();
-  const [selectedIndustry, setSelectedIndustry] = useState<string | null>(null);
+  const [selectedIndustry, setSelectedIndustry] = useState<IndustryType | null>(null);
   const [companyName, setCompanyName] = useState('');
 
-  const handleSelect = (industry: string) => {
+  const handleSelect = (industry: IndustryType) => {
     setSelectedIndustry(industry);
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (companyName.trim() === '') {
       alert('회사 이름을 입력해주세요.');
       return;
     }
-    // 💡 [백엔드 연동: 기업 설정 내역 전송]
-    // API 명세서: POST /api/v1/companies
-    // - 산업 설정 parameter: { company_id, industry_type }
-    // - 이름 설정 parameter: { company_id, company_name }
-    // (이곳에서 fetch/axios를 통해 위 값을 백엔드로 전송하시면 됩니다.)
-
+    await companyApi.create(companyName.trim(), selectedIndustry!);
     navigate('/main');
   };
 
@@ -54,9 +51,9 @@ export const IndustrySelectionPage = () => {
     <div className="industry-container">
       <div className="industry-content">
         <div className="industry-cards-wrapper flex gap-8">
-          <IndustryCard title="금광업" iconLabel="금광석" onSelect={() => handleSelect('금광업')} />
-          <IndustryCard title="금 제련업" iconLabel="금괴" onSelect={() => handleSelect('금 제련업')} />
-          <IndustryCard title="제조업" iconLabel="광산 드릴" onSelect={() => handleSelect('제조업')} />
+          <IndustryCard title="금광업" iconLabel="금광석" onSelect={() => handleSelect('GOLD_MINING')} />
+          <IndustryCard title="금 제련업" iconLabel="금괴" onSelect={() => handleSelect('GOLD_SMELTING')} />
+          <IndustryCard title="제조업" iconLabel="광산 드릴" onSelect={() => handleSelect('MANUFACTURING')} />
         </div>
       </div>
 

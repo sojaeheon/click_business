@@ -30,6 +30,14 @@ export interface UserProfile {
 }
 
 // ==================== Company ====================
+export type IndustryType = 'GOLD_MINING' | 'GOLD_SMELTING' | 'MANUFACTURING';
+
+export interface CompanyCreateResponse {
+    id: number;
+    name: string;
+    industryType: IndustryType;
+}
+
 export interface CompanySlotInfo {
     warehouse_slots: number;
     inventory_slots: number;
