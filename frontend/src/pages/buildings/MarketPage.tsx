@@ -20,14 +20,14 @@ const generateMockChartData = () => {
   return data;
 };
 
-// 📈 2. 호가창 목업 데이터 생성기 (현재가 기준 위아래 5호가)
+// 📈 2. 호가창 목업 데이터 생성기 (현재가 기준 위아래 10호가)
 const generateOrderBook = (currentPrice: number) => {
   const asks = []; // 매도 호가 (위에 위치)
   const bids = []; // 매수 호가 (아래에 위치)
-  for (let i = 5; i > 0; i--) {
+  for (let i = 10; i > 0; i--) {
     asks.push({ price: currentPrice + i * 10, quantity: Math.floor(Math.random() * 300) + 50 });
   }
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 1; i <= 10; i++) {
     bids.push({ price: currentPrice - i * 10, quantity: Math.floor(Math.random() * 300) + 50 });
   }
   return { asks, bids };
@@ -53,6 +53,13 @@ export function MarketPage() {
   const [chartData, setChartData] = useState<{ time: string, price: number }[]>(generateMockChartData());
   const [orderBook, setOrderBook] = useState(generateOrderBook(chartData[chartData.length - 1].price));
   const [marketTrend, setMarketTrend] = useState<"up" | "down" | "neutral">("neutral");
+  const currentPriceRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (mode && currentPriceRef.current) {
+      currentPriceRef.current.scrollIntoView({ block: 'center' });
+    }
+  }, [mode]);
 
   // ⏱️ 3. 실시간 데이터 업데이트 (차트 & 호가창 동시 갱신)
   useEffect(() => {
@@ -138,7 +145,18 @@ export function MarketPage() {
   };
 
   const currentMarketPrice = chartData[chartData.length - 1].price;
-  const isUpTrend = currentMarketPrice >= chartData[0].price;
+  const startPrice = chartData[0].price;
+  const diff = currentMarketPrice - startPrice;
+  const isUpTrend = diff >= 0;
+  const diffSign = diff > 0 ? "+" : diff < 0 ? "-" : "";
+  const pctStr = Math.abs((diff / startPrice) * 100).toFixed(1);
+  const diffStr = `${diffSign}${Math.abs(diff).toLocaleString()}원 (${diffSign}${pctStr}%)`;
+
+  const getPriceColor = (p: number) => {
+    if (p > startPrice) return "text-rose-500";
+    if (p < startPrice) return "text-blue-500";
+    return "text-slate-800";
+  };
 
   return (
     <div className={`absolute inset-0 z-40 flex flex-col pt-8 transition-colors duration-700 ease-out ${
@@ -189,16 +207,20 @@ export function MarketPage() {
                 <h2 className="text-2xl font-black text-slate-700 flex items-center gap-2">
                   <Activity className="w-6 h-6 text-slate-500" /> 실시간 시장 동향
                 </h2>
-                <div className="flex items-end gap-2 text-right">
-                  <span className="text-sm font-bold text-slate-400 mb-1">현재가</span>
-                  <span className={`text-4xl font-black ${isUpTrend ? "text-rose-500" : "text-blue-500"}`}>
-                    ₩{currentMarketPrice.toLocaleString()}
-                  </span>
+                <div className="flex items-start gap-3 text-right pr-2 pt-3">
+                  <div className="flex flex-col items-end">
+                    <span className={`text-4xl font-black ${getPriceColor(currentMarketPrice)}`}>
+                      ₩{currentMarketPrice.toLocaleString()}
+                    </span>
+                    <span className={`text-lg font-bold mt-1 ${getPriceColor(currentMarketPrice)}`}>
+                      {diffStr}
+                    </span>
+                  </div>
                 </div>
               </div>
               <div className="flex-1 w-full relative">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                  <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 30 }}>
                     <defs>
                       <linearGradient id="colorPriceUp" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.4} />
@@ -220,47 +242,74 @@ export function MarketPage() {
 
             {/* 📊 2. 주식 호가창 영역 (w-1/4) */}
             <div className="w-1/4 bg-white border-4 border-slate-300 rounded-3xl p-4 flex flex-col shadow-xl overflow-hidden select-none">
-              <h2 className="text-xl font-black text-slate-700 mb-2 flex items-center gap-2 justify-center border-b-2 border-slate-100 pb-3">
-                <ListOrdered className="w-5 h-5" /> 호가창
-              </h2>
+              <div className="flex items-center justify-center mb-3 border-b-2 border-slate-100 pb-3">
+                <h2 className="text-xl font-black text-slate-700">호가창</h2>
+              </div>
               
-              <div className="flex-1 flex flex-col text-sm font-bold overflow-y-auto">
-                {/* 매도 잔량 (파란색 영역) */}
-                <div className="flex flex-col justify-end">
+              <div className="flex-1 flex flex-col text-sm font-bold overflow-y-auto overflow-x-hidden scroll-smooth [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
+                {/* 매도 (Asks) 영역 */}
+                <div className="flex flex-col shrink-0">
                   {orderBook.asks.map((ask, idx) => (
                     <div 
                       key={`ask-${idx}`} 
-                      className="relative flex justify-between items-center px-4 py-3 cursor-pointer group border-b border-slate-50 hover:bg-slate-50 transition-colors"
-                      onClick={() => { setPrice(ask.price); setQuantity(q => q === 0 ? 1 : q); }} // ✨ 클릭 시 가격 자동 입력!
+                      className="grid grid-cols-[1fr_110px_1fr] items-center cursor-pointer hover:bg-slate-50 transition-colors h-[48px]"
+                      onClick={() => { setPrice(ask.price); setQuantity(q => q === 0 ? 1 : q); }}
                     >
-                      {/* 가상 잔량 바 그래프 효과 */}
-                      <div className="absolute right-0 top-1 bottom-1 bg-blue-100/60 rounded-l-md -z-10 transition-all" style={{ width: `${(ask.quantity / 350) * 100}%` }} />
-                      <span className="text-blue-600 font-black text-base">{ask.price.toLocaleString()}</span>
-                      <span className="text-slate-500">{ask.quantity}</span>
+                      {/* 매도 수량 */}
+                      <div className="relative h-full flex items-center justify-end pr-4">
+                        <div className="absolute right-0 top-1.5 bottom-1.5 bg-blue-100/40 rounded-l transition-all" style={{ width: `${(ask.quantity / 400) * 100}%` }} />
+                        <span className="text-blue-500 font-bold text-[17px] z-10 tracking-tight">{ask.quantity.toLocaleString()}</span>
+                      </div>
+                      {/* 가격 (Center) */}
+                      <div className="h-full flex items-center justify-center">
+                        <span className={`font-black text-[22px] ${getPriceColor(ask.price)}`}>
+                          {ask.price.toLocaleString()}
+                        </span>
+                      </div>
+                      {/* 구매 수량 (Empty) */}
+                      <div className="h-full" />
                     </div>
                   ))}
                 </div>
 
                 {/* 현재가 구분 블록 */}
-                <div className="my-2 py-3 border-y-2 border-dashed border-slate-200 text-center font-black text-lg bg-slate-50 flex justify-between px-6 shadow-inner items-center">
-                  <span className="text-slate-400 text-sm">현재가</span>
-                  <span className={isUpTrend ? "text-rose-500" : "text-blue-500"}>
-                    {currentMarketPrice.toLocaleString()}
-                  </span>
+                <div 
+                  ref={currentPriceRef}
+                  className="grid grid-cols-[1fr_110px_1fr] items-center h-[64px] shrink-0 my-1 border-y-2 border-slate-300 hover:bg-slate-100 bg-slate-50/50 relative z-10 transition-colors cursor-pointer shadow-sm"
+                  onClick={() => { setPrice(currentMarketPrice); setQuantity(q => q === 0 ? 1 : q); }}
+                >
+                  <div className="h-full" />
+                  <div className="h-full flex items-center justify-center relative z-10 bg-white border-x-2 border-slate-300 shadow-md">
+                    <span className={`font-black text-[30px] ${getPriceColor(currentMarketPrice)}`}>
+                      {currentMarketPrice.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="h-full flex items-center justify-start pl-4">
+                    <span className="text-slate-600 text-[16px] font-bold">현재가</span>
+                  </div>
                 </div>
 
-                {/* 매수 잔량 (빨간색 영역) */}
-                <div className="flex flex-col">
+                {/* 매수 (Bids) 영역 */}
+                <div className="flex flex-col shrink-0">
                   {orderBook.bids.map((bid, idx) => (
                     <div 
                       key={`bid-${idx}`} 
-                      className="relative flex justify-between items-center px-4 py-3 cursor-pointer group border-b border-slate-50 hover:bg-slate-50 transition-colors"
-                      onClick={() => { setPrice(bid.price); setQuantity(q => q === 0 ? 1 : q); }} // ✨ 클릭 시 가격 자동 입력!
+                      className="grid grid-cols-[1fr_110px_1fr] items-center cursor-pointer hover:bg-slate-50 transition-colors h-[48px]"
+                      onClick={() => { setPrice(bid.price); setQuantity(q => q === 0 ? 1 : q); }}
                     >
-                      {/* 가상 잔량 바 그래프 효과 */}
-                      <div className="absolute right-0 top-1 bottom-1 bg-rose-100/60 rounded-l-md -z-10 transition-all" style={{ width: `${(bid.quantity / 350) * 100}%` }} />
-                      <span className="text-rose-600 font-black text-base">{bid.price.toLocaleString()}</span>
-                      <span className="text-slate-500">{bid.quantity}</span>
+                      {/* 매도 수량 (Empty) */}
+                      <div className="h-full" />
+                      {/* 가격 (Center) */}
+                      <div className="h-full flex items-center justify-center">
+                        <span className={`font-black text-[22px] ${getPriceColor(bid.price)}`}>
+                          {bid.price.toLocaleString()}
+                        </span>
+                      </div>
+                      {/* 매수 수량 */}
+                      <div className="relative h-full flex items-center justify-start pl-4">
+                        <div className="absolute left-0 top-1.5 bottom-1.5 bg-rose-100/40 rounded-r transition-all" style={{ width: `${(bid.quantity / 400) * 100}%` }} />
+                        <span className="text-rose-500 font-bold text-[17px] z-10 tracking-tight">{bid.quantity.toLocaleString()}</span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -286,7 +335,7 @@ export function MarketPage() {
                       value={price || ""}
                       onChange={(e) => setPrice(Number(e.target.value))}
                       placeholder="가격 입력"
-                      className={`w-full bg-slate-50 border-2 rounded-xl pl-10 pr-4 py-3 text-right text-xl font-black focus:outline-none transition-colors ${mode === "buy" ? "border-slate-200 focus:border-rose-400 text-rose-600" : "border-slate-200 focus:border-blue-400 text-blue-600"}`}
+                      className={`w-full bg-slate-50 border-2 rounded-xl pl-10 pr-4 py-3 text-right text-xl font-black focus:outline-none transition-colors border-slate-200 focus:border-slate-400 text-slate-800`}
                     />
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg">₩</span>
                   </div>
@@ -306,11 +355,11 @@ export function MarketPage() {
                 <div className="h-[2px] bg-slate-100 w-full" />
 
                 {/* Total Amount */}
-                <div className={`flex flex-col gap-1 rounded-2xl p-4 border-2 ${mode === "buy" ? "bg-rose-50 border-rose-100" : "bg-blue-50 border-blue-100"}`}>
-                  <span className={`font-bold text-xs uppercase tracking-widest ${mode === "buy" ? "text-rose-500" : "text-blue-500"}`}>총 주문 금액</span>
+                <div className={`flex flex-col gap-1 rounded-2xl p-4 border-2 bg-slate-50 border-slate-200`}>
+                  <span className={`font-bold text-xs uppercase tracking-widest text-slate-500`}>총 주문 금액</span>
                   <div className="text-right flex items-end justify-end gap-1">
-                    <span className={`text-xl font-bold pb-[4px] ${mode === "buy" ? "text-rose-400" : "text-blue-400"}`}>₩</span>
-                    <span className={`text-3xl font-black leading-none tracking-tight ${mode === "buy" ? "text-rose-700" : "text-blue-700"}`}>
+                    <span className={`text-xl font-bold pb-[4px] text-slate-800`}>₩</span>
+                    <span className={`text-3xl font-black leading-none tracking-tight text-slate-800`}>
                       {totalAmount.toLocaleString()}
                     </span>
                   </div>
