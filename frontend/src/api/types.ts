@@ -1,3 +1,10 @@
+// ==================== 공통 응답 래퍼 ====================
+export interface ApiResponse<T> {
+    success: boolean;
+    message: string;
+    data: T;
+}
+
 // ==================== Auth ====================
 export interface TokenResponse {
     accessToken: string;
@@ -6,6 +13,12 @@ export interface TokenResponse {
 export interface AuthCallbackResponse {
     accessToken: string;
     refreshToken: string;
+}
+
+export interface GuestLoginResponse {
+    accessToken: string;
+    userId: number;
+    isGuest: boolean;
 }
 
 // ==================== User ====================
