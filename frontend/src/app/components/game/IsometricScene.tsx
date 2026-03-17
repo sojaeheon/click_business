@@ -236,8 +236,20 @@ function PlayerCharacter({
       return;
     }
     if (mode === "spawning") return;
+
+    const gameStore = useGameStore.getState();
+    const currentIndustry = gameStore.industry;
+
     if (mode === "working") {
-      const act = actions["Work_B"] || actions["Work_A"] || actions["Pickaxing"] || Object.values(actions)[0];
+      let act;
+      if (currentIndustry === "금광업") {
+        act = actions["Pickaxing"] || Object.values(actions)[0];
+      } else if (currentIndustry === "제조업") {
+        act = actions["Work_B"] || actions["Work_A"] || Object.values(actions)[0];
+      } else {
+        // 기본(금 제련업)
+        act = actions["Work_A"] || actions["Work_B"] || Object.values(actions)[0];
+      }
       if (act) act.setEffectiveTimeScale(1.2).reset().fadeIn(0.3).play();
     } else if (mode === "jumping") {
       const act = actions["Jump_A"] || actions["Jump_B"] || actions["Jump"] || Object.values(actions)[0];
@@ -662,6 +674,7 @@ export function GameScene({
           console.log(`금괴 ${count}개 창고 저장 요청`);
           useAlertStore.getState().openAlert(`금괴 ${count}개를 창고에 저장했습니다!`, "아이템 획득");
         }}
+        onWorkChange={setIsWorkstationWorking}
       />
 
       {!isLoginMode && (

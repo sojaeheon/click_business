@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, Suspense } from "react";
 import { Plus } from "lucide-react";
 import { useGame } from "../../store/gameStore";
 import { Canvas } from "@react-three/fiber";
-import { Html, useGLTF, OrbitControls, useAnimations } from "@react-three/drei";
+import { Html, useGLTF, OrbitControls, useAnimations, useTexture } from "@react-three/drei";
 import * as THREE from "three";
 import { BackButton } from "../../app/components/ui/backbutton";
 
@@ -23,7 +23,7 @@ function CharacterModel({ url }: { url: string }) {
   return (
     <group position={[0, 0, 0]}>
       <group ref={group}>
-        <primitive object={clone} scale={1.8} rotation={[0, 0, 0]} />
+        <primitive object={clone} scale={1} rotation={[0, 0, 0]} />
       </group>
     </group>
   );
@@ -63,9 +63,25 @@ function Lever({ onPull }: { onPull: () => void }) {
 }
 
 function PlatformModel() {
-  const { scene } = useGLTF("/models/props/platform.glb");
-  const clone = React.useMemo(() => scene.clone(), [scene]);
-  return <primitive object={clone} scale={0.7} position={[0, 0, 0]} />;
+  const { scene } = useGLTF("/models/props/basemodule_B.gltf");
+  const texture = useTexture("/models/props/spacebits_texture.png");
+  texture.flipY = false;
+  
+  const clone = React.useMemo(() => {
+    const c = scene.clone();
+    c.traverse((node: any) => {
+      if (node.isMesh) {
+        node.material = new THREE.MeshStandardMaterial({
+          map: texture,
+          color: 0xffffff,
+          roughness: 0.6
+        });
+      }
+    });
+    return c;
+  }, [scene, texture]);
+
+  return <primitive object={clone} scale={1} position={[0, -1, 0]} />;
 }
 
 function LevelUpEffect() {
@@ -182,7 +198,7 @@ export function HRPage() {
     }, 1000);
   };
 
-    // const { scene: platformScene } = useGLTF("/models/props/platform.glb");
+  // const { scene: platformScene } = useGLTF("/models/props/platform.glb");
 
   const workerCount = getWorkerCount(selectedWorker);
 
@@ -230,16 +246,16 @@ export function HRPage() {
             </div>
           )}
 
-          <Canvas shadows camera={{ position: [0, 2.0, 9], fov: 35 }}>
+          <Canvas shadows camera={{ position: [0, 1.0, 9], fov: 35 }}>
             <ambientLight intensity={1.2} />
             <directionalLight position={[10, 15, 10]} intensity={1.8} castShadow shadow-bias={-0.001} />
 
             <Suspense fallback={null}>
-              <group position={[0, -1.5, 0]}>
+              <group position={[-1.5, -0.5, 0]}>
                 {/* 플랫폼 */}
                 <PlatformModel />
 
-                <group position={[0, 0.05, 0]}>
+                <group position={[0, -1.0, 0]}>
                   {selectedWorker ? (
                     <group onClick={(e) => { e.stopPropagation(); setIsInventoryOpen(true); }} onPointerOver={() => document.body.style.cursor = 'pointer'} onPointerOut={() => document.body.style.cursor = 'auto'}>
                       <CharacterModel url={getModelPathForWorker(selectedWorker.name || selectedWorker.item_name)} />
@@ -256,15 +272,15 @@ export function HRPage() {
                   )}
                 </group>
               </group>
+
+              {/* Lever 추가 */}
+              <Lever onPull={handleLeverPull} />
             </Suspense>
 
             <OrbitControls
               enableZoom={false}
               enablePan={false}
-              maxPolarAngle={Math.PI / 2}
-              minPolarAngle={Math.PI / 3}
-              minAzimuthAngle={-0.3}
-              maxAzimuthAngle={0.3}
+              enableRotate={false}
             />
           </Canvas>
 

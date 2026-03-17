@@ -62,7 +62,7 @@ export interface GameState {
   markAllAlertsAsRead: () => void;
 
   getWarehouseUsage: () => { usedSlots: number; percent: number };
-  getIndustryItemNames: () => { material: string; product: string };
+  getIndustryItemNames: () => { material: string; product: string; reqMat: number; resProd: number };
 
   fetchCompanyData: (companyId: number) => Promise<void>;
 }
@@ -70,8 +70,12 @@ export interface GameState {
 // ─────────────────────────────────────────────────────────────────────────
 // 3. 상태 관리소 (내부에서만 사용됨)
 // ─────────────────────────────────────────────────────────────────────────
-export const useGameStore = create<GameState>((set, get) => ({
-  companyName: "철 좀 들자",
+import { persist } from "zustand/middleware";
+
+export const useGameStore = create<GameState>()(
+  persist(
+    (set, get) => ({
+      companyName: "철 좀 들자",
   industry: "제철업",
   money: 1000000,
   currency: "₵",
@@ -131,10 +135,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   getIndustryItemNames: () => {
     const ind = get().industry;
-    if (ind === "금광업") return { material: "광물 찌꺼기", product: "금광석" };
-    if (ind === "금 제련업") return { material: "금광석", product: "금괴" };
-    if (ind === "제조업") return { material: "금괴", product: "광산 드릴" };
-    return { material: "재료", product: "생산품" };
+    if (ind === "금광업") return { material: "광산 드릴", product: "금광석", reqMat: 2, resProd: 40 };
+    if (ind === "금 제련업" || ind === "제철업") return { material: "금광석", product: "금괴", reqMat: 12, resProd: 6 };
+    if (ind === "제조업") return { material: "금괴", product: "광산 드릴", reqMat: 20, resProd: 2 };
+    return { material: "재료", product: "생산품", reqMat: 1, resProd: 1 };
   },
 
   updateMoney: (amount) => {
@@ -224,7 +228,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       set({ isLoading: false });
     }
   }
-}));
+}), { name: 'game-storage' }
+)
+);
 
 // ─────────────────────────────────────────────────────────────────────────
 // 4. 하위 호환성 래퍼 훅 (다른 파일 수정 방지용)

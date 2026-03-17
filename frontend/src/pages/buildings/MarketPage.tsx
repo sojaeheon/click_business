@@ -5,8 +5,27 @@ import { MarketAPI } from "../../api/gameApi";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { BackButton } from "../../app/components/ui/backbutton";
 import { useAlertStore } from "../../store/useAlertStore";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { useGLTF } from "@react-three/drei";
+import * as THREE from "three";
 
 type MarketMode = "buy" | "sell" | null;
+
+function SpinningModel({ url, scale = 1, yOffset = 0 }: { url: string, scale?: number, yOffset?: number }) {
+  const { scene } = useGLTF(url);
+  const clonedScene = React.useMemo(() => scene.clone(), [scene]);
+  const ref = React.useRef<THREE.Group>(null);
+
+  useFrame((_, delta) => {
+    if (ref.current) ref.current.rotation.y += delta * 2;
+  });
+
+  return (
+    <group ref={ref} position={[0, yOffset, 0]}>
+      <primitive object={clonedScene} scale={scale} />
+    </group>
+  );
+}
 
 // 📊 1. 차트 목업 데이터 생성기
 const generateMockChartData = () => {
@@ -39,9 +58,27 @@ export function MarketPage() {
   const updateMoney = useGameStore(state => state.updateMoney);
   const updateMaterial = useGameStore(state => state.updateMaterial);
   const updateProduct = useGameStore(state => state.updateProduct);
+  const industry = useGameStore(state => state.industry);
   const material = useGameStore(state => state.getIndustryItemNames().material);
   const product = useGameStore(state => state.getIndustryItemNames().product);
   const warehouseItems = useGameStore(state => state.warehouseItems);
+
+  let matUrl = "/models/props/drill.glb";
+  let prodUrl = "/models/props/rocks_B.gltf";
+  // 마켓 비율/색상 조정
+  let matScale = 2;
+  let prodScale = 2;
+
+  if (industry === "금광업") {
+    matUrl = "/models/props/drill.glb"; matScale = 2.5;
+    prodUrl = "/models/props/Gold_Nuggets.gltf"; prodScale = 4;
+  } else if (industry === "금 제련업" || industry === "제철업") {
+    matUrl = "/models/props/Gold_Nuggets.gltf"; matScale = 4;
+    prodUrl = "/models/props/Gold_Bar.gltf"; prodScale = 3;
+  } else if (industry === "제조업") {
+    matUrl = "/models/props/Gold_Bar.gltf"; matScale = 3;
+    prodUrl = "/models/props/drill.glb"; prodScale = 2.5;
+  }
 
   const [mode, setMode] = useState<MarketMode>(null);
   const [price, setPrice] = useState<number>(0);
@@ -141,9 +178,8 @@ export function MarketPage() {
   const isUpTrend = currentMarketPrice >= chartData[0].price;
 
   return (
-    <div className={`absolute inset-0 z-40 flex flex-col pt-8 transition-colors duration-700 ease-out ${
-      marketTrend === "up" ? "bg-rose-50" : marketTrend === "down" ? "bg-blue-50" : "bg-[#f5f0e8]"
-    }`}
+    <div className={`absolute inset-0 z-40 flex flex-col pt-8 transition-colors duration-700 ease-out ${marketTrend === "up" ? "bg-rose-50" : marketTrend === "down" ? "bg-blue-50" : "bg-[#f5f0e8]"
+      }`}
       style={{
         backgroundImage: "url('/images/market.png')",
         backgroundSize: 'cover',
@@ -164,7 +200,13 @@ export function MarketPage() {
                 <span className="text-5xl font-black text-slate-800 tracking-widest block">구 매</span>
                 <span className="text-xl font-bold text-rose-500 mt-2 block opacity-0 group-hover:opacity-100 transition-opacity drop-shadow">{material}</span>
               </div>
-              <img src="/ui_icons/Coins.png" alt="bg" className="absolute -bottom-10 -right-10 w-48 opacity-10 group-hover:opacity-30 group-hover:scale-110 transition-all pointer-events-none" />
+              <div className="absolute -bottom-10 -right-10 w-64 h-64 opacity-20 pointer-events-none group-hover:opacity-40 group-hover:scale-110 transition-all">
+                <Canvas camera={{ position: [5, 5, 5], fov: 40 }}>
+                  <ambientLight intensity={1.5} />
+                  <directionalLight position={[10, 10, 10]} intensity={2} />
+                  <SpinningModel url={matUrl} scale={matScale} />
+                </Canvas>
+              </div>
             </button>
             <button onClick={() => setMode("sell")} className="flex-1 bg-white hover:bg-blue-50 border-4 border-slate-300 hover:border-blue-400 rounded-[2rem] shadow-xl flex flex-col items-center justify-center gap-6 group transition-all duration-300 active:scale-95 cursor-pointer relative overflow-hidden">
               <div className="w-24 h-24 rounded-full bg-blue-100 flex items-center justify-center group-hover:scale-110 transition-transform relative z-10">
@@ -174,7 +216,13 @@ export function MarketPage() {
                 <span className="text-5xl font-black text-slate-800 tracking-widest block">판 매</span>
                 <span className="text-xl font-bold text-blue-500 mt-2 block opacity-0 group-hover:opacity-100 transition-opacity drop-shadow">{product}</span>
               </div>
-              <img src="/ui_icons/star_128x128_4.png" alt="bg" className="absolute -bottom-10 -right-10 w-48 opacity-10 group-hover:opacity-30 group-hover:scale-110 transition-all pointer-events-none grayscale" />
+              <div className="absolute -bottom-10 -right-10 w-64 h-64 opacity-20 pointer-events-none group-hover:opacity-40 group-hover:scale-110 transition-all filter grayscale-0 mix-blend-multiply">
+                <Canvas camera={{ position: [5, 5, 5], fov: 40 }}>
+                  <ambientLight intensity={1.5} />
+                  <directionalLight position={[10, 10, 10]} intensity={2} />
+                  <SpinningModel url={prodUrl} scale={prodScale} />
+                </Canvas>
+              </div>
             </button>
           </div>
         </div>
@@ -182,7 +230,7 @@ export function MarketPage() {
         // --- DEPTH 2: 차트 + 호가창 + 주문 폼 ---
         <div className="flex-1 flex flex-col justify-center items-center p-6 max-w-[1400px] mx-auto w-full gap-6 relative z-10 pt-16">
           <div className="flex w-full gap-4 items-stretch h-[calc(100vh-180px)] min-h-[500px]">
-            
+
             {/* 📈 1. 실시간 차트 영역 (w-1/2) */}
             <div className="w-1/2 bg-white border-4 border-slate-300 rounded-3xl p-6 flex flex-col shadow-xl relative overflow-hidden">
               <div className="flex justify-between items-center mb-6">
@@ -223,13 +271,13 @@ export function MarketPage() {
               <h2 className="text-xl font-black text-slate-700 mb-2 flex items-center gap-2 justify-center border-b-2 border-slate-100 pb-3">
                 <ListOrdered className="w-5 h-5" /> 호가창
               </h2>
-              
+
               <div className="flex-1 flex flex-col text-sm font-bold overflow-y-auto">
                 {/* 매도 잔량 (파란색 영역) */}
                 <div className="flex flex-col justify-end">
                   {orderBook.asks.map((ask, idx) => (
-                    <div 
-                      key={`ask-${idx}`} 
+                    <div
+                      key={`ask-${idx}`}
                       className="relative flex justify-between items-center px-4 py-3 cursor-pointer group border-b border-slate-50 hover:bg-slate-50 transition-colors"
                       onClick={() => { setPrice(ask.price); setQuantity(q => q === 0 ? 1 : q); }} // ✨ 클릭 시 가격 자동 입력!
                     >
@@ -252,8 +300,8 @@ export function MarketPage() {
                 {/* 매수 잔량 (빨간색 영역) */}
                 <div className="flex flex-col">
                   {orderBook.bids.map((bid, idx) => (
-                    <div 
-                      key={`bid-${idx}`} 
+                    <div
+                      key={`bid-${idx}`}
                       className="relative flex justify-between items-center px-4 py-3 cursor-pointer group border-b border-slate-50 hover:bg-slate-50 transition-colors"
                       onClick={() => { setPrice(bid.price); setQuantity(q => q === 0 ? 1 : q); }} // ✨ 클릭 시 가격 자동 입력!
                     >
@@ -321,13 +369,12 @@ export function MarketPage() {
               <button
                 onClick={handleConfirm}
                 disabled={price <= 0 || quantity <= 0 || isProcessing}
-                className={`w-full py-4 rounded-2xl font-black text-lg transition-all transform active:scale-95 flex items-center justify-center gap-2 shadow-lg mt-4 cursor-pointer ${
-                  price > 0 && quantity > 0 && !isProcessing
-                    ? mode === "buy"
-                      ? "bg-rose-500 hover:bg-rose-600 text-white shadow-rose-200"
-                      : "bg-blue-500 hover:bg-blue-600 text-white shadow-blue-200"
-                    : "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
-                }`}
+                className={`w-full py-4 rounded-2xl font-black text-lg transition-all transform active:scale-95 flex items-center justify-center gap-2 shadow-lg mt-4 cursor-pointer ${price > 0 && quantity > 0 && !isProcessing
+                  ? mode === "buy"
+                    ? "bg-rose-500 hover:bg-rose-600 text-white shadow-rose-200"
+                    : "bg-blue-500 hover:bg-blue-600 text-white shadow-blue-200"
+                  : "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
+                  }`}
               >
                 <ShoppingCart className="w-5 h-5" />
                 {isProcessing ? "처리중..." : "주문 접수"}

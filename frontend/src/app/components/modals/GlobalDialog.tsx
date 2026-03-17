@@ -49,9 +49,11 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
   }, [onClose, isCollecting, data]);
 
   if (data.type === "workstation") {
-    const materialPerUnit = 3;
+    const { material, product, reqMat, resProd } = state.getIndustryItemNames();
+    const materialPerUnit = reqMat;
     const warehouseStock = state.warehouseItems.find(i => i.type === "material")?.quantity || 0;
     const totalMaterial = qty * materialPerUnit;
+    const totalProduced = qty * resProd;
     const hasEnough = warehouseStock >= totalMaterial;
 
     const handleCollect = (e: React.MouseEvent) => {
@@ -158,7 +160,10 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
               {/* 배경 장식 */}
               <div className="absolute -right-6 -top-6 text-9xl opacity-5 pointer-events-none">🏭</div>
               
-              <label className="text-sm font-black text-slate-400 uppercase tracking-widest text-center relative z-10">생산 수량 설정</label>
+              <div className="text-center relative z-10">
+                <label className="text-sm font-black text-slate-400 uppercase tracking-widest">생산 수량 설정</label>
+                <div className="text-[10px] text-slate-500 font-bold mt-0.5">(수량 1 단위 = 1분 가동)</div>
+              </div>
               
               <div className="flex items-center justify-center gap-3 relative z-10">
                 <button 
@@ -199,11 +204,18 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
 
               <div className="flex flex-col gap-3 pt-5 border-t-2 border-slate-200 bg-white/50 rounded-xl px-4 py-3 relative z-10 mt-2">
                 <div className="flex justify-between items-center text-sm">
-                  <span className="text-slate-500 font-bold flex items-center gap-1.5"><span className="text-lg">📦</span> 소모 재료 <span className="text-[10px] text-slate-400 font-normal bg-slate-100 rounded px-1.5 py-0.5">창고</span></span>
+                  <span className="text-slate-500 font-bold flex items-center gap-1.5"><span className="text-lg">📦</span> 소모 재료 ({material}) <span className="text-[10px] text-slate-400 font-normal bg-slate-100 rounded px-1.5 py-0.5">창고</span></span>
                   <div className={`font-black tracking-widest px-3 py-1.5 rounded-lg border-b-2 flex items-center gap-2 ${hasEnough ? 'text-indigo-600 bg-indigo-50 border-indigo-200 border-b-indigo-300' : 'text-rose-500 border-rose-200 border-b-rose-300 bg-rose-50'}`}>
                     <span>{totalMaterial}</span>
                     <span className="text-xs text-slate-300 font-bold">/</span> 
                     <span className={hasEnough ? 'text-indigo-400' : 'text-rose-400'}>{warehouseStock}</span>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center text-sm mt-1">
+                  <span className="text-slate-500 font-bold flex items-center gap-1.5"><span className="text-lg">✨</span> 예상 수확물 ({product})</span>
+                  <div className="font-black tracking-widest px-3 py-1.5 rounded-lg border-b-2 flex items-center gap-2 text-emerald-600 bg-emerald-50 border-emerald-200 border-b-emerald-300">
+                    <span>{totalProduced}</span>
                   </div>
                 </div>
                 
