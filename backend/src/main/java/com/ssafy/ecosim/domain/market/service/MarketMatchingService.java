@@ -91,6 +91,9 @@ public class MarketMatchingService {
             orderBookManager.removeOrder(itemId, "SELL", sellOrder.getId());
         }
 
+        // Redis 시장가 갱신
+        orderBookManager.setMarketPrice(itemId, matchedPrice);
+
         // TradeEvent 발행
         TradeEventDto tradeEvent = TradeEventDto.builder()
                 .makerOrderId(sellOrder.getId()) // 가상의 Maker 설정 (매도자)

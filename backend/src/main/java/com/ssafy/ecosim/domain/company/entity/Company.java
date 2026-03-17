@@ -58,4 +58,19 @@ public class Company extends BaseEntity {
         this.cash = 1_000_000L;   // 초기 지급 현금 100만원
         this.totalAsset = 1_000_000L;
     }
+
+    // 매도 체결 수령 시 현금 입금
+    public void receiveCash(long amount) {
+        this.cash += amount;
+        this.totalAsset += amount;
+    }
+
+    // 매수 주문 시 현금 차감 (잔고 검증 후 호출)
+    public void spendCash(long amount) {
+        if (this.cash < amount) {
+            throw new IllegalStateException("잔고가 부족합니다.");
+        }
+        this.cash -= amount;
+        this.totalAsset -= amount;
+    }
 }
