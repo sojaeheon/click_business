@@ -11,11 +11,11 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum IndustryType {
 
-    GOLD_MINING(1L, 3L, 1L),      // 금광업:    금 드릴(3) 소모 → 금광석(1) 생산
-    GOLD_SMELTING(2L, 1L, 2L),    // 금 제련업: 금광석(1) 소모 → 금괴(2) 생산
-    MANUFACTURING(3L, 2L, 3L);    // 제조업:    금괴(2) 소모    → 금 드릴(3) 생산
+    GOLD_MINING(1, 3L, 1L),      // 금광업:    금 드릴(3) 소모 → 금광석(1) 생산
+    GOLD_SMELTING(2, 1L, 2L),    // 금 제련업: 금광석(1) 소모 → 금괴(2) 생산
+    MANUFACTURING(3, 2L, 3L);    // 제조업:    금괴(2) 소모    → 금 드릴(3) 생산
 
-    private final Long industryId;    // industry 테이블 PK
-    private final Long inputItemId;   // 소모 아이템
-    private final Long outputItemId;  // 생산 아이템
+    private final Integer industryId;  // industry 테이블 PK (int4)
+    private final Long inputItemId;    // 소모 아이템
+    private final Long outputItemId;   // 생산 아이템
 }

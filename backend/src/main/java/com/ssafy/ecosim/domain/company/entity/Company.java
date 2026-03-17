@@ -26,7 +26,7 @@ public class Company extends BaseEntity {
     private String name;
 
     @Column(name = "industry_id")
-    private Long industryId;
+    private Integer industryId;
 
     public IndustryType getIndustryType() {
         for (IndustryType type : IndustryType.values()) {
