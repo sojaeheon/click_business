@@ -1,7 +1,7 @@
 import { apiClient } from './client';
 import type {
     ApiResponse, AuthCallbackResponse, TokenResponse, GuestLoginResponse,
-    CompanyDetail,
+    CompanyDetail, CompanyCreateResponse, IndustryType,
     InventorySlot, SaveInventoryItemRequest, MoveInventorySlotRequest,
     WarehouseSlot, SaveWarehouseItemRequest,
     WorkstationDetail, WorkstationPreview,
@@ -52,13 +52,9 @@ export const companyApi = {
     getDetail: (companyId: number) =>
         apiClient.get<CompanyDetail>('/companies', { params: { company_id: companyId } }),
 
-    /** 신규 유저: 산업군 설정 */
-    setIndustry: (industryType: string) =>
-        apiClient.post<CompanyDetail>('/companies', { industry_type: industryType }),
-
-    /** 신규 유저: 회사명 설정 */
-    setName: (companyName: string) =>
-        apiClient.post<CompanyDetail>('/companies', { company_name: companyName }),
+    /** 신규 유저: 회사 생성 (산업군 + 회사명 동시 설정) */
+    create: (name: string, industryType: IndustryType) =>
+        apiClient.post<ApiResponse<CompanyCreateResponse>>('/companies', { name, industryType }),
 };
 
 // ─────────────────────────────────────────────────────────────────────────
