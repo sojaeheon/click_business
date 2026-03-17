@@ -1,6 +1,6 @@
 import { apiClient } from './client';
 import type {
-    AuthCallbackResponse, TokenResponse,
+    ApiResponse, AuthCallbackResponse, TokenResponse, GuestLoginResponse,
     CompanyDetail,
     InventorySlot, SaveInventoryItemRequest, MoveInventorySlotRequest,
     WarehouseSlot, SaveWarehouseItemRequest,
@@ -25,6 +25,10 @@ export const authApi = {
     /** Access token 갱신 (refresh 쿠키 사용) */
     refresh: () =>
         apiClient.post<TokenResponse>('/auth/refresh'),
+
+     /** 게스트 로그인 */
+    createGuest: () =>
+        apiClient.post<ApiResponse<GuestLoginResponse>>('/users/guest'),
 
     /** 로그아웃 (쿠키 만료) */
     logout: () =>

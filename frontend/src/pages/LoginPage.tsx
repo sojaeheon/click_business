@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { authApi } from '../api/services';
 
 export const LoginPage = () => {
   const navigate = useNavigate();
@@ -13,9 +14,11 @@ export const LoginPage = () => {
     navigate('/industry-selection');
   };
 
-  const handleGuestMode = () => {
+const handleGuestMode = async () => {
+    const { data } = await authApi.createGuest();
+    localStorage.setItem('accessToken', data.data.accessToken);
     navigate('/industry-selection');
-  };
+};
 
   return (
     <div className="login-container">
