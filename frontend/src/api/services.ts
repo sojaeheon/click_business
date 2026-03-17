@@ -48,6 +48,10 @@ export const userApi = {
 // Company API
 // ─────────────────────────────────────────────────────────────────────────
 export const companyApi = {
+    /** 내 회사 조회 (JWT 기반) */
+    getMe: () =>
+        apiClient.get<ApiResponse<CompanyCreateResponse>>('/companies/me'),
+
     /** 기업 상세 정보 조회 (자산, 슬롯 현황) */
     getDetail: (companyId: number) =>
         apiClient.get<CompanyDetail>('/companies', { params: { company_id: companyId } }),
