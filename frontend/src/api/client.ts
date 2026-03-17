@@ -57,7 +57,7 @@ apiClient.interceptors.response.use(
                 // 재발급 실패 → 강제 로그아웃
                 localStorage.removeItem('accessToken');
                 refreshQueue = [];
-                window.location.href = '/login';
+                window.location.href = '/';
                 return Promise.reject(error);
             } finally {
                 isRefreshing = false;
