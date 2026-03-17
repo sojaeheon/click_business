@@ -2,7 +2,8 @@ package com.ssafy.ecosim.domain.inventory.controller;
 
 import com.ssafy.ecosim.domain.company.entity.Company;
 import com.ssafy.ecosim.domain.company.repository.CompanyRepository;
-import com.ssafy.ecosim.domain.inventory.dto.request.SlotSwapRequest;
+import com.ssafy.ecosim.domain.inventory.dto.request.SlotDecreaseRequest;
+import com.ssafy.ecosim.domain.inventory.dto.request.SlotItemRequest;
 import com.ssafy.ecosim.domain.inventory.dto.response.InventorySlotResponse;
 import com.ssafy.ecosim.domain.inventory.service.InventoryService;
 import com.ssafy.ecosim.global.common.ApiResponse;
@@ -42,7 +43,7 @@ public class InventoryController {
      */
     @PostMapping("/swap")
     public ApiResponse<String> swapOrMergeSlots(@AuthenticationPrincipal UserDetails userDetails,
-            @Valid @RequestBody SlotSwapRequest request) {
+            @Valid @RequestBody SlotItemRequest request) {
         Long userId = Long.parseLong(userDetails.getUsername());
         Company company = getCompanyByUserId(userId);
 
@@ -75,6 +76,16 @@ public class InventoryController {
 
         inventoryService.addItem(company.getId(), itemId, amount);
         return ApiResponse.success("성공적으로 아이템 획득이 처리되었습니다.");
+    }
+
+    @DeleteMapping("decrease")
+    public ApiResponse<String> deleteItem(@AuthenticationPrincipal UserDetails userDetails,
+            @Valid @RequestBody SlotDecreaseRequest request) {
+        Long userId = Long.parseLong(userDetails.getUsername());
+        Company company = getCompanyByUserId(userId);
+
+        inventoryService.decreaseQuantity(company.getId(), request.getSlotIndex(), request.getAmount());
+        return ApiResponse.success("성공적으로 슬롯 아이템이 감소 되었습니다.");
     }
 
     private Company getCompanyByUserId(Long userId) {

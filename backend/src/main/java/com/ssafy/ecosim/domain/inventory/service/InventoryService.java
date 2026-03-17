@@ -70,6 +70,29 @@ public class InventoryService {
     }
 
     @Transactional
+    public void decreaseQuantity(Long companyId, Integer slotIndex, Long amount) {
+        if (amount <= 0)
+            throw new IllegalArgumentException("차감할 수량은 1 이상이어야 합니다.");
+
+        CompanyInventory inventory = companyInventoryRepository.findByCompanyId(companyId)
+                .orElseThrow(() -> new IllegalArgumentException("창고를 찾을 수 없습니다."));
+
+        InventorySlot inventorySlot = getSlotByIndex(inventory, slotIndex);
+
+        if (inventorySlot.getItem() == null)
+            throw new IllegalArgumentException("해당 슬롯이 비어있습니다.");
+        if (inventorySlot.getQuantity() < amount)
+            throw new IllegalStateException("슬롯의 수량이 부족합니다.");
+
+        long leftAmount = inventorySlot.getQuantity() - amount;
+        if (leftAmount == 0) {
+            inventorySlot.clearSlot();
+        } else {
+            inventorySlot.setItemAndQuantity(inventorySlot.getItem(), leftAmount);
+        }
+    }
+
+    @Transactional
     public void addItem(Long companyId, Long itemId, Long amount) {
         if (amount <= 0)
             throw new IllegalArgumentException("추가할 수량은 1 이상이어야 합니다.");
