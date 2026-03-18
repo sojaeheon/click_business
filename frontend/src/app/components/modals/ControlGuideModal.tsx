@@ -38,8 +38,8 @@ export function ControlGuideModal({ forceOpen = false, onForceClose }: {
   );
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4">
-      <div className="relative w-full max-w-4xl bg-[#111827] border border-gray-700 shadow-2xl rounded-2xl p-6 md:p-8 overflow-hidden">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4 pointer-events-auto">
+      <div className="relative w-full max-w-4xl bg-[#111827] border border-gray-700 shadow-[0_0_50px_rgba(0,0,0,0.8)] rounded-2xl p-6 md:p-8 overflow-hidden">
         {/* Header */}
         <div className="flex justify-between items-center border-b border-gray-700 pb-4 mb-6">
           <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-teal-300">
