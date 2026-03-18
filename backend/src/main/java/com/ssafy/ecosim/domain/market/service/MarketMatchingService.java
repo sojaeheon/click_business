@@ -7,8 +7,12 @@ import com.ssafy.ecosim.domain.market.entity.OrderType;
 import com.ssafy.ecosim.domain.market.kafka.TradeEventPublisher;
 import com.ssafy.ecosim.domain.market.repository.redis.OrderBookManager;
 import com.ssafy.ecosim.domain.market.repository.redis.OrderDetailsCacheManager;
+import com.ssafy.ecosim.domain.notification.dto.NotificationEvent;
+import com.ssafy.ecosim.domain.notification.entity.NotificationType;
+import com.ssafy.ecosim.domain.company.repository.CompanyRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +26,8 @@ public class MarketMatchingService {
     private final OrderBookManager orderBookManager;
     private final OrderDetailsCacheManager orderDetailsCacheManager;
     private final TradeEventPublisher tradeEventPublisher;
+    private final CompanyRepository companyRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 특정 아이템에 대해 매칭을 수행합니다.
@@ -109,6 +115,32 @@ public class MarketMatchingService {
                 .build();
 
         tradeEventPublisher.publishTradeEvent(tradeEvent);
+
+        // 실시간 알림 발송
+        sendTradeNotifications(buyOrder, sellOrder, matchedPrice, matchedQuantity);
+    }
+
+    private void sendTradeNotifications(MarketOrder buyOrder, MarketOrder sellOrder, long price, long quantity) {
+        // 매수자 알림
+        if (!buyOrder.getIsVirtual()) {
+            companyRepository.findById(buyOrder.getCompanyId()).ifPresent(company -> {
+                eventPublisher.publishEvent(new NotificationEvent(
+                        company.getUser().getId(),
+                        String.format("[체결] 상품이 %d개 구매되었습니다. (가격: %d)", quantity, price),
+                        NotificationType.TRADE
+                ));
+            });
+        }
+        // 매도자 알림
+        if (!sellOrder.getIsVirtual()) {
+            companyRepository.findById(sellOrder.getCompanyId()).ifPresent(company -> {
+                eventPublisher.publishEvent(new NotificationEvent(
+                        company.getUser().getId(),
+                        String.format("[체결] 상품이 %d개 판매되었습니다. (가격: %d)", quantity, price),
+                        NotificationType.TRADE
+                ));
+            });
+        }
     }
 
     private void updateOrRemoveCache(MarketOrder order) {
