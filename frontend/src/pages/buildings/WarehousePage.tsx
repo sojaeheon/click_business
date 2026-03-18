@@ -22,6 +22,9 @@ export function WarehousePage() {
   const product = useGameStore(s => s.getIndustryItemNames().product);
   const useWarehouseTicket = useGameStore(s => s.useWarehouseTicket);
 
+  const totalMaterial = warehouseItems.find(i => i.type === "material")?.quantity || 0;
+  const totalProduct = warehouseItems.find(i => i.type === "product")?.quantity || 0;
+
   const [slots, setSlots] = useState<SlotData[]>([]);
 
   useEffect(() => {
@@ -131,15 +134,19 @@ export function WarehousePage() {
     >
       <BackButton onClick={closeBuildingPage} className="absolute top-6 left-6" />
 
-      {/* 우측 상단 인디케이터 */}
-      <div className="absolute top-6 right-6 flex gap-4 bg-white/60 backdrop-blur-md rounded-2xl p-4 border border-white/50 shadow-lg z-10">
-        <div className="flex items-center gap-2">
+      {/* 우측 상단 인디케이터 (수량 포함) */}
+      <div className="absolute top-6 right-6 flex gap-6 bg-white/80 backdrop-blur-md rounded-2xl p-4 border border-white/50 shadow-lg z-10">
+        <div className="flex items-center gap-3">
           <div className="w-3 h-3 rounded-full shadow-inner bg-yellow-500"></div>
-          <span className="text-gray-700 font-bold tracking-tight">원자재</span>
+          <span className="text-gray-700 font-bold tracking-tight">
+            원자재 총 <span className="text-yellow-700 font-black ml-1">{totalMaterial.toLocaleString()}</span> 개
+          </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <div className="w-3 h-3 rounded-full shadow-inner bg-blue-500"></div>
-          <span className="text-gray-700 font-bold tracking-tight">생산품</span>
+          <span className="text-gray-700 font-bold tracking-tight">
+            생산품 총 <span className="text-blue-700 font-black ml-1">{totalProduct.toLocaleString()}</span> 개
+          </span>
         </div>
       </div>
 

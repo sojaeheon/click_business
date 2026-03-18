@@ -6,6 +6,7 @@ import { Html } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGameStore } from "../../../store/gameStore";
+import { useAlertStore } from "../../../store/useAlertStore";
 import { WorkstationAPI } from "../../../api/gameApi";
 import { EnvModel } from "./BaseComponents";
 import { AreaLabel } from "./BuildingComponents";
@@ -404,12 +405,14 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
                                     message: "수령 완료 ✅",
                                     detail: `${added}개를 창고에 저장했습니다.`
                                 });
+                                useAlertStore.getState().openAlert(`${added}개를 창고에 저장했습니다.`, "수령 완료 ✅");
                             }
                         } catch (err) {
                             console.error("수령 실패:", err);
                         }
                     } else if (isWarehouseFull) {
                         useGameStore.getState().addAlert({ message: "수령 불가", detail: "창고가 가득 찼습니다." });
+                        useAlertStore.getState().openAlert("창고가 가득 찼습니다.", "수령 불가");
                     }
                 }}
             >
