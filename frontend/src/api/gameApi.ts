@@ -3,6 +3,7 @@ import { WORKER_DEFINITIONS } from '../constants/workers';
 
 // 💡 헬퍼 함수: 가짜 로딩 시간(0.5초)을 만들어주는 함수입니다.
 const mockDelay = (ms = 500) => new Promise(resolve => setTimeout(resolve, ms));
+const isGuestMode = () => localStorage.getItem('isGuest') === 'true';
 
 export const CompanyAPI = {
   getStatus: async (companyId: number) => {
@@ -17,7 +18,7 @@ export const CompanyAPI = {
           industry_type: company.industry_type, // 서버 데이터 우선
           cash: company.cash ?? 5000000,          // TODO: 백엔드 추가 필요
           total_asset: company.total_asset ?? 12000000,  // TODO: 백엔드 추가 필요
-          slots: company.slots ?? { warehouse_slots: 10, inventory_slots: 50 }, // TODO
+          slots: company.slots ?? undefined, // 서버에서 slots를 반환하지 않으면 gameStore 기본값을 유지
         }
       };
     } catch (err) {
@@ -29,7 +30,7 @@ export const CompanyAPI = {
           industry_type: undefined, // store에 있는 기존 로컬 정보 유지
           cash: 5000000,
           total_asset: 12000000,
-          slots: { warehouse_slots: 10, inventory_slots: 50 }
+          slots: undefined
         }
       };
     }
@@ -40,8 +41,8 @@ export const CompanyAPI = {
     try {
       // ✅ POST /api/v1/companies  (API 명세서 기준)
       const res = await apiClient.post('/companies', {
-        company_name: data.companyName,
-        industry_type: data.industryType,
+        name: data.companyName,
+        industryType: data.industryType,
       });
       return { data: res.data?.data ?? { success: true } };
     } catch (err) {
@@ -178,16 +179,21 @@ export const WorkstationAPI = {
 
 export const MarketAPI = {
   getOrderbook: async (itemId: number) => {
-    // return apiClient.get('/market/orderbook', { params: { itemId } });
-    await mockDelay();
-    return {
-      data: [
-        { price: 3000, qty: 50, type: 'SELL' },
-        { price: 2900, qty: 120, type: 'SELL' },
-        { price: 2800, qty: 200, type: 'BUY' },
-        { price: 2700, qty: 80, type: 'BUY' },
-      ]
-    };
+    try {
+      const res = await apiClient.get('/market/orderbooks', { params: { item_id: itemId } });
+      return { data: res.data.data };
+    } catch (err) {
+      console.warn("API 연동 실패! MarketAPI.getOrderbook 목업 데이터 사용", err);
+      await mockDelay();
+      return {
+        data: isGuestMode() ? [] : [
+          { price: 3000, qty: 50, type: 'SELL' },
+          { price: 2900, qty: 120, type: 'SELL' },
+          { price: 2800, qty: 200, type: 'BUY' },
+          { price: 2700, qty: 80, type: 'BUY' },
+        ]
+      };
+    }
   },
   createOrder: async (data: { companyId: number; itemId: number; type: 'BUY' | 'SELL'; price: number; qty: number }) => {
     // ✅ 실제 API 연동
@@ -204,9 +210,14 @@ export const MarketAPI = {
 
 export const BankAPI = {
   getSummary: async (companyId: number) => {
-    // return apiClient.get('/bank/summary', { params: { companyId } });
-    await mockDelay();
-    return { data: { loanRate: 5.5, depositRate: 2.3, currentLoan: 1000000, currentDeposit: 500000 } };
+    try {
+      const res = await apiClient.get('/bank/summary');
+      return { data: res.data.data };
+    } catch (err) {
+      console.warn("API 연동 실패! BankAPI.getSummary 목업 데이터 사용", err);
+      await mockDelay();
+      return { data: { loanRate: 5.5, depositRate: 2.3, currentLoan: isGuestMode() ? 0 : 1000000, currentDeposit: isGuestMode() ? 0 : 500000 } };
+    }
   },
   processLoan: (data: { companyId: number; type: 'BORROW' | 'REPAY' | 'DEPOSIT' | 'WITHDRAW'; amount: number }) => apiClient.post('/bank/loans', data)
 };
@@ -218,62 +229,109 @@ export const HRAPI = {
 
 export const MinigameAPI = {
   claimReward: async (data: { companyId: number; clicks: number; isFever: boolean }) => {
-    // return apiClient.post('/minigame/claim', data);
-    await mockDelay();
-    return { data: { success: true, reward: 500 } };
+    try {
+      const res = await apiClient.post('/minigame/claim', data);
+      return { data: res.data.data };
+    } catch (err) {
+      console.warn("API 연동 실패! MinigameAPI.claimReward 목업 데이터 사용", err);
+      await mockDelay();
+      return { data: { success: true, reward: 500 } };
+    }
   },
   unlockGame: async (data: { companyId: number; amount: number }) => {
-    // return apiClient.post('/minigame/unlock', data);
-    await mockDelay();
-    return { data: { success: true } };
+    try {
+      const res = await apiClient.post('/minigame/unlock', data);
+      return { data: res.data.data };
+    } catch (err) {
+      console.warn("API 연동 실패! MinigameAPI.unlockGame 목업 데이터 사용", err);
+      await mockDelay();
+      return { data: { success: true } };
+    }
   },
 };
 
 export const RankingAPI = {
   getTopRanks: async () => {
-    // ❌ 원래 코드: return apiClient.get('/ranking/top');
-    // ✅ 랭킹 모달용 가짜 데이터
-    await mockDelay();
-    return {
-      data: [
-        { rank: 1, companyName: "삼성제철", score: 99999, tier: "챌린저" },
-        { rank: 2, companyName: "현대광업", score: 88888, tier: "다이아" },
-        { rank: 3, companyName: "딸깍 컴퍼니", score: 77777, tier: "플래티넘" },
-        { rank: 4, companyName: "SSAFY 광물", score: 66666, tier: "골드" },
-        { rank: 5, companyName: "개미구멍", score: 55555, tier: "실버" },
-      ]
-    };
+    try {
+      const res = await apiClient.get('/ranking/top');
+      return { data: res.data.data };
+    } catch (err) {
+      console.warn("API 연동 실패! RankingAPI.getTopRanks 목업 데이터 사용", err);
+      await mockDelay();
+      return {
+        data: [
+          { rank: 1, companyName: "삼성제철", score: 99999, tier: "챌린저" },
+          { rank: 2, companyName: "현대광업", score: 88888, tier: "다이아" },
+          { rank: 3, companyName: "딸깍 컴퍼니", score: 77777, tier: "플래티넘" },
+          { rank: 4, companyName: "SSAFY 광물", score: 66666, tier: "골드" },
+          { rank: 5, companyName: "개미구멍", score: 55555, tier: "실버" },
+        ]
+      };
+    }
   },
+};
+
+export const WarehouseAPI = {
+  getWarehouseItems: async (companyId: number) => {
+    try {
+      const res = await apiClient.get('/inventory');
+      return {
+        data: res.data.data
+          .filter((slot: any) => slot.itemId != null)
+          .map((slot: any) => ({
+            id: `w_${slot.itemId || slot.slotIndex}`,
+            type: slot.itemName?.includes("광석") || slot.itemName === "광산 드릴" || slot.itemName === "금괴" ? "material" : "product", // 이름 추론 로직 (임시)
+            quantity: slot.quantity,
+            name: slot.itemName,
+          }))
+      };
+    } catch (err) {
+      console.warn("API 연동 실패! WarehouseAPI 목업 데이터 사용", err);
+      await mockDelay();
+      return {
+        data: isGuestMode() ? [] : [
+          { id: "m1", type: "material", quantity: 47, name: "광산 드릴" },
+          { id: "p1", type: "product", quantity: 253, name: "금광석" },
+        ]
+      };
+    }
+  }
 };
 
 export const InventoryAPI = {
   getInventory: async (companyId: number) => {
     // ✅ 실제 API 연동: GET /api/v1/inventory
     try {
-      const res = await apiClient.get('/inventory');
+      const res = await apiClient.get('/inventory'); // 백엔드 경로 수정
       return {
-        data: res.data.data.map((slot: any) => ({
-          id: slot.itemId || (slot.slotIndex * 1000), // id가 없으면 고유 임시 id
-          name: slot.itemName || undefined,
-          level: slot.itemType === 'EQUIPMENT' ? slot.quantity : 1, // 장비는 quantity 등 화면 요구에 맞춤
-          locked: false, // 백엔드에 아직 locked 컬럼 미지원
-          quantity: slot.quantity,
-          slotIndex: slot.slotIndex
-        }))
+        data: res.data.data
+          .filter((slot: any) => slot.itemId != null) // 실제 아이템이 들어있는 슬롯만 프론트엔드 인벤토리에 담기
+          .map((slot: any) => ({
+            id: slot.itemId || (slot.slotIndex * 1000), // id가 없으면 고유 임시 id
+            name: slot.itemName || undefined,
+            level: slot.itemType === 'EQUIPMENT' ? Math.max(1, slot.quantity) : 1, // 장비는 quantity 등 화면 요구에 맞춤
+            locked: false, // 백엔드에 아직 locked 컬럼 미지원
+            quantity: slot.quantity,
+            slotIndex: slot.slotIndex,
+            type: slot.itemType === 'TICKET' ? `ticket_${slot.itemName?.includes("창고") ? "warehouse" : "inventory"}` : `worker_${slot.itemName?.replace(/ /g, "_")}`
+          }))
       };
     } catch (err) {
       console.warn("API 연동 실패! InventoryAPI.getInventory 목업 데이터 사용", err);
       await mockDelay();
       return {
-        data: WORKER_DEFINITIONS.map((w, i) => ({
+        data: isGuestMode() ? [
+          { id: "inv_default_1", type: "worker_수습_광부", itemName: "수습 광부", itemType: "EQUIPMENT", quantity: 1, level: 1, slotIndex: 1 }
+        ] : WORKER_DEFINITIONS.map((w, i) => ({
           id: i + 1,
           name: w.displayName,
           level: 1,
-          locked: i >= 4,  // 5번째부터 잠김
-          quantity: i < 3 ? 2 : 1, // 낮은 레벨은 2개 보유
+          locked: i >= 4,
+          quantity: i < 3 ? 2 : 1,
           icon: w.icon,
           modelPath: w.modelPath,
           workerType: w.type,
+          type: `worker_${w.displayName?.replace(/ /g, "_")}` // required for gameStore mapping!
         }))
       };
     }

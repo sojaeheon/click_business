@@ -125,7 +125,7 @@ export function WarehousePage() {
     <div
       className="absolute inset-0 z-40 bg-[#f5f0e8] flex flex-col pt-8"
       style={{
-        backgroundImage: "url('/images/warehouse.머ㅗ')",
+        backgroundImage: "url('/images/warehouse.png')",
         backgroundSize: 'contain',
         backgroundRepeat: 'no-repeat',
         backgroundPosition: 'center',

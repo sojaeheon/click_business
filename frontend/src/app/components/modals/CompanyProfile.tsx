@@ -10,8 +10,8 @@ export function CompanyProfile() {
   const inventoryUsed = state.inventoryItems.length;
   const inventoryUnlocked = state.inventoryMax;
 
-  // 이자가 포함된 총 부채 계산
-  const totalDebt = Math.floor(state.bankData.currentLoan * (1 + state.bankData.loanRate / 100));
+  // 이자가 포함된 총 부채 계산 (BankPage와 통일하여 state.debt 사용)
+  const totalDebt = state.debt;
 
   return (
     <div className="h-full flex flex-col">

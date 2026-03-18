@@ -11,16 +11,25 @@ export const LoginPage = () => {
   const navigate = useNavigate();
 
   const handleLogin = () => {
-    // 💡 [백엔드 연동: 구글 로그인 요청]
-    // window.location.href = 'http://localhost:8080/api/v1/auth/google/login';
-    useAlertStore.getState().openAlert('실제 구현 시 GET /api/v1/auth/google/login 으로 리다이렉트 됩니다.', "로그인 안내");
-    navigate('/industry-selection');
+    // 💡 백엔드 연동: 구글 OAuth2 로그인 요청
+    localStorage.removeItem('isGuest');
+    window.location.href = authApi.getLoginUrl();
   };
 
 const handleGuestMode = async () => {
-    const { data } = await authApi.createGuest();
-    localStorage.setItem('accessToken', data.data.accessToken);
-    navigate('/industry-selection');
+    try {
+      const { data } = await authApi.createGuest();
+      // 기존 잔여 게임 데이터가 존재할 수 있으므로 삭제 (state 초기화 용도)
+      localStorage.removeItem('game-storage');
+      localStorage.setItem('accessToken', data.data.accessToken);
+      localStorage.setItem('isGuest', 'true');
+      
+      // Zustand의 in-memory 상태(persist)까지 강제 초기화하기 위해 강제 리로드(새로고침) 이동을 수행
+      window.location.href = '/industry-selection';
+    } catch (error) {
+      console.error("게스트 로그인 실패:", error);
+      useAlertStore.getState().openAlert("서버와 연결할 수 없습니다. 백엔드(8000번 포트)가 켜져 있는지 확인해 주세요.", "서버 오류");
+    }
 };
 
   return (
