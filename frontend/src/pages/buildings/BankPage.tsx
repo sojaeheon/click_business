@@ -93,12 +93,13 @@ export function BankPage() {
       const mappedType = mode === "loan" ? "BORROW" : mode === "repay" ? "REPAY" : mode === "deposit" ? "DEPOSIT" : "WITHDRAW";
       await BankAPI.processLoan({ companyId: 1, type: mappedType, amount });
 
-      // store 돈 연동
+      // store 돈/부채 연동
       if (mode === "loan") {
-        // 대출: 돈이 들어옴
+        // 대출: 돈이 들어오고 부채가 증가함
         useGameStore.getState().updateMoney(amount);
+        useGameStore.getState().updateDebt(amount);
       } else if (mode === "repay") {
-        // 상환: 돈이 나감
+        // 상환: 돈이 나가고 부채가 감소함
         const success = useGameStore.getState().updateMoney(-amount);
         if (!success) {
           useAlertStore.getState().openAlert("보유 금액이 부족합니다.", "경고");
@@ -106,6 +107,7 @@ export function BankPage() {
           setIsProcessing(false);
           return;
         }
+        useGameStore.getState().updateDebt(-amount);
       } else if (mode === "deposit") {
         // 예금: 돈이 나감
         const success = useGameStore.getState().updateMoney(-amount);

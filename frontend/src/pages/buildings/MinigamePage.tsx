@@ -3,7 +3,8 @@ import { Lock, Timer } from "lucide-react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
-import { useGameStore } from "../../store/gameStore";
+import { useGameStore, REWARD_ITEM_POOL } from "../../store/gameStore";
+import type { InventoryItem } from "../../store/gameStore";
 import { MinigameAPI } from "../../api/gameApi";
 import { BackButton } from "../../app/components/ui/backbutton";
 import { useAlertStore } from "../../store/useAlertStore";
@@ -64,6 +65,7 @@ export function MinigamePage() {
   const [isStarted, setIsStarted] = useState(false);
   const [clickEffects, setClickEffects] = useState<{ id: number; x: number; y: number }[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [rewardItem, setRewardItem] = useState<Omit<InventoryItem, "id"> | null>(null);
 
   // ✨ 게임 종료 확인용 팝업 상태 추가
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -172,6 +174,11 @@ export function MinigamePage() {
       const next = Math.max(0, prev - damage);
       if (next === 0 && prev > 0) {
         setGameState("success");
+        // 랜덤 보상 뽑기
+        const randomReward = REWARD_ITEM_POOL[Math.floor(Math.random() * REWARD_ITEM_POOL.length)];
+        setRewardItem(randomReward);
+        useGameStore.getState().addInventoryItem(randomReward);
+
         MinigameAPI.claimReward({ companyId: 1, clicks: TOTAL_CLICKS, isFever }).catch(console.error);
       }
       return next;
@@ -323,8 +330,8 @@ export function MinigamePage() {
           <div className="bg-white rounded-[32px] p-10 max-w-md w-full border-[6px] border-slate-800 shadow-2xl flex flex-col items-center">
             <h2 className="text-5xl font-black text-slate-800 mb-8 tracking-wider">성 공 !</h2>
             <div className="w-40 h-40 bg-yellow-50 rounded-3xl border-4 border-amber-400 flex flex-col items-center justify-center mb-8 shadow-inner">
-              <span className="text-6xl mb-3 drop-shadow-md">🎁</span>
-              <span className="font-bold text-amber-800 text-xl">아이템 획득</span>
+              <span className="text-6xl mb-3 drop-shadow-md">{rewardItem ? rewardItem.icon : "🎁"}</span>
+              <span className="font-bold text-amber-800 text-xl text-center break-keep leading-tight px-2">{rewardItem ? rewardItem.name : "아이템 획득"}</span>
             </div>
             <div className="w-full flex flex-col gap-4">
               <button onClick={handleRetry} className="w-full py-5 bg-blue-50 border-[3px] border-blue-400 rounded-2xl font-black text-blue-800 text-xl hover:bg-blue-100 active:scale-95 transition-all shadow-sm cursor-pointer">한번 더 도전하기</button>

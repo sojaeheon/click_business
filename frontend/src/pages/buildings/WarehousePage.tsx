@@ -16,12 +16,12 @@ interface SlotData {
 
 export function WarehousePage() {
   const { state, closeBuildingPage } = useGame();
-  const { warehouseItems } = state;
+  const { warehouseItems, warehouseExpandTickets } = state;
   const maxSlots = useGameStore(s => s.warehouseMaxSlots); // default 10
   const material = useGameStore(s => s.getIndustryItemNames().material);
   const product = useGameStore(s => s.getIndustryItemNames().product);
+  const useWarehouseTicket = useGameStore(s => s.useWarehouseTicket);
 
-  const [expandTickets, setExpandTickets] = useState(6); // For unlocking slots
   const [slots, setSlots] = useState<SlotData[]>([]);
 
   useEffect(() => {
@@ -71,12 +71,14 @@ export function WarehousePage() {
   }, [warehouseItems, maxSlots, material, product]);
 
   const handleUnlockSlot = (slotId: number) => {
-    if (expandTickets <= 0) {
+    if (warehouseExpandTickets <= 0) {
       alert("확장권이 부족합니다.");
       return;
     }
-    setExpandTickets(t => t - 1);
-    setSlots(prev => prev.map(s => s.id === slotId ? { ...s, locked: false } : s));
+    const success = useWarehouseTicket();
+    if (success) {
+      setSlots(prev => prev.map(s => s.id === slotId ? { ...s, locked: false } : s));
+    }
   };
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
@@ -165,7 +167,7 @@ export function WarehousePage() {
         <div className="relative bg-white/40 backdrop-blur-2xl rounded-3xl p-8 border border-white/50 shadow-2xl mx-4 flex-1 overflow-y-auto min-h-0">
           <div className="grid grid-cols-3 gap-6">
             {slots.slice(0, visibleCount).map((slot, idx) => {
-              const isExpandable = slot.locked && expandTickets > 0;
+              const isExpandable = slot.locked && warehouseExpandTickets > 0;
               const hasItem = slot.item !== null;
               
               return (
@@ -199,7 +201,7 @@ export function WarehousePage() {
                     <div className="flex flex-col items-center justify-center text-gray-400 w-full h-full">
                       <Lock className={`w-12 h-12 mb-2 transition-transform ${isExpandable && "group-hover:scale-110 group-hover:text-yellow-600"}`} />
                       <div className="absolute bottom-3 right-4 text-sm font-bold text-gray-400 bg-white border border-gray-200 px-2 py-1 rounded shadow-sm">
-                        {expandTickets}/1
+                        {warehouseExpandTickets}/1
                       </div>
                     </div>
                   ) : hasItem ? (

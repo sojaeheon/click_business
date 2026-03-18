@@ -1,32 +1,17 @@
 import { useState, useEffect } from "react";
 import { Building2, Package, Backpack, BarChart3, Factory } from "lucide-react";
-import { useGame, useGameStore } from "../../../store/gameStore";
-import { InventoryAPI } from "../../../api/gameApi";
+import { useGameStore } from "../../../store/gameStore";
 
 export function CompanyProfile() {
-  const { state } = useGame();
-  const usedSlots = useGameStore(s => s.getWarehouseUsage().usedSlots);
-  const maxSlots = useGameStore(s => s.warehouseMaxSlots);
+  const state = useGameStore();
+  const usedSlots = state.getWarehouseUsage().usedSlots;
+  const maxSlots = state.warehouseMaxSlots;
 
-  const [inventoryUsed, setInventoryUsed] = useState(0);
-  const [inventoryUnlocked, setInventoryUnlocked] = useState(state.inventoryMax);
+  const inventoryUsed = state.inventoryItems.length;
+  const inventoryUnlocked = state.inventoryMax;
 
   // 이자가 포함된 총 부채 계산
   const totalDebt = Math.floor(state.bankData.currentLoan * (1 + state.bankData.loanRate / 100));
-
-  useEffect(() => {
-    InventoryAPI.getInventory(1)
-      .then((res) => {
-        const slots = res.data;
-        const used = slots.filter((s: any) => s.name).length;
-        const unlocked = slots.filter((s: any) => !s.locked).length;
-        setInventoryUsed(used);
-        setInventoryUnlocked(unlocked);
-      })
-      .catch((err) => {
-        console.error("인벤토리 오류:", err);
-      });
-  }, []);
 
   return (
     <div className="h-full flex flex-col">
