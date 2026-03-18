@@ -18,7 +18,7 @@ export const CompanyAPI = {
           industry_type: company.industry_type, // 서버 데이터 우선
           cash: company.cash ?? 5000000,          // TODO: 백엔드 추가 필요
           total_asset: company.total_asset ?? 12000000,  // TODO: 백엔드 추가 필요
-          slots: company.slots ?? { warehouse_slots: 10, inventory_slots: 50 }, // TODO
+          slots: company.slots ?? undefined, // 서버에서 slots를 반환하지 않으면 gameStore 기본값을 유지
         }
       };
     } catch (err) {
@@ -276,12 +276,14 @@ export const WarehouseAPI = {
     try {
       const res = await apiClient.get('/inventory');
       return {
-        data: res.data.data.map((slot: any) => ({
-          id: `w_${slot.itemId || slot.slotIndex}`,
-          type: slot.itemName?.includes("광석") || slot.itemName === "광산 드릴" || slot.itemName === "금괴" ? "material" : "product", // 이름 추론 로직 (임시)
-          quantity: slot.quantity,
-          name: slot.itemName,
-        }))
+        data: res.data.data
+          .filter((slot: any) => slot.itemId != null)
+          .map((slot: any) => ({
+            id: `w_${slot.itemId || slot.slotIndex}`,
+            type: slot.itemName?.includes("광석") || slot.itemName === "광산 드릴" || slot.itemName === "금괴" ? "material" : "product", // 이름 추론 로직 (임시)
+            quantity: slot.quantity,
+            name: slot.itemName,
+          }))
       };
     } catch (err) {
       console.warn("API 연동 실패! WarehouseAPI 목업 데이터 사용", err);
@@ -302,15 +304,17 @@ export const InventoryAPI = {
     try {
       const res = await apiClient.get('/inventory'); // 백엔드 경로 수정
       return {
-        data: res.data.data.map((slot: any) => ({
-          id: slot.itemId || (slot.slotIndex * 1000), // id가 없으면 고유 임시 id
-          name: slot.itemName || undefined,
-          level: slot.itemType === 'EQUIPMENT' ? Math.max(1, slot.quantity) : 1, // 장비는 quantity 등 화면 요구에 맞춤
-          locked: false, // 백엔드에 아직 locked 컬럼 미지원
-          quantity: slot.quantity,
-          slotIndex: slot.slotIndex,
-          type: slot.itemType === 'TICKET' ? `ticket_${slot.itemName?.includes("창고") ? "warehouse" : "inventory"}` : `worker_${slot.itemName?.replace(/ /g, "_")}`
-        }))
+        data: res.data.data
+          .filter((slot: any) => slot.itemId != null) // 실제 아이템이 들어있는 슬롯만 프론트엔드 인벤토리에 담기
+          .map((slot: any) => ({
+            id: slot.itemId || (slot.slotIndex * 1000), // id가 없으면 고유 임시 id
+            name: slot.itemName || undefined,
+            level: slot.itemType === 'EQUIPMENT' ? Math.max(1, slot.quantity) : 1, // 장비는 quantity 등 화면 요구에 맞춤
+            locked: false, // 백엔드에 아직 locked 컬럼 미지원
+            quantity: slot.quantity,
+            slotIndex: slot.slotIndex,
+            type: slot.itemType === 'TICKET' ? `ticket_${slot.itemName?.includes("창고") ? "warehouse" : "inventory"}` : `worker_${slot.itemName?.replace(/ /g, "_")}`
+          }))
       };
     } catch (err) {
       console.warn("API 연동 실패! InventoryAPI.getInventory 목업 데이터 사용", err);

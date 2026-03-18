@@ -12,6 +12,7 @@ const MinigamePage = lazy(() => import("../pages/buildings/MinigamePage").then(m
 const MarketPage = lazy(() => import("../pages/buildings/MarketPage").then(module => ({ default: module.MarketPage })));
 
 import { useGameStore } from "../store/gameStore";
+import { useAlertStore } from "../store/useAlertStore";
 
 export default function App() {
   const activeBuildingPage = useGameStore(state => state.activeBuildingPage);
@@ -56,6 +57,35 @@ export default function App() {
       }, 100);
     }
   }, [activeModal, activeBuildingPage]);
+
+  // ──────────────────────────────────────────────────────────
+  // 3. ESC 단축키 모달 및 페이지 닫기
+  // ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        // 1. Alert (제일 최상위) 닫기
+        const alertState = useAlertStore.getState();
+        if (alertState.isOpen) {
+          alertState.closeAlert();
+          return;
+        }
+
+        // 2. 조작 가이드 모달 닫기
+        setShowGuide(false);
+
+        // 3. 메인 HUD 모달 & 건물 상세 페이지 닫기
+        const state = useGameStore.getState();
+        if (state.activeModal) {
+          state.closeModal();
+        } else if (state.activeBuildingPage) {
+          state.closeBuildingPage();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const renderBuildingPage = () => {
     switch (activeBuildingPage) {

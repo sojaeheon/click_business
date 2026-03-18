@@ -319,13 +319,27 @@ export const useGameStore = create<GameState>()(
             }
           });
 
+          // 기본 캐릭터 (수습 광부) 지급 보장 (비어있을 경우)
+          if (workers.length === 0) {
+            workers.push({
+              id: "inv_default_1",
+              type: "worker_수습_광부",
+              name: "수습 광부",
+              icon: "⛏️",
+              quantity: 1,
+              level: 1,
+              workerType: "miner"
+            });
+          }
+
           set({
             money: realData?.cash ?? get().money,
             capital: realData?.total_asset ?? get().capital,
             companyName: realData?.name ?? get().companyName,
             industry: realData?.industry_type ?? get().industry,
-            warehouseMaxSlots: realData?.slots?.warehouse_slots ?? get().warehouseMaxSlots,
-            inventoryMax: realData?.slots?.inventory_slots ?? get().inventoryMax,
+            // 과거 캐시에 의해 프론트엔드 슬롯이 각각 10, 50으로 고정된 유저들을 위한 강제 보정 로직
+            warehouseMaxSlots: realData?.slots?.warehouse_slots ?? (get().warehouseMaxSlots === 10 ? 6 : get().warehouseMaxSlots),
+            inventoryMax: realData?.slots?.inventory_slots ?? (get().inventoryMax === 50 ? 4 : get().inventoryMax),
             warehouseItems: warehouseRes.data as WarehouseItem[],
             inventoryItems: workers,
             warehouseExpandTickets: wTickets,

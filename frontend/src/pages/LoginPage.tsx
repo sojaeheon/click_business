@@ -23,7 +23,9 @@ const handleGuestMode = async () => {
       localStorage.removeItem('game-storage');
       localStorage.setItem('accessToken', data.data.accessToken);
       localStorage.setItem('isGuest', 'true');
-      navigate('/industry-selection');
+      
+      // Zustand의 in-memory 상태(persist)까지 강제 초기화하기 위해 강제 리로드(새로고침) 이동을 수행
+      window.location.href = '/industry-selection';
     } catch (error) {
       console.error("게스트 로그인 실패:", error);
       useAlertStore.getState().openAlert("서버와 연결할 수 없습니다. 백엔드(8000번 포트)가 켜져 있는지 확인해 주세요.", "서버 오류");
