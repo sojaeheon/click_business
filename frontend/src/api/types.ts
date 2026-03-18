@@ -53,12 +53,16 @@ export interface CompanyDetail {
 }
 
 // ==================== Storage (Inventory) ====================
+// TOOD 추후 확장을 위해 남겨둠
+export type ItemType = 'MATERIAL' | 'PRODUCT' | 'EQUIPMENT' | 'TICKET';
+
 export interface InventorySlot {
-    inventory_id: number;
-    slot_index: number;
-    item_id: number;
-    item_name: string;
+    slotIndex: number;
+    itemId: number | null;
+    itemName: string | null;
+    itemType: ItemType | null;
     quantity: number;
+    maxQuantity: number;
 }
 
 export interface SaveInventoryItemRequest {
