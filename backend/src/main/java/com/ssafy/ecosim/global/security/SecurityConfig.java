@@ -53,7 +53,8 @@ public class SecurityConfig {
                                                                 "/api/v1/users/signup",
                                                                 "/api/v1/users/guest",
                                                                 "/error",
-                                                                "/actuator/**"
+                                                                "/actuator/**",
+                                                                "/ws-ecosim/**"
                                                                 )
                                                 .permitAll()
                                                 .anyRequest().authenticated())
