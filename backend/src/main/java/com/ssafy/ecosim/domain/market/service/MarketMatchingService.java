@@ -25,6 +25,7 @@ public class MarketMatchingService {
 
     /**
      * 특정 아이템에 대해 매칭을 수행합니다.
+     * 
      * @param itemId 아이템 식별자
      */
     public void matchItem(Integer itemId) {
@@ -51,8 +52,10 @@ public class MarketMatchingService {
 
             if (buyOrder == null || sellOrder == null) {
                 // 캐시가 유실된 경우 (있어서는 안 될 일이지만 안전장치)
-                if (buyOrder == null) orderBookManager.removeOrder(itemId, "BUY", buyOrderId);
-                if (sellOrder == null) orderBookManager.removeOrder(itemId, "SELL", sellOrderId);
+                if (buyOrder == null)
+                    orderBookManager.removeOrder(itemId, "BUY", buyOrderId);
+                if (sellOrder == null)
+                    orderBookManager.removeOrder(itemId, "SELL", sellOrderId);
                 continue;
             }
 
@@ -97,7 +100,7 @@ public class MarketMatchingService {
         // TradeEvent 발행
         TradeEventDto tradeEvent = TradeEventDto.builder()
                 .makerOrderId(sellOrder.getId()) // 가상의 Maker 설정 (매도자)
-                .takerOrderId(buyOrder.getId())  // 가상의 Taker 설정 (매수자)
+                .takerOrderId(buyOrder.getId()) // 가상의 Taker 설정 (매수자)
                 .itemId(itemId)
                 .makerOrderType(OrderType.SELL)
                 .matchedPrice(matchedPrice)
