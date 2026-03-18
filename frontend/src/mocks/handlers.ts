@@ -1,4 +1,5 @@
 import { http, HttpResponse, delay } from 'msw'
+import { defaultGameState } from '../store/gameStore'
 
 export const handlers = [
   // 시장 거래 (Market)
@@ -65,9 +66,9 @@ export const handlers = [
     return HttpResponse.json({
       data: [
         { slotIndex: 0, itemId: 1, itemName: "철광석", itemType: "MATERIAL", quantity: 120, maxQuantity: 500 },
-        { slotIndex: 1, itemId: 2, itemName: "목재",   itemType: "MATERIAL", quantity: 80,  maxQuantity: 500 },
-        { slotIndex: 2, itemId: 3, itemName: "철검",   itemType: "PRODUCT",  quantity: 30,  maxQuantity: 500 },
-        { slotIndex: 3, itemId: null, itemName: null,  itemType: null,       quantity: 0,   maxQuantity: 500 },
+        { slotIndex: 1, itemId: 2, itemName: "목재", itemType: "MATERIAL", quantity: 80, maxQuantity: 500 },
+        { slotIndex: 2, itemId: 3, itemName: "철검", itemType: "PRODUCT", quantity: 30, maxQuantity: 500 },
+        { slotIndex: 3, itemId: null, itemName: null, itemType: null, quantity: 0, maxQuantity: 500 },
       ]
     });
   }),
