@@ -1,7 +1,7 @@
 import { apiClient } from './client';
 import type {
-    AuthCallbackResponse, TokenResponse,
-    CompanyDetail,
+    ApiResponse, AuthCallbackResponse, TokenResponse, GuestLoginResponse,
+    CompanyDetail, CompanyCreateResponse, IndustryType,
     InventorySlot, SaveInventoryItemRequest, MoveInventorySlotRequest,
     WarehouseSlot, SaveWarehouseItemRequest,
     WorkstationDetail, WorkstationPreview,
@@ -26,6 +26,10 @@ export const authApi = {
     refresh: () =>
         apiClient.post<TokenResponse>('/auth/refresh'),
 
+     /** 게스트 로그인 */
+    createGuest: () =>
+        apiClient.post<ApiResponse<GuestLoginResponse>>('/users/guest'),
+
     /** 로그아웃 (쿠키 만료) */
     logout: () =>
         apiClient.post('/auth/logout'),
@@ -44,17 +48,17 @@ export const userApi = {
 // Company API
 // ─────────────────────────────────────────────────────────────────────────
 export const companyApi = {
+    /** 내 회사 조회 (JWT 기반) */
+    getMe: () =>
+        apiClient.get<ApiResponse<CompanyCreateResponse>>('/companies/me'),
+
     /** 기업 상세 정보 조회 (자산, 슬롯 현황) */
     getDetail: (companyId: number) =>
         apiClient.get<CompanyDetail>('/companies', { params: { company_id: companyId } }),
 
-    /** 신규 유저: 산업군 설정 */
-    setIndustry: (industryType: string) =>
-        apiClient.post<CompanyDetail>('/companies', { industry_type: industryType }),
-
-    /** 신규 유저: 회사명 설정 */
-    setName: (companyName: string) =>
-        apiClient.post<CompanyDetail>('/companies', { company_name: companyName }),
+    /** 신규 유저: 회사 생성 (산업군 + 회사명 동시 설정) */
+    create: (name: string, industryType: IndustryType) =>
+        apiClient.post<ApiResponse<CompanyCreateResponse>>('/companies', { name, industryType }),
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -63,7 +67,7 @@ export const companyApi = {
 export const inventoryApi = {
     /** 인벤토리 슬롯 조회 */
     getSlots: () =>
-        apiClient.get<InventorySlot[]>('/storage/inventories'),
+        apiClient.get<ApiResponse<InventorySlot[]>>('/inventory'),
 
     /** 아이템 저장 */
     saveItem: (data: SaveInventoryItemRequest) =>

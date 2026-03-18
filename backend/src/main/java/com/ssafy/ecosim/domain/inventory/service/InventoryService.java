@@ -28,9 +28,6 @@ public class InventoryService {
     @Value("${warehouse.initial-slot-count:20}")
     private int initialSlotCount;
 
-    @Value("${warehouse.max-stack-size:100}")
-    private long maxStackSize;
-
     @Value("${warehouse.expand-slot-amount:5}")
     private int expandSlotAmount;
 
@@ -70,6 +67,29 @@ public class InventoryService {
     }
 
     @Transactional
+    public void decreaseQuantity(Long companyId, Integer slotIndex, Long amount) {
+        if (amount <= 0)
+            throw new IllegalArgumentException("차감할 수량은 1 이상이어야 합니다.");
+
+        CompanyInventory inventory = companyInventoryRepository.findByCompanyId(companyId)
+                .orElseThrow(() -> new IllegalArgumentException("창고를 찾을 수 없습니다."));
+
+        InventorySlot inventorySlot = getSlotByIndex(inventory, slotIndex);
+
+        if (inventorySlot.getItem() == null)
+            throw new IllegalArgumentException("해당 슬롯이 비어있습니다.");
+        if (inventorySlot.getQuantity() < amount)
+            throw new IllegalStateException("슬롯의 수량이 부족합니다.");
+
+        long leftAmount = inventorySlot.getQuantity() - amount;
+        if (leftAmount == 0) {
+            inventorySlot.clearSlot();
+        } else {
+            inventorySlot.setItemAndQuantity(inventorySlot.getItem(), leftAmount);
+        }
+    }
+
+    @Transactional
     public void addItem(Long companyId, Long itemId, Long amount) {
         if (amount <= 0)
             throw new IllegalArgumentException("추가할 수량은 1 이상이어야 합니다.");
@@ -87,7 +107,7 @@ public class InventoryService {
         // 1. 이미 동일한 아이템이 들어있는 슬롯 탐색 후 남은 여유공간에 먼저 채우기
         for (InventorySlot slot : slots) {
             if (slot.getItem() != null && slot.getItem().getId().equals(itemId)) {
-                long availableSpace = maxStackSize - slot.getQuantity();
+                long availableSpace = item.getMaxStackSize() - slot.getQuantity();
                 if (availableSpace > 0) {
                     long added = Math.min(availableSpace, remainingAmount);
                     slot.addItem(item, added); // 사실상 quantity 증가
@@ -102,7 +122,7 @@ public class InventoryService {
         // 2. 다 못채웠다면 (혹은 아예 새 아이템이라면) 앞쪽 빈 슬롯부터 채워넣기
         for (InventorySlot slot : slots) {
             if (slot.getItem() == null) {
-                long added = Math.min(maxStackSize, remainingAmount);
+                long added = Math.min(item.getMaxStackSize(), remainingAmount);
                 slot.addItem(item, added);
                 remainingAmount -= added;
 
@@ -186,7 +206,7 @@ public class InventoryService {
 
         // 도착 슬롯에 아이템이 있고, 이름(또는 ID)가 동일한 경우 (스택 병합 시도)
         if (toSlot.getItem().getId().equals(fromSlot.getItem().getId())) {
-            long availableSpace = maxStackSize - toSlot.getQuantity();
+            long availableSpace = toSlot.getItem().getMaxStackSize() - toSlot.getQuantity();
             if (availableSpace > 0) {
                 long amountToMove = Math.min(availableSpace, fromSlot.getQuantity());
                 toSlot.addItem(toSlot.getItem(), amountToMove);

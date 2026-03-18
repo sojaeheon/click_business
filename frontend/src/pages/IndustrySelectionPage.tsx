@@ -49,10 +49,11 @@ export const IndustrySelectionPage = () => {
     preloadGameModels();
   }, []);
 
-  const handleSelect = (industry: string) => {
+  const handleSelect = (industry: IndustryType) => {
     setSelectedIndustry(industry);
   };
 
+  const handleConfirm = async () => {
   const handleConfirm = async () => {
     if (companyName.trim() === '') {
       useAlertStore.getState().openAlert('회사 이름을 입력해주세요.', "경고");

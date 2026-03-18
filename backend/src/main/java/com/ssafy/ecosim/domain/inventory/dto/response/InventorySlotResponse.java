@@ -11,6 +11,7 @@ public class InventorySlotResponse {
     private String itemName;
     private ItemType itemType;
     private Long quantity;
+    private Long maxQuantity;
 
     public InventorySlotResponse(InventorySlot slot) {
         this.slotIndex = slot.getSlotIndex();
@@ -19,6 +20,7 @@ public class InventorySlotResponse {
             this.itemName = slot.getItem().getName();
             this.itemType = slot.getItem().getType();
             this.quantity = slot.getQuantity();
+            this.maxQuantity = slot.getItem().getMaxStackSize();
         } else {
             // 빈 슬롯 처리
             this.itemId = null;

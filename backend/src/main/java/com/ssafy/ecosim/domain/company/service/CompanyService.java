@@ -1,6 +1,7 @@
 package com.ssafy.ecosim.domain.company.service;
 
 import com.ssafy.ecosim.domain.company.entity.Company;
+import com.ssafy.ecosim.domain.company.entity.IndustryType;
 import com.ssafy.ecosim.domain.company.repository.CompanyRepository;
 import com.ssafy.ecosim.domain.inventory.service.InventoryService;
 import com.ssafy.ecosim.domain.user.entity.User;
@@ -25,7 +26,7 @@ public class CompanyService {
      * @return 생성된 기업 엔티티
      */
     @Transactional
-    public Company createCompanyForUser(Long userId, String companyName) {
+    public Company createCompanyForUser(Long userId, String companyName, IndustryType industryType) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
 
@@ -34,8 +35,7 @@ public class CompanyService {
             throw new IllegalArgumentException("이 유저는 이미 기업을 보유하고 있습니다.");
         });
 
-        // 임시로 1L, 2L 할당 (추후 기획에 맞게 수정)
-        Company company = new Company(user, companyName, 1L, 2L);
+        Company company = new Company(user, companyName, industryType);
         Company savedCompany = companyRepository.save(company);
 
         // 기업 생성 시 기본 창고(인벤토리) 자동 지급

@@ -1,3 +1,10 @@
+// ==================== 공통 응답 래퍼 ====================
+export interface ApiResponse<T> {
+    success: boolean;
+    message: string;
+    data: T;
+}
+
 // ==================== Auth ====================
 export interface TokenResponse {
     accessToken: string;
@@ -6,6 +13,12 @@ export interface TokenResponse {
 export interface AuthCallbackResponse {
     accessToken: string;
     refreshToken: string;
+}
+
+export interface GuestLoginResponse {
+    accessToken: string;
+    userId: number;
+    isGuest: boolean;
 }
 
 // ==================== User ====================
@@ -17,6 +30,14 @@ export interface UserProfile {
 }
 
 // ==================== Company ====================
+export type IndustryType = 'GOLD_MINING' | 'GOLD_SMELTING' | 'MANUFACTURING';
+
+export interface CompanyCreateResponse {
+    id: number;
+    name: string;
+    industryType: IndustryType;
+}
+
 export interface CompanySlotInfo {
     warehouse_slots: number;
     inventory_slots: number;
@@ -32,12 +53,16 @@ export interface CompanyDetail {
 }
 
 // ==================== Storage (Inventory) ====================
+// TOOD 추후 확장을 위해 남겨둠
+export type ItemType = 'MATERIAL' | 'PRODUCT' | 'EQUIPMENT' | 'TICKET';
+
 export interface InventorySlot {
-    inventory_id: number;
-    slot_index: number;
-    item_id: number;
-    item_name: string;
+    slotIndex: number;
+    itemId: number | null;
+    itemName: string | null;
+    itemType: ItemType | null;
     quantity: number;
+    maxQuantity: number;
 }
 
 export interface SaveInventoryItemRequest {

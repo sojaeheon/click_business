@@ -15,9 +15,11 @@ export const LoginPage = () => {
     navigate('/industry-selection');
   };
 
-  const handleGuestMode = () => {
+const handleGuestMode = async () => {
+    const { data } = await authApi.createGuest();
+    localStorage.setItem('accessToken', data.data.accessToken);
     navigate('/industry-selection');
-  };
+};
 
   return (
     // 전체 화면을 채우고, 삐져나가는 배경을 숨깁니다 (overflow-hidden)
