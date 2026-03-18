@@ -1,13 +1,12 @@
-import { Building2, Package, Backpack, BarChart3, Factory } from "lucide-react";
+import { Building2, Package, Backpack, BarChart3 } from "lucide-react";
 import { useGame, useGameStore } from "../../../store/gameStore";
-import { useInventoryStore } from "../../../store/useAppStore";
 
 export function CompanyProfile() {
   const { state } = useGame();
   const usedSlots = useGameStore(s => s.getWarehouseUsage().usedSlots);
   const maxSlots = useGameStore(s => s.warehouseMaxSlots);
-  const inventorySlots = useInventoryStore(s => s.slots);
-  const inventoryUsed = inventorySlots.filter(s => s.item_name).length;
+  // 인벤토리 슬롯은 백엔드 연동 전까지 임시 0 표시
+  const inventoryUsed = 0; // TODO: InventoryAPI 연동 후 실제 값으로 대체
 
   return (
     <div className="h-full flex flex-col">

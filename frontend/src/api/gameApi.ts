@@ -34,6 +34,22 @@ export const CompanyAPI = {
       };
     }
   },
+
+  /** 회사 최초 생성 (산업선택 페이지에서 호출) */
+  create: async (data: { companyName: string; industryType: string }) => {
+    try {
+      // ✅ POST /api/v1/companies  (API 명세서 기준)
+      const res = await apiClient.post('/companies', {
+        company_name: data.companyName,
+        industry_type: data.industryType,
+      });
+      return { data: res.data?.data ?? { success: true } };
+    } catch (err) {
+      console.warn("CompanyAPI.create 목업 폴백:", err);
+      await mockDelay(300);
+      return { data: { success: true, mock: true } };
+    }
+  },
 };
 
 // 💡 작업장(Workstation) 백엔드 연동 전 임시 테스트용 목업 상태

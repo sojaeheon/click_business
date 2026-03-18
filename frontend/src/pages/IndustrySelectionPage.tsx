@@ -1,15 +1,23 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from "../store/gameStore";
 import { useAlertStore } from "../store/useAlertStore";
+import { preloadGameModels } from "../app/components/game/IsometricScene";
+import { CompanyAPI } from "../api/gameApi";
 
-const IndustryCard = ({ title, iconLabel, onSelect }: { title: string; iconLabel: string; onSelect: () => void }) => {
+const IndustryCard = ({ title, iconLabel, onSelect, isSelected }: {
+  title: string;
+  iconLabel: string;
+  onSelect: () => void;
+  isSelected?: boolean;
+}) => {
   const [isHovered, setIsHovered] = useState(false);
-  const bgImage = isHovered ? "/ui_icons/Button_Exit_Blue.png" : "/ui_icons/Button_Exit_Disable.png";
+  const active = isSelected || isHovered;
+  const bgImage = active ? "/ui_icons/Button_Exit_Blue.png" : "/ui_icons/Button_Exit_Disable.png";
 
   return (
     <div
-      className="industry-card flex flex-col items-center justify-start cursor-pointer transition-transform hover:-translate-y-2 hover:shadow-2xl"
+      className={`industry-card flex flex-col items-center justify-start cursor-pointer transition-transform hover:-translate-y-2 hover:shadow-2xl ${isSelected ? 'scale-105' : ''}`}
       onClick={onSelect}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -17,12 +25,12 @@ const IndustryCard = ({ title, iconLabel, onSelect }: { title: string; iconLabel
       {/* 타이틀 버튼 (이미지 배경) */}
       <div className="relative w-48 h-16 flex items-center justify-center -mt-8 mb-6">
         <img src={bgImage} alt="Title BG" className="absolute inset-0 w-full h-full object-fill drop-shadow-md transition-all" />
-        <span className={`relative font-bold text-lg tracking-wide ${isHovered ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]' : 'text-gray-300 drop-shadow'}`}>
+        <span className={`relative font-bold text-lg tracking-wide ${active ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]' : 'text-gray-300 drop-shadow'}`}>
           {title}
         </span>
       </div>
 
-      <div className="industry-icon-wrapper rounded-full bg-slate-100 p-8 shadow-inner border border-slate-200">
+      <div className={`industry-icon-wrapper rounded-full p-8 shadow-inner border transition-all ${isSelected ? 'bg-blue-100 border-blue-400 ring-4 ring-blue-300' : 'bg-slate-100 border-slate-200'}`}>
         <span className="industry-icon text-3xl font-black text-slate-500">{iconLabel}</span>
       </div>
     </div>
@@ -34,37 +42,52 @@ export const IndustrySelectionPage = () => {
   const setCompanyInfo = useGameStore(state => state.setCompanyInfo);
   const [selectedIndustry, setSelectedIndustry] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // ✅ 페이지 진입 시 3D 모델 백그라운드 preload 시작
+  useEffect(() => {
+    preloadGameModels();
+  }, []);
 
   const handleSelect = (industry: string) => {
     setSelectedIndustry(industry);
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (companyName.trim() === '') {
       useAlertStore.getState().openAlert('회사 이름을 입력해주세요.', "경고");
       return;
     }
-    // 💡 [백엔드 연동: 기업 설정 내역 전송]
-    // API 명세서: POST /api/v1/companies
-    // - 산업 설정 parameter: { company_id, industry_type }
-    // - 이름 설정 parameter: { company_id, company_name }
-    // (이곳에서 fetch/axios를 통해 위 값을 백엔드로 전송하시면 됩니다.)
-
     if (!selectedIndustry) {
       useAlertStore.getState().openAlert('산업을 선택해주세요.', "경고");
       return;
     }
-    setCompanyInfo(companyName, selectedIndustry);
-    navigate('/main');
+
+    setIsSubmitting(true);
+    try {
+      // ✅ 백엔드 API 연동: POST /api/v1/companies
+      await CompanyAPI.create({
+        companyName: companyName.trim(),
+        industryType: selectedIndustry,
+      });
+    } catch (e) {
+      // API 실패 시 목업으로 폴백 (개발 환경)
+      console.warn("회사 생성 API 실패, 목업으로 진행:", e);
+    } finally {
+      // 전역 스토어에 산업 정보 저장 (항상 수행)
+      setCompanyInfo(companyName.trim(), selectedIndustry);
+      setIsSubmitting(false);
+      navigate('/main');
+    }
   };
 
   return (
     <div className="industry-container">
       <div className="industry-content">
         <div className="industry-cards-wrapper flex gap-8">
-          <IndustryCard title="금광업" iconLabel="금광석" onSelect={() => handleSelect('금광업')} />
-          <IndustryCard title="금 제련업" iconLabel="금괴" onSelect={() => handleSelect('금 제련업')} />
-          <IndustryCard title="제조업" iconLabel="광산 드릴" onSelect={() => handleSelect('제조업')} />
+          <IndustryCard title="금광업" iconLabel="금광석" isSelected={selectedIndustry === '금광업'} onSelect={() => handleSelect('금광업')} />
+          <IndustryCard title="금 제련업" iconLabel="금괴" isSelected={selectedIndustry === '금 제련업'} onSelect={() => handleSelect('금 제련업')} />
+          <IndustryCard title="제조업" iconLabel="광산 드릴" isSelected={selectedIndustry === '제조업'} onSelect={() => handleSelect('제조업')} />
         </div>
       </div>
 
@@ -89,7 +112,13 @@ export const IndustrySelectionPage = () => {
                 setSelectedIndustry(null);
                 setCompanyName('');
               }}>취소</button>
-              <button className="modal-confirm-btn" onClick={handleConfirm}>확인</button>
+              <button
+                className="modal-confirm-btn"
+                onClick={handleConfirm}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? '처리 중...' : '확인'}
+              </button>
             </div>
           </div>
         </div>

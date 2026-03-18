@@ -861,20 +861,22 @@ export function IsometricScene({ isLoginMode = false }: { isLoginMode?: boolean 
         </Canvas>
         {/* ✨ 불러온 GlobalDialog를 여기에 렌더링합니다! */}
         {dialogData && <GlobalDialog data={dialogData} onClose={closeDialog} />}
-        {/* ✨ 조작 가이드 모달 추가 */}
-        {!isLoginMode && <ControlGuideModal />}
+        {/* ✨ 조작 가이드 모달은 GameHUD의 ? 버튼으로 일원화했습니다 */}
       </div>
     </div>
   );
 }
 
-// ✨ 프리로드 목록 (최적화: 공통 + 현재 산업 props만 선별)
-[
+// ──────────────────────────────────────────────────────────────
+// 프리로드 목록 (export 해서 로그인/산업선택 화면에서도 호출 가능)
+// 해당 페이지에서 preloadGameModels() 한 번만 호출하면 될
+// ──────────────────────────────────────────────────────────────
+export const PRELOAD_MODEL_URLS: string[] = [
   // ── 환경/건물 (필수) ──
   M.base, M.bank, M.hr, M.market, M.warehouse,
   M.roadStraight, M.roadCornerCurved,
   M.roadJunction, M.roadTsplit,
-  // ── 차들 / 소품 일부 ──
+  // ── 차/소품 ──
   M.carHatchback, M.carSedan, M.carPolice,
   M.ocean,
   // ── 캐릭터 + 애니메이션 ──
@@ -882,18 +884,26 @@ export function IsometricScene({ isLoginMode = false }: { isLoginMode?: boolean 
   "/models/animations/Rig_Medium_Tools.glb",
   "/models/animations/Rig_Medium_MovementBasic.glb",
   "/models/animations/Rig_Medium_General.glb",
-  // ── 금 제련업 (컨베이어) 관련 ──
+  // ── 금 제련업 (콘베이어) ──
   "/models/props/animated_conveyer_belt.glb",
   "/models/props/Gold_Bar.gltf",
   "/models/props/Gold_Bars_Stack_Small.gltf",
   "/models/props/Gold_Bars_Stack_Medium.gltf",
   "/models/props/Gold_Bars_Stack_Large.gltf",
-  // ── 금광업 관련 ──
+  // ── 금광업 ──
   "/models/props/rocks_B.gltf",
   "/models/props/Gold_Nuggets.gltf",
   "/models/props/Gold_Nugget_Medium.gltf",
-  // ── 제조업 관련 ──
+  // ── 제조업 ──
   "/models/props/machine1.glb",
   "/models/props/drill.glb",
   "/models/props/toolbox.glb",
-].forEach(url => useGLTF.preload(url));
+];
+
+/** 로그인/산업선택 화면에서 미리 호출함으로써 맞 화면 즔싹 워밍 */
+export function preloadGameModels() {
+  PRELOAD_MODEL_URLS.forEach(url => useGLTF.preload(url));
+}
+
+// 메인 진입 시(IsometricScene 렌더링 시점)에도 한번 더 호출 (fallback)
+preloadGameModels();

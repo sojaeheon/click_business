@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useEffect, useState } from "react";
 import { IsometricScene } from "./components/game/IsometricScene";
 import { GameHUD } from "./components/game/GameHUD";
 import { ModalContainer } from "./components/modals/ModalContainer";
+import { ControlGuideModal } from "./components/modals/ControlGuideModal";
 
 // 건물 페이지들 (Lazy Loading 적용)
 const BankPage = lazy(() => import("../pages/buildings/BankPage").then(module => ({ default: module.BankPage })));
@@ -10,17 +11,18 @@ const HRPage = lazy(() => import("../pages/buildings/HRPage").then(module => ({ 
 const MinigamePage = lazy(() => import("../pages/buildings/MinigamePage").then(module => ({ default: module.MinigamePage })));
 const MarketPage = lazy(() => import("../pages/buildings/MarketPage").then(module => ({ default: module.MarketPage })));
 
-// ✨ 1. Zustand 스토어 올바른 경로로 불러오기
 import { useGameStore } from "../store/gameStore";
 
 export default function App() {
-  // ✨ 2. Zustand 냉장고에서 필요한 상태만 꺼내기
   const activeBuildingPage = useGameStore(state => state.activeBuildingPage);
   const activeModal = useGameStore(state => state.activeModal);
-
   const fetchCompanyData = useGameStore(state => state.fetchCompanyData);
 
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+
+  // ─── 조작 가이드 모달 상태 (App 레벨에서 관리 → pointer-events 문제 해결) ───
+  const [showGuide, setShowGuide] = useState(false);
+  const [autoGuide] = useState(() => !localStorage.getItem("hideControlGuide"));
 
   // ──────────────────────────────────────────────────────────
   // 1. 초기 데이터 불러오기
@@ -36,10 +38,10 @@ export default function App() {
       }
     };
     initGame();
-  }, [fetchCompanyData]); // 의존성 배열에 추가
+  }, [fetchCompanyData]);
 
   // ──────────────────────────────────────────────────────────
-  // 2. 창이 닫힐 때 3D 캔버스로 포커스 되돌려주기 (마우스 꼬임 방지 버그 픽스)
+  // 2. 창이 닫힐 때 3D 캔버스로 포커스 되돌려주기
   // ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!activeModal && !activeBuildingPage) {
@@ -70,7 +72,6 @@ export default function App() {
     );
   }
 
-  // ✨ 3. GameContext.Provider 같은 거추장스러운 태그가 전부 사라졌습니다!
   return (
     <div className="w-screen h-screen overflow-hidden relative bg-gray-100">
       
@@ -79,13 +80,13 @@ export default function App() {
         <IsometricScene />
       </div>
 
-      {/* 2층: HUD Overlay Layer (건물 안에 안 들어갔을 때만 보임) */}
-      {!activeBuildingPage && <GameHUD />}
+      {/* 2층: HUD Overlay Layer */}
+      {!activeBuildingPage && <GameHUD onOpenGuide={() => setShowGuide(true)} />}
 
-      {/* 3층: Modal Layer (알림창 등) */}
+      {/* 3층: Modal Layer */}
       <ModalContainer />
 
-      {/* 4층: Building Page Layer (건물 입장 시 전체 화면 덮기) */}
+      {/* 4층: Building Page Layer */}
       {activeBuildingPage && (
         <Suspense fallback={
           <div className="absolute inset-0 z-40 bg-gray-100/80 backdrop-blur-sm flex items-center justify-center">
@@ -105,6 +106,12 @@ export default function App() {
           </div>
         </Suspense>
       )}
+
+      {/* ✅ 조작 가이드 모달 — App 최상위에서 렌더 (pointer-events-none 영향 없음) */}
+      <ControlGuideModal
+        forceOpen={showGuide || autoGuide}
+        onForceClose={() => setShowGuide(false)}
+      />
     </div>
   );
 }

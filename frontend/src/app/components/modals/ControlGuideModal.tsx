@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { X, MousePointer2 } from "lucide-react";
 
-export function ControlGuideModal() {
+export function ControlGuideModal({ forceOpen = false, onForceClose }: {
+  forceOpen?: boolean;
+  onForceClose?: () => void;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [hideForever, setHideForever] = useState(false);
 
@@ -13,11 +16,17 @@ export function ControlGuideModal() {
     }
   }, []);
 
+  // forceOpen이 true로 바뀌면 무조건 열기
+  useEffect(() => {
+    if (forceOpen) setIsOpen(true);
+  }, [forceOpen]);
+
   const handleClose = () => {
     if (hideForever) {
       localStorage.setItem("hideControlGuide", "true");
     }
     setIsOpen(false);
+    onForceClose?.();
   };
 
   if (!isOpen) return null;

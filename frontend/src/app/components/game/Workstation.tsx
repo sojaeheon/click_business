@@ -7,7 +7,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGameStore } from "../../../store/gameStore";
 import { WorkstationAPI } from "../../../api/gameApi";
-import { EnvModel, HoverableGroup } from "./BaseComponents";
+import { EnvModel } from "./BaseComponents";
 import { AreaLabel } from "./BuildingComponents";
 import {
     GOLD_STACK_MODELS, MAX_PILES, MAX_TOTAL, MAX_GOLD_CAP,
@@ -474,31 +474,6 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
             ))}
 
             <AreaLabel label="작업장" />
-
-            {/* 임시 산업 변경 토글 (개발용) */}
-            <group position={[0, -0.5, 2]}>
-                <Html center>
-                    <div className="flex bg-white/80 backdrop-blur-md rounded-full shadow-lg p-1 gap-1 border border-slate-200"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        {["금광업", "금 제련업", "제조업"].map((ind) => (
-                            <button
-                                key={ind}
-                                onClick={() => useGameStore.getState().setCompanyInfo(
-                                    useGameStore.getState().companyName, ind
-                                )}
-                                className={`px-3 py-1.5 text-xs font-bold rounded-full transition-colors
-                                    ${industry === ind
-                                        ? "bg-indigo-500 text-white shadow"
-                                        : "text-slate-500 hover:bg-slate-100"
-                                    }`}
-                            >
-                                {ind}
-                            </button>
-                        ))}
-                    </div>
-                </Html>
-            </group>
         </group>
     );
 }

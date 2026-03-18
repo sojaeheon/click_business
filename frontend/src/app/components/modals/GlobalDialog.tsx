@@ -196,7 +196,8 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                     onKeyUp={e => e.stopPropagation()}
                     onFocus={e => { e.stopPropagation(); e.target.select(); }}
                     onClick={e => e.stopPropagation()}
-                    className="w-full text-center text-4xl font-black border-2 border-b-4 border-slate-200 rounded-2xl py-3 bg-white text-indigo-900 focus:outline-none focus:border-indigo-400 focus:border-b-indigo-500 shadow-inner hover:border-indigo-300 transition-colors"
+                    style={{ MozAppearance: 'textfield' } as React.CSSProperties}
+                    className="w-full text-center text-4xl font-black border-2 border-b-4 border-slate-200 rounded-2xl py-3 bg-white text-indigo-900 focus:outline-none focus:border-indigo-400 focus:border-b-indigo-500 shadow-inner hover:border-indigo-300 transition-colors [appearance:none] [-webkit-appearance:none]"
                   />
                   <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none">
                     <span className="text-indigo-300 font-bold text-base select-none bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">개</span>
