@@ -11,7 +11,11 @@ echo "Waiting for Kafka..."
 # 로컬 테스트 환경에서는 cub 대신 nc나 단순 대기로 대체 가능하나 기존 로직 유지 시도
 # cub kafka-ready -b $BOOTSTRAP 1 20 || echo "Kafka not ready, but trying anyway..."
 
+
+
+# ==========================================
 # Kafka Topic 생성 (단일 토픽: market.events)
+# ==========================================
 echo "Creating topics..."
 /usr/bin/kafka-topics --create --if-not-exists \
   --bootstrap-server $BOOTSTRAP \
@@ -19,9 +23,12 @@ echo "Creating topics..."
   --partitions 3 \
   --replication-factor 1
 
+# ==========================================
+# Kafka Topic 생성 (단일 토픽: warehouse.events)
+# ==========================================
 /usr/bin/kafka-topics --create --if-not-exists \
+  --topic warehouse.events \
   --bootstrap-server $BOOTSTRAP \
-  --topic game.trade.raw \
   --partitions 3 \
   --replication-factor 1
 
