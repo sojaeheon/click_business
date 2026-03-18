@@ -45,14 +45,14 @@ export interface InventoryItem {
 
 /** 미니게임 보상 랜덤 풀 (8종) */
 export const REWARD_ITEM_POOL: Omit<InventoryItem, "id">[] = [
-  { type: "worker_수습_광부",     name: "수습 광부",       icon: "⛏️",  quantity: 1, level: 1, workerType: "miner" },
-  { type: "worker_숙련_광부",     name: "숙련 광부",       icon: "⛏️",  quantity: 1, level: 2, workerType: "miner" },
-  { type: "worker_초보_제련공",   name: "초보 제련공",     icon: "🔥",  quantity: 1, level: 1, workerType: "smelter" },
-  { type: "worker_숙련_제련공",   name: "숙련 제련공",     icon: "🔥",  quantity: 1, level: 2, workerType: "smelter" },
-  { type: "worker_견습_대장장이", name: "견습 대장장이",   icon: "🔨",  quantity: 1, level: 1, workerType: "manufacturer" },
-  { type: "worker_숙련_대장장이", name: "숙련 대장장이",   icon: "🔨",  quantity: 1, level: 2, workerType: "manufacturer" },
-  { type: "ticket_warehouse",      name: "창고 확장권",     icon: "📦",  quantity: 1 },
-  { type: "ticket_inventory",      name: "인벤토리 확장권", icon: "🎒",  quantity: 1 },
+  { type: "worker_수습_광부", name: "수습 광부", icon: "⛏️", quantity: 1, level: 1, workerType: "miner" },
+  { type: "worker_숙련_광부", name: "숙련 광부", icon: "⛏️", quantity: 1, level: 2, workerType: "miner" },
+  { type: "worker_초보_제련공", name: "초보 제련공", icon: "🔥", quantity: 1, level: 1, workerType: "smelter" },
+  { type: "worker_숙련_제련공", name: "숙련 제련공", icon: "🔥", quantity: 1, level: 2, workerType: "smelter" },
+  { type: "worker_견습_대장장이", name: "견습 대장장이", icon: "🔨", quantity: 1, level: 1, workerType: "manufacturer" },
+  { type: "worker_숙련_대장장이", name: "숙련 대장장이", icon: "🔨", quantity: 1, level: 2, workerType: "manufacturer" },
+  { type: "ticket_warehouse", name: "창고 확장권", icon: "📦", quantity: 1 },
+  { type: "ticket_inventory", name: "인벤토리 확장권", icon: "🎒", quantity: 1 },
 ];
 
 export interface HRData { currentLevel: number; expectedLevel: number; successRate: number; materialCurrent: number; materialMax: number; }
