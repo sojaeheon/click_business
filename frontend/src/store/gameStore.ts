@@ -125,37 +125,22 @@ export const useGameStore = create<GameState>()(
     (set, get) => ({
       companyName: "",
       industry: "금 제련업",
-      money: 1000000,
+      money: 5000000,
       currency: "₩",
       capital: 5000000,
-      debt: 2000000,
+      debt: 0,
       warehouseMaxSlots: 10,
       inventoryMax: 4,
-      alerts: [
-        { id: "mock11", message: "[시장] 경쟁사 신제품 출시 소식", detail: "시장 점유율에 영향을 미칠 수 있습니다.", timeAgo: "방금 전", read: false },
-        { id: "mock1", message: "[시스템] 시장 조사 보고서가 도착했습니다.", detail: "금주 수요량 증가 예상", timeAgo: "1분 전", read: false },
-        { id: "mock2", message: "[창고] 자재 물류 트럭 도착", detail: "고급 철재 500개 입고 대기 중", timeAgo: "3분 전", read: false },
-        { id: "mock12", message: "[재무] 이달의 법인세 납부 안내", detail: "기한 내 납부하지 않으면 가산세가 부과됩니다.", timeAgo: "10분 전", read: false },
-        { id: "mock3", message: "[인사] 신입 사원 면접 평가 완료", timeAgo: "20분 전", read: true },
-        { id: "mock13", message: "[시스템] 게임 클라이언트 업데이트 (v1.2.0)", detail: "UI 테마 및 성능 개선이 확정되었습니다.", timeAgo: "2시간 전", read: true },
-        { id: "mock4", message: "[생산] 라인 A 점검 알림", detail: "정기 점검까지 2시간 남았습니다. 생산에 유의하세요.", timeAgo: "3시간 전", read: true },
-        { id: "mock5", message: "[은행] 대출 이자율 변동 안내", timeAgo: "어제", read: true }
-      ],
-      news: [
-        { id: "news1", headline: "속보! [O][O]공장 석유 유출 사고...", date: "TODAY 3rd Mar", isBreaking: true, summary: "대규모 환경 오염 우려" },
-        { id: "news2", headline: "철강 가격 3개월 만에 최고치 경신", date: "2nd Mar", isBreaking: false },
-      ],
+      alerts: [],
+      news: [],
       activeModal: null,
       selectedBuilding: null,
       activeBuildingPage: null,
-      bankData: { loanRate: 5.5, depositRate: 2.3, currentLoan: 500000, currentDeposit: 150000 },
-      warehouseItems: [
-        { id: "m1", type: "material", quantity: 47 },
-        { id: "p1", type: "product", quantity: 253 },
-      ],
+      bankData: { loanRate: 5.5, depositRate: 2.3, currentLoan: 0, currentDeposit: 0 },
+      warehouseItems: [],
       hrData: { currentLevel: 1, expectedLevel: 2, successRate: 70, materialCurrent: 1, materialMax: 2 },
       isLoading: false,
-      // 인베토리 아이템 (mock 시작값: 견습 광부 1개)
+      // 인베토리 아이템 (기본 캐릭터 지급 1개)
       inventoryItems: [
         { id: "inv_default_1", type: "worker_수습_광부", name: "수습 광부", icon: "⛏️", quantity: 1, level: 1, workerType: "miner" },
       ],

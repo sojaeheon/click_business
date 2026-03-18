@@ -16,9 +16,16 @@ export const LoginPage = () => {
   };
 
 const handleGuestMode = async () => {
-    const { data } = await authApi.createGuest();
-    localStorage.setItem('accessToken', data.data.accessToken);
-    navigate('/industry-selection');
+    try {
+      const { data } = await authApi.createGuest();
+      // 기존 잔여 게임 데이터가 존재할 수 있으므로 삭제 (state 초기화 용도)
+      localStorage.removeItem('game-storage');
+      localStorage.setItem('accessToken', data.data.accessToken);
+      navigate('/industry-selection');
+    } catch (error) {
+      console.error("게스트 로그인 실패:", error);
+      useAlertStore.getState().openAlert("서버와 연결할 수 없습니다. 백엔드(8000번 포트)가 켜져 있는지 확인해 주세요.", "서버 오류");
+    }
 };
 
   return (
