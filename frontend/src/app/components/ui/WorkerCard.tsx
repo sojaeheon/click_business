@@ -6,7 +6,7 @@ import React from "react";
 import { getWorkerDef } from "../../../constants/workers";
 
 export interface WorkerItem {
-  id: number;
+  id: number | string;
   name?: string;
   item_name?: string;
   level?: number;

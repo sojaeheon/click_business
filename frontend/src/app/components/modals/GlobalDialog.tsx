@@ -3,7 +3,8 @@ import { UserPlus } from "lucide-react";
 import { useGame } from "../../../store/gameStore";
 import { useInventoryStore } from "../../../store/useAppStore";
 import { useAlertStore } from "../../../store/useAlertStore";
-import { getWorkerIcon } from "../ui/WorkerCard";
+import { getWorkerIcon, WorkerCard } from "../ui/WorkerCard";
+import { useGameStore } from "../../../store/gameStore";
 
 // 다른 곳에서도 쓸 수 있게 export 해줍니다.
 export interface ConfirmData {
@@ -26,15 +27,8 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
   // 장착 일꾼 데이터
   const [equippedWorker, setEquippedWorker] = useState<{ id: number, name: string, level: number } | null>(null);
 
-  const [slots, setSlots] = useState<any[]>([]);
+  const slots = useGameStore(s => s.inventoryItems);
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
-
-  useEffect(() => {
-    // InventoryModal과 동일하게 목업 데이터를 불러옵니다.
-    import("../../../api/gameApi").then(({ InventoryAPI }) => {
-      InventoryAPI.getInventory(1).then(res => setSlots(res.data));
-    });
-  }, []);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -299,40 +293,22 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
               <button onClick={() => setIsInventoryOpen(false)} className="w-12 h-12 rounded-full hover:bg-slate-100 flex items-center justify-center font-bold text-slate-500 text-xl cursor-pointer">X</button>
             </div>
             <div className="flex-1 overflow-y-auto flex flex-col gap-4 pr-2">
-              {(!Array.isArray(slots) || slots.length === 0) && <div className="text-center text-slate-400 mt-10">인벤토리가 비어 있습니다.</div>}
-              {Array.isArray(slots) && slots.map((item) => {
-                const itemName = item.name || item.item_name;
-                const itemId = item.id || item.item_id;
-                const isWorker = itemName && (itemName.includes("광부") || itemName.includes("제련") || itemName.includes("대장") || itemName.includes("전사") || itemName.includes("기사") || itemName.includes("도적") || itemName.includes("대장장이"));
-                // @ts-ignore
-                const isLocked = item.locked !== undefined ? item.locked : false;
-
-                return (
-                  <button
-                    key={itemId || Math.random()}
-                    onClick={() => {
-                      if (isWorker && !isLocked) {
-                        setEquippedWorker({ id: itemId, name: itemName, level: (item as any).level || 1 });
+              {!slots || slots.length === 0 ? (
+                <div className="text-center text-slate-400 mt-10">인벤토리가 비어 있습니다.</div>
+              ) : (
+                slots.filter(item => item.type.startsWith("worker_")).map((item) => (
+                  <div key={item.id} className="w-full">
+                    <WorkerCard
+                      item={item}
+                      isSmall={false}
+                      onClick={() => {
+                        setEquippedWorker({ id: parseInt(item.id.replace(/\D/g, "") || "0"), name: item.name || '', level: item.level || 1 });
                         setIsInventoryOpen(false);
-                      } else if (!isWorker && !isLocked && itemName) {
-                        useAlertStore.getState().openAlert("캐릭터(일꾼)만 장착할 수 있습니다.", "장착 불가");
-                      }
-                    }}
-                    className={`w-full text-left rounded-3xl border-[4px] p-5 flex justify-between items-center transition-all ${isWorker && !isLocked
-                        ? "bg-white border-slate-200 hover:border-amber-400 hover:shadow-xl hover:-translate-y-1 cursor-pointer"
-                        : isLocked ? "bg-slate-50 border-slate-200 opacity-50 cursor-not-allowed grayscale" : "bg-slate-50 border-slate-200 hover:border-slate-300 cursor-not-allowed"
-                      }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      {isWorker && !isLocked && <span className="text-3xl drop-shadow-md flex-shrink-0">{getWorkerIcon(itemName)}</span>}
-                      <div>
-                        <h3 className={`text-lg font-black ${isWorker && !isLocked ? "text-slate-800" : "text-slate-500"}`}>{itemName || (isLocked ? "잉금 슬롯" : "빈 슬롯")}</h3>
-                        {isWorker && !isLocked && <p className="text-sm font-bold text-amber-600 mt-0.5">Lv. {(item as any).level || 1}</p>}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
+                      }}
+                    />
+                  </div>
+                ))
+              )}
             </div>
             <style dangerouslySetInnerHTML={{
               __html: `

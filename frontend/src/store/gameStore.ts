@@ -130,7 +130,7 @@ export const useGameStore = create<GameState>()(
       capital: 5000000,
       debt: 2000000,
       warehouseMaxSlots: 10,
-      inventoryMax: 50,
+      inventoryMax: 4,
       alerts: [
         { id: "mock11", message: "[시장] 경쟁사 신제품 출시 소식", detail: "시장 점유율에 영향을 미칠 수 있습니다.", timeAgo: "방금 전", read: false },
         { id: "mock1", message: "[시스템] 시장 조사 보고서가 도착했습니다.", detail: "금주 수요량 증가 예상", timeAgo: "1분 전", read: false },

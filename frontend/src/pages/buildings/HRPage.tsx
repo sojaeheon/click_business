@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, Suspense } from "react";
 import { Plus } from "lucide-react";
-import { useGame } from "../../store/gameStore";
+import { useGame, useGameStore } from "../../store/gameStore";
 import { Canvas } from "@react-three/fiber";
 import { Html, useGLTF, OrbitControls, useAnimations, useTexture } from "@react-three/drei";
 import * as THREE from "three";
 import { BackButton } from "../../app/components/ui/backbutton";
-import { getWorkerIcon, getWorkerModelPath } from "../../app/components/ui/WorkerCard";
+import { getWorkerIcon, getWorkerModelPath, WorkerCard } from "../../app/components/ui/WorkerCard";
 
 function CharacterModel({ url }: { url: string }) {
   const { scene, animations } = useGLTF(url);
@@ -126,33 +126,22 @@ function getModelPathForWorker(name: string) {
 
 export function HRPage() {
   const { closeBuildingPage } = useGame();
+  const slots = useGameStore(s => s.inventoryItems);
 
   const [selectedWorker, setSelectedWorker] = useState<any>(null);
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
-  const [slots, setSlots] = useState<any[]>([]);
   const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null);
   const [showLevelUp, setShowLevelUp] = useState(false);
 
-  useEffect(() => {
-    import("../../api/gameApi").then(({ InventoryAPI }) => {
-      // 목업상 여러 개 소유하기 위해 수량을 가상으로 증폭시켜 테스트 가능하게 함
-      InventoryAPI.getInventory(1).then(res => {
-        const data = [...res.data];
-        data.forEach((d: any) => { if (!d.quantity && !d.owned) d.quantity = 2; }); // 임시 보유량 세팅
-        setSlots(data);
-      });
-    });
-  }, []);
-
   const getWorkerCount = (worker: any) => {
     if (!worker) return 0;
-    const name = worker.name || worker.item_name;
+    const name = worker.name;
     const level = worker.level || 1;
     let count = 0;
     slots.forEach(s => {
-      const sName = s.name || s.item_name;
+      const sName = s.name;
       const sLevel = s.level || 1;
-      const qty = s.quantity || s.owned || 1;
+      const qty = s.quantity || 1;
       if (sName === name && sLevel === level) {
         count += qty;
       }
@@ -230,7 +219,7 @@ export function HRPage() {
           {selectedWorker && (
             <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900/80 backdrop-blur-md px-8 py-4 rounded-3xl border-2 border-slate-600 shadow-xl flex gap-6 items-center z-10 text-white">
               <div>
-                <h2 className="text-3xl font-black text-amber-400">{selectedWorker.name || selectedWorker.item_name}</h2>
+                <h2 className="text-3xl font-black text-amber-400">{selectedWorker.name}</h2>
                 <p className="text-xl font-bold">Lv. {selectedWorker.level || 1}</p>
               </div>
               <div className="h-10 w-px bg-slate-600"></div>
@@ -253,7 +242,7 @@ export function HRPage() {
                 <group position={[0, -1.0, 0]}>
                   {selectedWorker ? (
                     <group onClick={(e) => { e.stopPropagation(); setIsInventoryOpen(true); }} onPointerOver={() => document.body.style.cursor = 'pointer'} onPointerOut={() => document.body.style.cursor = 'auto'}>
-                      <CharacterModel url={getModelPathForWorker(selectedWorker.name || selectedWorker.item_name)} />
+                      <CharacterModel url={getModelPathForWorker(selectedWorker.name)} />
                     </group>
                   ) : (
                     <Html position={[0, 0.8, 0]} center zIndexRange={[100, 0]}>
@@ -297,41 +286,23 @@ export function HRPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto flex flex-col gap-4 pr-2">
-            {(!Array.isArray(slots) || slots.length === 0) && <div className="text-center text-slate-400 mt-10">인벤토리가 비어 있습니다.</div>}
-            {Array.isArray(slots) && slots.map((item) => {
-              const itemName = item.name || item.item_name;
-              const itemId = item.id || item.item_id;
-              // 일꾼 종류 판별: 이름으로 구분
-              const isWorker = itemName && (
-                itemName.includes("광부") || itemName.includes("제련") ||
-                itemName.includes("대장") || itemName.includes("전사") ||
-                itemName.includes("기사") || itemName.includes("도적") ||
-                itemName.includes("대장장이")
-              );
-              // @ts-ignore
-              const isLocked = item.locked !== undefined ? item.locked : false;
-
-              if (!isWorker || isLocked) return null;
-
-              const workerIcon = getWorkerIcon(itemName);
-
-              return (
-                <button
-                  key={itemId || Math.random()}
-                  onClick={() => {
-                    setSelectedWorker(item);
-                    setIsInventoryOpen(false);
-                  }}
-                  className="w-full text-left rounded-3xl border-[4px] p-4 flex items-center gap-4 transition-all bg-white border-slate-200 hover:border-amber-400 hover:shadow-xl hover:-translate-y-1 cursor-pointer"
-                >
-                  <span className="text-3xl flex-shrink-0">{workerIcon}</span>
-                  <div>
-                    <h3 className="text-lg font-black text-slate-800">{itemName}</h3>
-                    <p className="text-sm font-bold text-amber-600 mt-0.5">Lv. {(item as any).level || 1}</p>
-                  </div>
-                </button>
-              );
-            })}
+            {!slots || slots.length === 0 ? (
+              <div className="text-center text-slate-400 mt-10">인벤토리가 비어 있습니다.</div>
+            ) : (
+              slots.filter(item => item.type.startsWith("worker_")).map((item) => (
+                <div key={item.id} className="w-full">
+                  <WorkerCard
+                    item={item}
+                    isSmall={false}
+                    onClick={() => {
+                      setSelectedWorker(item);
+                      setIsInventoryOpen(false);
+                    }}
+                  />
+                  {/* 보유 개수 표시기 등 필요 시 추가 */}
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}

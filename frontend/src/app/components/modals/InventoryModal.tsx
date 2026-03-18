@@ -2,7 +2,6 @@ import { useState, useMemo } from "react";
 import { Lock, ShoppingBag, HelpCircle, X, Package } from "lucide-react";
 import { useGameStore } from "../../../store/gameStore";
 import { useAlertStore } from "../../../store/useAlertStore";
-import { WorkerEquippedDisplay, type WorkerItem } from "../ui/WorkerCard";
 import type { InventoryItem } from "../../../store/gameStore";
 
 export function InventoryModal() {
@@ -11,26 +10,9 @@ export function InventoryModal() {
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
 
-  // 현재 장착된 일꾼 (임시) - 실제로는 별도 장착 상태를 관리해야 함
-  const [equippedSlot, setEquippedSlot] = useState<WorkerItem | null>({
-    id: 101,
-    name: "수습 광부",
-    level: 1,
-  });
-
-  // 슬롯 더블클릭 로직
-  const handleSlotDoubleClick = (item: InventoryItem | null, idx: number) => {
-    // 확장 불가능/빈 슬롯이면 무시
+  // 슬롯 클릭 로직
+  const handleSlotClick = (item: InventoryItem | null, idx: number) => {
     if (!item) return;
-
-    // 더블클릭시 장착 처리 (현재는 일꾼만)
-    if (item.type.startsWith("worker_")) {
-      setEquippedSlot({
-        id: parseInt(item.id.replace(/\D/g, "") || "0"),
-        name: item.name,
-        level: item.level || 1,
-      });
-    }
     setSelectedSlot(selectedSlot === item.id ? null : item.id);
   };
 
@@ -45,12 +27,12 @@ export function InventoryModal() {
     }
   };
 
-  // 총 슬롯 표시용 (ex: 20개 표시, 잠긴 슬롯 포함)
-  const totalSlotsDisplay = Math.max(20, Math.ceil(inventoryMax / 4) * 4);
+  // 총 6개 슬롯 표시 (기본 확장 4개 + 잠긴 슬롯 2개 등)
+  const totalSlotsDisplay = 6;
   const slots = useMemo(() => {
     const list = new Array(totalSlotsDisplay).fill(null);
     inventoryItems.forEach((item, i) => {
-      if (i < inventoryMax) {
+      if (i < inventoryMax && i < totalSlotsDisplay) {
         list[i] = item;
       }
     });
@@ -77,19 +59,14 @@ export function InventoryModal() {
       </div>
 
       <div className="flex gap-6 flex-1 mt-2 min-h-0">
-        {/* 왼쪽: 현재 장착된 일꾼 */}
-        <div className="w-1/2 flex flex-col h-full bg-gradient-to-b from-blue-50/80 to-indigo-50/80 rounded-[32px] border-4 border-white shadow-[0_10px_30px_-10px_rgba(0,0,0,0.15)] relative overflow-hidden">
-          <WorkerEquippedDisplay worker={equippedSlot} />
-        </div>
-
-        {/* 오른쪽: 인벤토리 슬롯 그리드 */}
-        <div className="w-1/2 flex flex-col h-full bg-white rounded-[32px] border-4 border-gray-200 shadow-xl overflow-hidden p-6 relative">
+        {/* 인벤토리 슬롯 그리드 (전체 너비 사용) */}
+        <div className="w-full flex flex-col h-full bg-white rounded-[32px] border-4 border-gray-200 shadow-xl overflow-hidden p-6 relative">
           <div className="absolute top-4 right-6 text-sm font-bold text-gray-500 bg-gray-100 px-4 py-2 rounded-full flex gap-2 items-center">
             <span className="text-lg">🎒</span> 
             확장권 <span className="text-indigo-600 font-black">{inventoryExpandTickets}</span> 개 보유
           </div>
 
-          <h3 className="text-xl font-bold text-gray-700 mb-6 mt-2 ml-2">슬롯 목록</h3>
+          <h3 className="text-xl font-bold text-gray-700 mb-6 mt-2 ml-2">보유 아이템 목록</h3>
 
           <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
             <style>{`
@@ -98,7 +75,7 @@ export function InventoryModal() {
               .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
               .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
             `}</style>
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-6 pb-4">
               {slots.map((item, idx) => {
                 const isLocked = idx >= inventoryMax;
                 const isExpandable = isLocked && idx === inventoryMax; // 바로 다음 잠긴 슬롯만 확장 가능하게
@@ -107,10 +84,9 @@ export function InventoryModal() {
                 return (
                   <button
                     key={'slot-' + idx}
-                    onDoubleClick={() => handleSlotDoubleClick(item, idx)}
                     onClick={() => {
                       if (isExpandable) handleUnlockSlot();
-                      if (item) setSelectedSlot(item.id);
+                      handleSlotClick(item, idx);
                     }}
                     className={`relative rounded-[24px] flex flex-col items-center justify-center transition-all duration-300 min-h-[140px] transform group
                       ${isLocked
@@ -183,14 +159,7 @@ export function InventoryModal() {
 
             <div className="space-y-6">
               <div className="bg-slate-50 p-5 rounded-2xl border-2 border-slate-100">
-                <p className="font-black text-slate-700 mb-2 text-lg">👷 장착 및 해제</p>
-                <ul className="space-y-2 text-slate-600 font-bold text-sm ml-2">
-                  <li className="flex gap-2"><span className="text-indigo-500">•</span> 목롁에서 장착할 일꾼을 <strong className="text-indigo-600 bg-indigo-50 px-2 rounded">더블 클릭</strong></li>
-                  <li className="flex gap-2"><span className="text-indigo-500">•</span> 왼쪽 메인 화면에 즉시 장착됩니다.</li>
-                </ul>
-              </div>
-              <div className="bg-slate-50 p-5 rounded-2xl border-2 border-slate-100">
-                <p className="font-black text-slate-700 mb-2 text-lg">🎒 인벤토리 확장</p>
+                <p className="font-black text-slate-700 mb-2 text-lg">🎒 인벤토리 슬롯 변경 및 확장</p>
                 <ul className="space-y-2 text-slate-600 font-bold text-sm ml-2">
                   <li className="flex gap-2"><span className="text-amber-500">•</span> 미니게임 등에서 획득한 <strong className="text-amber-600 bg-amber-50 px-2 rounded">확장권</strong> 사용</li>
                   <li className="flex gap-2"><span className="text-amber-500">•</span> 자물쇠 슬롯을 클릭하면 슬롯이 해제됩니다.</li>
