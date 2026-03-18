@@ -38,16 +38,8 @@ export const handlers = [
   http.get('*/api/v1/alerts', async () => {
     await delay(300);
     return HttpResponse.json([
-      { id: 'm1', message: '[시스템] 추가 분석 보고서 도착', detail: 'MSW 연동 테스트 (안읽음)', timeAgo: '방금 전', read: false },
-      { id: 'm2', message: '[경고] 외부 기온 급강하 피해 예상', detail: '설비 점검 요망 (안읽음)', timeAgo: '10분 전', read: false },
-      { id: 'm3', message: '[정보] 전일 생산 목표 달성', timeAgo: '어제', read: true },
-      { id: 'm4', message: '[알림] 직원 복지 기금 입금 확인', timeAgo: '어제', read: true },
-      { id: 'm5', message: '[시스템] 공장 가동률 80% 돌파', timeAgo: '2일 전', read: true },
-      { id: 'm6', message: '[구매] 주요 원자재 가격 변동 알림', timeAgo: '2일 전', read: true },
-      { id: 'm7', message: '[공지] 이번 주 창고 정리 일정 안내', timeAgo: '3일 전', read: true },
-      { id: 'm8', message: '[마케팅] 신규 계약 체결 성공', timeAgo: '3일 전', read: true },
-      { id: 'm9', message: '[인사] 이달의 우수 사원 선정 발표', timeAgo: '4일 전', read: true },
-      { id: 'm10', message: '[시스템] 정기 시스템 유지보수 완료', timeAgo: '5일 전', read: true }
+      { id: 'm1', message: '[Mock] 테스트 알림 1', detail: 'MSW 연동 테스트', timeAgo: '방금 전', read: false },
+      { id: 'm2', message: '[Mock] 테스트 알림 2', detail: '작업장 생산 완료', timeAgo: '10분 전', read: false }
     ]);
   }),
   http.post('*/api/v1/workstations/start', async () => {

@@ -89,14 +89,14 @@ export function InventoryModal() {
             <div className="flex flex-col items-center animate-fade-in relative z-10 w-full">
               {/* 후광 이펙트 */}
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-blue-300/40 blur-3xl rounded-full" />
-              
+
               <span className="text-9xl mb-4 drop-shadow-[0_15px_15px_rgba(0,0,0,0.25)] relative z-10 hover:-translate-y-3 transition-transform duration-500 cursor-pointer">🧑‍🔧</span>
-              
+
               {/* 캐릭터 발판 모양 (홀로그램 발판) */}
               <div className="relative w-56 h-14 mt-4">
                 <div className="absolute inset-0 bg-blue-400/20 rounded-[100%] border border-blue-300/50 transform perspective-500 rotate-x-60 shadow-[0_0_20px_rgba(59,130,246,0.3)]"></div>
                 <div className="absolute inset-2 bg-blue-300/30 rounded-[100%] border border-blue-200/50 blur-sm"></div>
-                
+
                 {/* 텍스트 라벨 (Lv.2 일꾼) */}
                 <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm border border-white shadow-lg rounded-full px-6 py-1.5 whitespace-nowrap z-20 transition-all hover:scale-105">
                   <span className="font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600 text-lg">
@@ -128,65 +128,65 @@ export function InventoryModal() {
               <p className="text-sm">서버 또는 목업 연결을 확인하세요.</p>
             </div>
           ) : (
-          <div className="flex-1 overflow-y-auto pr-1 hide-scrollbar" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
-            <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
-            <div className="grid grid-cols-2 gap-4 pb-2">
-              {slots.map((slot) => {
-                const isExpandable = slot.locked && expandTickets > 0;
-                const isSelected = selectedSlot === slot.id;
+            <div className="flex-1 overflow-y-auto pr-1 hide-scrollbar" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+              <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
+              <div className="grid grid-cols-2 gap-4 pb-2">
+                {slots.map((slot) => {
+                  const isExpandable = slot.locked && expandTickets > 0;
+                  const isSelected = selectedSlot === slot.id;
 
-                return (
-                  <button
-                    key={slot.id}
-                    onDoubleClick={() => handleSlotDoubleClick(slot)}
-                    onClick={() => {
-                      if (isExpandable) {
-                        handleUnlockSlot(slot.id);
-                      }
-                    }}
-                    className={`relative rounded-2xl flex flex-col items-center justify-center transition-all duration-300 min-h-[140px] transform group
+                  return (
+                    <button
+                      key={slot.id}
+                      onDoubleClick={() => handleSlotDoubleClick(slot)}
+                      onClick={() => {
+                        if (isExpandable) {
+                          handleUnlockSlot(slot.id);
+                        }
+                      }}
+                      className={`relative rounded-2xl flex flex-col items-center justify-center transition-all duration-300 min-h-[140px] transform group
                       ${slot.locked
-                        ? isExpandable
-                          ? "bg-slate-50 border border-slate-200 hover:border-yellow-400 hover:bg-yellow-50 hover:shadow-yellow-100/50 hover:shadow-lg cursor-pointer opacity-100 hover:-translate-y-1"
-                          : "bg-slate-100/50 border border-slate-200 opacity-60 cursor-not-allowed"
-                        : slot.name
-                          ? isSelected
-                            ? "bg-gradient-to-br from-blue-50 to-indigo-100 border border-blue-300 shadow-[0_5px_15px_rgba(59,130,246,0.2)] cursor-pointer ring-2 ring-blue-400 ring-offset-2 scale-105"
-                            : "bg-white border border-gray-200 hover:border-blue-300 hover:shadow-lg cursor-pointer hover:-translate-y-1 shadow-sm"
-                          : "bg-gray-50/80 border border-dashed border-gray-300 hover:border-gray-400 hover:bg-white cursor-pointer"
-                      }`}
-                  >
-                    {/* 슬롯 번호 좌측 상단 (카드형 디자인) */}
-                    <span className="absolute top-2 left-3 text-sm font-bold text-gray-400/80 tracking-widest">
-                      #{slot.id}
-                    </span>
+                          ? isExpandable
+                            ? "bg-slate-50 border border-slate-200 hover:border-yellow-400 hover:bg-yellow-50 hover:shadow-yellow-100/50 hover:shadow-lg cursor-pointer opacity-100 hover:-translate-y-1"
+                            : "bg-slate-100/50 border border-slate-200 opacity-60 cursor-not-allowed"
+                          : slot.name
+                            ? isSelected
+                              ? "bg-gradient-to-br from-blue-50 to-indigo-100 border border-blue-300 shadow-[0_5px_15px_rgba(59,130,246,0.2)] cursor-pointer ring-2 ring-blue-400 ring-offset-2 scale-105"
+                              : "bg-white border border-gray-200 hover:border-blue-300 hover:shadow-lg cursor-pointer hover:-translate-y-1 shadow-sm"
+                            : "bg-gray-50/80 border border-dashed border-gray-300 hover:border-gray-400 hover:bg-white cursor-pointer"
+                        }`}
+                    >
+                      {/* 슬롯 번호 좌측 상단 (카드형 디자인) */}
+                      <span className="absolute top-2 left-3 text-sm font-bold text-gray-400/80 tracking-widest">
+                        #{slot.id}
+                      </span>
 
-                    {slot.locked ? (
-                      <div className="flex flex-col items-center text-gray-400">
-                        <Lock className={`w-10 h-10 mb-1 transition-transform ${isExpandable && "group-hover:scale-110 group-hover:text-yellow-600"}`} />
-                      </div>
-                    ) : slot.name ? (
-                      <div className="flex flex-col items-center relative z-10 mt-2">
-                        <span className="text-5xl mb-2 drop-shadow-md transition-transform group-hover:scale-110">🧑‍🔧</span>
-                        <span className={`text-sm font-bold px-3 py-1 rounded-full shadow-sm ${isSelected ? "bg-blue-500 text-white" : "text-gray-700 bg-white border border-gray-100"}`}>
-                          Lv.{slot.level} {slot.name}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-gray-400 font-medium">비어있음</span>
-                    )}
+                      {slot.locked ? (
+                        <div className="flex flex-col items-center text-gray-400">
+                          <Lock className={`w-10 h-10 mb-1 transition-transform ${isExpandable && "group-hover:scale-110 group-hover:text-yellow-600"}`} />
+                        </div>
+                      ) : slot.name ? (
+                        <div className="flex flex-col items-center relative z-10 mt-2">
+                          <span className="text-5xl mb-2 drop-shadow-md transition-transform group-hover:scale-110">🧑‍🔧</span>
+                          <span className={`text-sm font-bold px-3 py-1 rounded-full shadow-sm ${isSelected ? "bg-blue-500 text-white" : "text-gray-700 bg-white border border-gray-100"}`}>
+                            Lv.{slot.level} {slot.name}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400 font-medium">비어있음</span>
+                      )}
 
-                    {/* 자물쇠 슬롯 하단의 0/1 표시 */}
-                    {slot.locked && (
-                      <div className="absolute bottom-2 right-3 text-sm font-bold text-gray-400 bg-white border border-gray-200 px-2 py-0.5 rounded shadow-sm">
-                        {expandTickets}/1
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
+                      {/* 자물쇠 슬롯 하단의 0/1 표시 */}
+                      {slot.locked && (
+                        <div className="absolute bottom-2 right-3 text-sm font-bold text-gray-400 bg-white border border-gray-200 px-2 py-0.5 rounded shadow-sm">
+                          {expandTickets}/1
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
           )}
         </div>
       </div>
