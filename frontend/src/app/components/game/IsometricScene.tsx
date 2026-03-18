@@ -612,12 +612,12 @@ export function GameScene({
       isWorking: isWorkstationWorking,
       onStart: async (qty) => {
         try {
-          // ✅ 산업별 스펙 계산: cycles, 재료 소모, 총 시간
+          // ✅ 개수 비례 계산: qty개 기준으로 재료·시간 산출
           const store = useGameStore.getState();
           const { reqMat, resProd } = store.getIndustryItemNames();
-          const cycles = Math.ceil(qty / resProd);
-          const totalMsNeeded = cycles * 60000;
-          const materialNeeded = cycles * reqMat;
+          const ratio = qty / resProd;                        // 시간 비율
+          const totalMsNeeded = Math.ceil(ratio * 60000);    // ms (비례)
+          const materialNeeded = Math.ceil(ratio * reqMat);  // 재료 (올림)
 
           // ✅ 재료 창고에서 차감 (updateMaterial 음수 = 차감)
           const deducted = store.updateMaterial(-materialNeeded);
@@ -630,9 +630,13 @@ export function GameScene({
           setIsWorkstationWorking(true);
 
           // ✅ Workstation 컴포넌트에 목표 개수 & 예상 시간 전달
-          workstationStartRef.current?.({ requestedQty: cycles * resProd, totalMs: totalMsNeeded });
+          workstationStartRef.current?.({ requestedQty: qty, totalMs: totalMsNeeded });
 
-          store.addAlert({ message: "생산 시작 🏭", detail: `재료 ${materialNeeded}개 소모 • ${cycles * resProd}개 생산 예정 (${cycles}분)` });
+          const timeSec = Math.ceil(ratio * 60);
+          const timeStr = timeSec >= 60
+            ? `${Math.floor(timeSec / 60)}분 ${timeSec % 60 > 0 ? timeSec % 60 + '초' : ''}`
+            : `${timeSec}초`;
+          store.addAlert({ message: "생산 시작 🏭", detail: `재료 ${materialNeeded}개 소모 • ${qty}개 생산 예정 (${timeStr})` });
         } catch (e) {
           console.error(e);
           useAlertStore.getState().openAlert("작업 시작에 실패했습니다.", "경고");

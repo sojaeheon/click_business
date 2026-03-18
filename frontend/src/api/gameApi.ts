@@ -75,8 +75,8 @@ export const WorkstationAPI = {
       };
     }
   },
-  // data.quantity = 유저가 요청한 총 생산 수량 (개 단위)
-  // 사이클 = Math.ceil(qty / resProd), 총 시간 = cycles * 60초
+  // data.quantity = 유저가 요청한 생산 개수 (개 단위)
+  // 시간 = (quantity / resProd) × 60초 비례 계산
   start: async (data: { companyId: number; recipeId: number; quantity: number; workerId: number }) => {
     let resProd = 1;
     let reqMat = 1;
@@ -87,20 +87,22 @@ export const WorkstationAPI = {
       reqMat = names.reqMat;
     } catch (e) {}
 
-    const cycles = Math.ceil(data.quantity / resProd); // 몇 사이클 돌아야 하는지
-    const reserveQty = cycles * reqMat;                // 창고에서 꺼낼 재료 수
+    // 개수 비례 계산 (사이클 올림 없이 qty 그대로 반영)
+    const ratio = data.quantity / resProd;
+    const reserveQty = Math.ceil(ratio * reqMat); // 재료 (API reserve용)
 
     try {
       // ✅ 실제 API: reserve로 재료 예약 → toggle로 가동 시작
       await apiClient.post(`/workstations/1/reserve`, { quantity: reserveQty });
-      await apiClient.post(`/workstations/1/toggle`); // process 대신 toggle
+      await apiClient.post(`/workstations/1/toggle`);
       return { data: { success: true, message: "작업이 시작되었습니다." } };
     } catch (err) {
       console.warn("API 연동 실패! WorkstationAPI.start 목업 데이터 사용", err);
       await mockDelay();
 
-      const totalMs = cycles * 60000; // 실제 스펙: 1사이클 = 1분
-      mockWorkTotalQuantity = cycles * resProd; // 총 생산 예상 개수
+      // 비례 시간: qty/resProd × 60000ms
+      const totalMs = Math.ceil(ratio * 60000);
+      mockWorkTotalQuantity = data.quantity; // 목표 개수 = 유저 입력 그대로
       mockWorkUncollected = 0;
       mockWorkIsWorking = true;
       mockWorkProgress = 0;

@@ -18,9 +18,8 @@ export interface ConfirmData {
 export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: () => void }) {
   const R: React.CSSProperties = { fontFamily: "'KerisKeduR', sans-serif" };
   const { state } = useGame();
-  // qty 초기값 = 1사이클의 생산 개수 (산업별 최소 단위)
-  const defaultQty = state.getIndustryItemNames().resProd;
-  const [qty, setQty] = useState(defaultQty);
+  // qty 초기값 = 1 (자유 입력, 최솟값 1)
+  const [qty, setQty] = useState(1);
   const [isCollecting, setIsCollecting] = useState(false);
   const [particles, setParticles] = useState<{ id: number, x: number, y: number, tx: number, ty: number, delay: number }[]>([]);
 
@@ -55,15 +54,17 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
     const { material, product, reqMat, resProd } = state.getIndustryItemNames();
     const warehouseStock = state.warehouseItems.find(i => i.type === "material")?.quantity || 0;
     
-    // qty = 유저가 생산하고 싶은 총 아이템 개수
-    // cycles = 실제 돌아야 할 사이클 수 (1사이클 = 1분)
-    const cycles = Math.ceil(qty / resProd);
-    const totalMaterial = cycles * reqMat;      // 소모될 재료
-    const totalProduced = cycles * resProd;     // 실제 생산되는 개수 (올림 반영)
-    const totalSecs = cycles * 60;              // 총 소요 시간 (초)
+    // qty = 유저가 자유롭게 입력한 생산 개수
+    // 시간/재료는 개수에 비례 계산 (1분에 resProd개 생산 기준)
+    const ratio = qty / resProd;                          // qty개 생산에 필요한 시간 비율
+    const totalMaterial = Math.ceil(ratio * reqMat);       // 소모 재료 (올림)
+    const totalProduced = qty;                             // 생산 개수 = 유저 입력 그대로
+    const totalSecs = Math.ceil(ratio * 60);               // 총 소요 시간 (초, 올림)
     const mins = Math.floor(totalSecs / 60);
     const secs = totalSecs % 60;
-    const timeLabel = secs === 0 ? `${mins}분` : `${mins}분 ${secs}초`;
+    const timeLabel = mins > 0
+      ? (secs === 0 ? `${mins}분` : `${mins}분 ${secs}초`)
+      : `${secs}초`;
     const hasEnough = warehouseStock >= totalMaterial;
 
     const handleCollect = (e: React.MouseEvent) => {
@@ -172,35 +173,28 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
               <div className="absolute -right-6 -top-6 text-9xl opacity-5 pointer-events-none">🏭</div>
 
               <div className="text-center relative z-10">
-                <label className="text-sm font-black text-slate-400 uppercase tracking-widest">총 생산 수량 설정</label>
+                <label className="text-sm font-black text-slate-400 uppercase tracking-widest">생산 수량 설정</label>
                 <div className="text-[10px] text-slate-500 font-bold mt-0.5">
-                  1 사이클 당 {resProd}개 생산 · {reqMat}개 재료 소모
+                  분당 {resProd}개 생산 · 재료 {reqMat}개/{resProd}개당
                 </div>
               </div>
 
               <div className="flex items-center justify-center gap-3 relative z-10">
                 <button
                   className="w-14 h-14 rounded-2xl bg-white border-b-4 border-2 border-slate-200 border-b-slate-300 font-black text-slate-400 hover:bg-slate-50 hover:text-slate-600 hover:border-b-slate-400 active:translate-y-1 active:border-b-0 transition-all text-2xl shadow-sm flex items-center justify-center cursor-pointer select-none"
-                  onClick={(e) => { e.stopPropagation(); setQty(q => Math.max(resProd, q - resProd)); }}
+                  onClick={(e) => { e.stopPropagation(); setQty(q => Math.max(1, q - 1)); }}
                 >−</button>
                 <div className="relative group flex-1">
                   <input
-                    type="number" min={resProd} step={resProd} value={qty}
+                    type="number" min={1} step={1} value={qty}
                     onChange={e => {
                       const val = parseInt(e.target.value, 10);
-                      if (!isNaN(val) && val >= resProd) setQty(val);
-                      else if (e.target.value === '') setQty(resProd);
+                      if (!isNaN(val) && val >= 1) setQty(val);
+                      else if (e.target.value === '') setQty(1);
                     }}
-                    onKeyDown={e => {
-                      // 모달 내 input에서 키 이벤트가 Three.js 캔버스로 전파되지 않도록 모두 차단
-                      e.stopPropagation();
-                    }}
+                    onKeyDown={e => e.stopPropagation()}
                     onKeyUp={e => e.stopPropagation()}
-                    onFocus={e => {
-                      e.stopPropagation();
-                      // canvas 포커스 탈취 방지: input에 포커스 고정
-                      e.target.select();
-                    }}
+                    onFocus={e => { e.stopPropagation(); e.target.select(); }}
                     onClick={e => e.stopPropagation()}
                     className="w-full text-center text-4xl font-black border-2 border-b-4 border-slate-200 rounded-2xl py-3 bg-white text-indigo-900 focus:outline-none focus:border-indigo-400 focus:border-b-indigo-500 shadow-inner hover:border-indigo-300 transition-colors"
                   />
@@ -210,8 +204,24 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                 </div>
                 <button
                   className="w-14 h-14 rounded-2xl bg-white border-b-4 border-2 border-slate-200 border-b-slate-300 font-black text-slate-400 hover:bg-slate-50 hover:text-slate-600 hover:border-b-slate-400 active:translate-y-1 active:border-b-0 transition-all text-2xl shadow-sm flex items-center justify-center cursor-pointer select-none"
-                  onClick={(e) => { e.stopPropagation(); setQty(q => q + resProd); }}
+                  onClick={(e) => { e.stopPropagation(); setQty(q => q + 1); }}
                 >+</button>
+              </div>
+              {/* 빠른 설정 버튼 */}
+              <div className="flex gap-2 justify-center relative z-10">
+                {[resProd, resProd * 2, resProd * 5, resProd * 10].map(n => (
+                  <button
+                    key={n}
+                    onClick={(e) => { e.stopPropagation(); setQty(n); }}
+                    className={`px-3 py-1 rounded-lg text-xs font-black border-2 border-b-2 transition-all cursor-pointer select-none
+                      ${qty === n
+                        ? 'bg-indigo-500 text-white border-indigo-600 shadow-md'
+                        : 'bg-white text-slate-500 border-slate-200 border-b-slate-300 hover:bg-indigo-50 hover:text-indigo-500 hover:border-indigo-200'
+                      }`}
+                  >
+                    {n}개
+                  </button>
+                ))}
               </div>
 
 
@@ -239,7 +249,6 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                   <span className="text-slate-500 font-bold flex items-center gap-1.5"><span className="text-lg">⏱️</span> 예상 소요 시간</span>
                   <div className="font-black tracking-widest px-3 py-1.5 rounded-lg border-b-2 flex items-center gap-2 text-violet-600 bg-violet-50 border-violet-200 border-b-violet-300">
                     <span>{timeLabel}</span>
-                    <span className="text-xs text-violet-300">({cycles}사이클)</span>
                   </div>
                 </div>
 
