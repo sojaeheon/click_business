@@ -1,173 +1,250 @@
-import React, { useState } from "react";
-import { ArrowLeft, Plus, Minus, Package } from "lucide-react";
-import { useGame } from "../../app/store/gameStore";
+import React, { useState, useEffect } from "react";
+import { Package, Lock } from "lucide-react";
+import { useGame, useGameStore, MAX_PER_SLOT } from "../../store/gameStore";
+import { BackButton } from "../../app/components/ui/backbutton";
 
-function ShelfItem({
-  name,
-  quantity,
-  type,
-  compact,
-}: {
-  name: string;
-  quantity: number;
-  type: "material" | "product";
-  compact: boolean;
-}) {
-  const isMaterial = type === "material";
-
-  return (
-    <div className="flex flex-col items-center group cursor-pointer">
-      {/* Box visual - Glassmorphism & Soft gradients */}
-      <div
-        className={`relative ${compact ? "w-24 h-20" : "w-32 h-28"} rounded-2xl flex flex-col items-center justify-center overflow-hidden transition-all duration-300 transform group-hover:-translate-y-2 group-hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.3)] shadow-lg ring-1 ring-white/40`}
-        style={{
-          background: isMaterial
-            ? "linear-gradient(135deg, rgba(234, 179, 8, 0.15) 0%, rgba(202, 138, 4, 0.25) 100%)"
-            : "linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(37, 99, 235, 0.25) 100%)",
-          backdropFilter: "blur(12px)",
-        }}
-      >
-        <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity" />
-
-        <Package 
-          className={`w-1/2 h-1/2 drop-shadow-md transition-transform group-hover:scale-110 ${isMaterial ? "text-yellow-600" : "text-blue-500"}`}
-        />
-
-        {/* Label bubble */}
-        <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-md rounded-full px-2 py-0.5 border border-white/50 shadow-sm z-10">
-          <span className="text-[10px] text-gray-800 font-bold mix-blend-multiply">
-            {name}
-          </span>
-        </div>
-      </div>
-      
-      {/* Quantity label */}
-      <div className="mt-3 bg-white/90 backdrop-blur border border-white/50 shadow-md rounded-xl px-4 py-1.5 text-center transform transition-all group-hover:scale-105">
-        <span className="text-sm text-gray-800 font-black tracking-wide">
-          {quantity.toLocaleString()} 개
-        </span>
-      </div>
-    </div>
-  );
+interface SlotData {
+  id: number;
+  item: null | {
+    type: "material" | "product";
+    quantity: number;
+    name: string;
+    id_: string;
+  };
+  locked: boolean;
 }
 
 export function WarehousePage() {
   const { state, closeBuildingPage } = useGame();
-  const { warehouseItems } = state;
-  const [compactView, setCompactView] = useState(false);
+  const { warehouseItems, warehouseExpandTickets } = state;
+  const maxSlots = useGameStore(s => s.warehouseMaxSlots); // default 10
+  const material = useGameStore(s => s.getIndustryItemNames().material);
+  const product = useGameStore(s => s.getIndustryItemNames().product);
+  const useWarehouseTicket = useGameStore(s => s.useWarehouseTicket);
 
-  const materials = warehouseItems.filter((i) => i.type === "material");
-  const products = warehouseItems.filter((i) => i.type === "product");
+  const totalMaterial = warehouseItems.find(i => i.type === "material")?.quantity || 0;
+  const totalProduct = warehouseItems.find(i => i.type === "product")?.quantity || 0;
+
+  const [slots, setSlots] = useState<SlotData[]>([]);
+
+  useEffect(() => {
+    // Initialize slots
+    const totalSlots = 100; // Total displayable slots limit increased
+    const initialSlots: SlotData[] = Array(totalSlots).fill(null).map((_, i) => ({
+      id: i,
+      item: null,
+      locked: i >= maxSlots
+    }));
+
+    let currentSlotIdx = 0;
+
+    // Group and populate items uniformly
+    const materials = warehouseItems.filter((i) => i.type === "material");
+    const products = warehouseItems.filter((i) => i.type === "product");
+
+    materials.forEach(item => {
+      let remaining = item.quantity;
+      while (remaining > 0) {
+        const amount = Math.min(remaining, MAX_PER_SLOT);
+        if (currentSlotIdx < maxSlots) {
+          initialSlots[currentSlotIdx].item = {
+            type: "material", quantity: amount, name: material, id_: item.id
+          };
+          currentSlotIdx++;
+        }
+        remaining -= amount;
+      }
+    });
+
+    products.forEach(item => {
+      let remaining = item.quantity;
+      while (remaining > 0) {
+        const amount = Math.min(remaining, MAX_PER_SLOT);
+        if (currentSlotIdx < maxSlots) {
+          initialSlots[currentSlotIdx].item = {
+            type: "product", quantity: amount, name: product, id_: item.id
+          };
+          currentSlotIdx++;
+        }
+        remaining -= amount;
+      }
+    });
+
+    setSlots(initialSlots);
+  }, [warehouseItems, maxSlots, material, product]);
+
+  const handleUnlockSlot = (slotId: number) => {
+    if (warehouseExpandTickets <= 0) {
+      alert("확장권이 부족합니다.");
+      return;
+    }
+    const success = useWarehouseTicket();
+    if (success) {
+      setSlots(prev => prev.map(s => s.id === slotId ? { ...s, locked: false } : s));
+    }
+  };
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    e.dataTransfer.setData("text/plain", index.toString());
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault();
+    const sourceIndexStr = e.dataTransfer.getData("text/plain");
+    if (!sourceIndexStr) return;
+    const sourceIndex = parseInt(sourceIndexStr, 10);
+    if (sourceIndex === targetIndex) return;
+
+    setSlots((prev) => {
+      const newSlots = [...prev];
+      const sourceSlot = newSlots[sourceIndex];
+      const targetSlot = newSlots[targetIndex];
+
+      if (targetSlot.locked) return prev;
+
+      const tempItem = sourceSlot.item;
+      sourceSlot.item = targetSlot.item;
+      targetSlot.item = tempItem;
+
+      return newSlots;
+    });
+  };
+
+  const localUnlocked = slots.filter(s => !s.locked).length;
+  const localUsed = slots.filter(s => !s.locked && s.item !== null).length;
+  const localPercent = localUnlocked > 0 ? Math.min((localUsed / localUnlocked) * 100, 100) : 0;
+
+  // 한 줄 3칸. 현재 잠금해제된 개수에 기반해 노출할 슬롯 계산.
+  const visibleCount = Math.max(15, Math.ceil(localUnlocked / 3) * 3 + (localUnlocked % 3 === 0 && localUnlocked >= 15 ? 3 : 0));
 
   return (
-    <div className="absolute inset-0 z-40 bg-[#f5f0e8] flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b-2 border-gray-300">
+    <div
+      className="absolute inset-0 z-40 bg-[#f5f0e8] flex flex-col pt-8"
+      style={{
+        backgroundImage: "url('/images/warehouse.머ㅗ')",
+        backgroundSize: 'contain',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'center',
+        backgroundColor: '#cee7be'
+      }}
+    >
+      <BackButton onClick={closeBuildingPage} className="absolute top-6 left-6" />
+
+      {/* 우측 상단 인디케이터 (수량 포함) */}
+      <div className="absolute top-6 right-6 flex gap-6 bg-white/80 backdrop-blur-md rounded-2xl p-4 border border-white/50 shadow-lg z-10">
         <div className="flex items-center gap-3">
-          <button
-            onClick={closeBuildingPage}
-            className="w-10 h-10 rounded-full border-2 border-gray-400 flex items-center justify-center hover:bg-gray-200 transition-colors cursor-pointer"
-          >
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
-          </button>
-          <span className="text-gray-500">창고</span>
-        </div>
-        <h1 className="text-2xl" style={{ fontWeight: 800 }}>
-          창 고
-        </h1>
-        <div className="w-10" />
-      </div>
-
-      {/* View toggle */}
-      <div className="flex items-center gap-2 px-6 pt-4">
-        <button
-          onClick={() => setCompactView(false)}
-          className={`w-8 h-8 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors ${!compactView
-              ? "border-gray-800 bg-gray-800 text-white"
-              : "border-gray-400 text-gray-500 hover:bg-gray-200"
-            }`}
-        >
-          <Plus className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => setCompactView(true)}
-          className={`w-8 h-8 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors ${compactView
-              ? "border-gray-800 bg-gray-800 text-white"
-              : "border-gray-400 text-gray-500 hover:bg-gray-200"
-            }`}
-        >
-          <Minus className="w-4 h-4" />
-        </button>
-        <span className="text-xs text-gray-400 ml-2">
-          {compactView ? "작게보기" : "크게보기"}
-        </span>
-      </div>
-
-      {/* Shelves */}
-      <div className="flex-1 p-6 flex flex-col justify-center max-w-4xl mx-auto w-full">
-        {/* Shelf structure - Modern Glass/wood mix */}
-        <div className="relative bg-white/40 backdrop-blur-2xl rounded-3xl p-8 border border-white/50 shadow-2xl">
-          <div className="px-4">
-            {/* Top shelf - Materials */}
-            <div className="mb-8">
-              <h3 className="text-gray-500 font-bold mb-4 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-yellow-500"></div> 원자재</h3>
-              <div className="flex flex-wrap items-end justify-start gap-8">
-                {materials.map((item) => (
-                  <ShelfItem
-                    key={item.id}
-                    name={item.name}
-                    quantity={item.quantity}
-                    type={item.type}
-                    compact={compactView}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Bottom shelf - Products */}
-            <div className="pt-4 border-t border-gray-300/50">
-              <h3 className="text-gray-500 font-bold mb-4 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-blue-500"></div> 생산품</h3>
-              <div className="flex flex-wrap items-end justify-start gap-8">
-                {products.map((item) => (
-                  <ShelfItem
-                    key={item.id}
-                    name={item.name}
-                    quantity={item.quantity}
-                    type={item.type}
-                    compact={compactView}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Warehouse capacity */}
-        <div className="mt-6 flex items-center justify-center gap-3">
-          <Package className="w-5 h-5 text-gray-500" />
-          <span className="text-sm text-gray-600">
-            수용량: {state.warehouseUsed} / {state.warehouseMax}
+          <div className="w-3 h-3 rounded-full shadow-inner bg-yellow-500"></div>
+          <span className="text-gray-700 font-bold tracking-tight">
+            원자재 총 <span className="text-yellow-700 font-black ml-1">{totalMaterial.toLocaleString()}</span> 개
           </span>
-          <div className="w-40 h-3 bg-gray-200 rounded-full overflow-hidden">
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="w-3 h-3 rounded-full shadow-inner bg-blue-500"></div>
+          <span className="text-gray-700 font-bold tracking-tight">
+            생산품 총 <span className="text-blue-700 font-black ml-1">{totalProduct.toLocaleString()}</span> 개
+          </span>
+        </div>
+      </div>
+
+      <div className="flex-1 px-6 pb-6 pt-16 flex flex-col max-w-5xl mx-auto w-full overflow-hidden">
+        {/* Warehouse capacity display */}
+        <div className="bg-white/70 backdrop-blur-lg rounded-2xl p-4 mb-6 shrink-0 flex items-center justify-between border border-white/50 shadow-sm mx-4">
+          <div className="flex items-center gap-3">
+            <Package className="w-6 h-6 text-gray-600" />
+            <span className="text-lg text-gray-800 font-black tracking-wide">
+              창고 수용량
+            </span>
+            <span className="text-sm text-gray-500 font-bold ml-2">
+              ( {localUsed} / {localUnlocked} 슬롯 사용 중 )
+            </span>
+          </div>
+          <div className="w-64 h-4 bg-gray-200 rounded-full overflow-hidden border border-gray-300 shadow-inner">
             <div
-              className="h-full bg-amber-500 rounded-full"
-              style={{
-                width: `${(state.warehouseUsed / state.warehouseMax) * 100}%`,
-              }}
+              className={`h-full rounded-full transition-all duration-500 ${localPercent >= 90 ? 'bg-red-500' : 'bg-amber-500'}`}
+              style={{ width: `${localPercent}%` }}
             />
           </div>
         </div>
-      </div>
 
-      {/* Back button */}
-      <div className="p-6 flex justify-center">
-        <button
-          onClick={closeBuildingPage}
-          className="bg-gray-800 text-white px-10 py-3 rounded-full hover:bg-gray-700 transition-colors cursor-pointer active:scale-95"
-          style={{ fontWeight: 700 }}
-        >
-          돌아가기
-        </button>
+        {/* 그리드 정렬 (스크롤 영역) */}
+        <div className="relative bg-white/40 backdrop-blur-2xl rounded-3xl p-8 border border-white/50 shadow-2xl mx-4 flex-1 overflow-y-auto min-h-0">
+          <div className="grid grid-cols-3 gap-6">
+            {slots.slice(0, visibleCount).map((slot, idx) => {
+              const isExpandable = slot.locked && warehouseExpandTickets > 0;
+              const hasItem = slot.item !== null;
+
+              return (
+                <div
+                  key={slot.id}
+                  draggable={!slot.locked && hasItem}
+                  onDragStart={(e) => handleDragStart(e, idx)}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, idx)}
+                  onClick={() => {
+                    if (slot.locked && isExpandable) {
+                      handleUnlockSlot(slot.id);
+                    }
+                  }}
+                  className={`relative w-full aspect-[4/3] rounded-2xl flex flex-col items-center justify-center transition-all duration-300 border-2
+                    ${slot.locked
+                      ? isExpandable
+                        ? "bg-slate-50 border-slate-300 hover:border-yellow-400 hover:bg-yellow-50 hover:shadow-lg cursor-pointer opacity-100 group"
+                        : "bg-slate-100/50 border-slate-200 opacity-60 cursor-not-allowed"
+                      : hasItem
+                        ? "bg-white/60 border-transparent shadow-md hover:shadow-xl hover:-translate-y-2 cursor-grab active:cursor-grabbing backdrop-blur-md"
+                        : "bg-white/30 border-dashed border-gray-400 hover:bg-white/50 hover:border-gray-500"
+                    }
+                  `}
+                >
+                  <span className="absolute top-3 left-4 text-lg font-bold text-gray-500/80 tracking-widest z-10">
+                    {String(idx + 1).padStart(2, '0')}
+                  </span>
+
+                  {slot.locked ? (
+                    <div className="flex flex-col items-center justify-center text-gray-400 w-full h-full">
+                      <Lock className={`w-12 h-12 mb-2 transition-transform ${isExpandable && "group-hover:scale-110 group-hover:text-yellow-600"}`} />
+                      <div className="absolute bottom-3 right-4 text-sm font-bold text-gray-400 bg-white border border-gray-200 px-2 py-1 rounded shadow-sm">
+                        {warehouseExpandTickets}/1
+                      </div>
+                    </div>
+                  ) : hasItem ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center p-3 pt-8">
+                      <div
+                        className="w-16 h-16 rounded-2xl flex items-center justify-center mb-3 shadow-md relative overflow-hidden ring-1 ring-white/40"
+                        style={{
+                          background: slot.item!.type === "material"
+                            ? "linear-gradient(135deg, rgba(234, 179, 8, 0.2) 0%, rgba(202, 138, 4, 0.3) 100%)"
+                            : "linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.3) 100%)",
+                        }}
+                      >
+                        <Package
+                          className={`w-8 h-8 drop-shadow-md ${slot.item!.type === "material" ? "text-yellow-600" : "text-blue-500"}`}
+                        />
+                      </div>
+
+                      <div className="bg-white/90 backdrop-blur border border-white/50 shadow-sm rounded-xl px-3 py-2 text-center w-[90%] pointer-events-none">
+                        <span className="text-sm text-gray-800 font-extrabold block truncate w-full">
+                          {slot.item!.name}
+                        </span>
+                        <span className="text-xs text-gray-600 font-bold block mt-1 truncate">
+                          {slot.item!.quantity.toLocaleString()} 개
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex w-full h-full items-center justify-center">
+                      <span className="text-base text-gray-400 font-bold select-none">비어있음</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );

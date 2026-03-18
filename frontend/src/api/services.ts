@@ -67,7 +67,7 @@ export const companyApi = {
 export const inventoryApi = {
     /** 인벤토리 슬롯 조회 */
     getSlots: () =>
-        apiClient.get<InventorySlot[]>('/storage/inventories'),
+        apiClient.get<ApiResponse<InventorySlot[]>>('/inventory'),
 
     /** 아이템 저장 */
     saveItem: (data: SaveInventoryItemRequest) =>
