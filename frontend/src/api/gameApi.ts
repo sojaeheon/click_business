@@ -41,8 +41,8 @@ export const CompanyAPI = {
     try {
       // ✅ POST /api/v1/companies  (API 명세서 기준)
       const res = await apiClient.post('/companies', {
-        company_name: data.companyName,
-        industry_type: data.industryType,
+        name: data.companyName,
+        industryType: data.industryType,
       });
       return { data: res.data?.data ?? { success: true } };
     } catch (err) {
@@ -274,13 +274,13 @@ export const RankingAPI = {
 export const WarehouseAPI = {
   getWarehouseItems: async (companyId: number) => {
     try {
-      const res = await apiClient.get('/storage/warehouses');
+      const res = await apiClient.get('/inventory');
       return {
-        data: res.data.map((slot: any) => ({
-          id: `w_${slot.item_id || slot.slot_index}`,
-          type: slot.item_name?.includes("광석") || slot.item_name === "광산 드릴" || slot.item_name === "금괴" ? "material" : "product", // 이름 추론 로직 (임시)
+        data: res.data.data.map((slot: any) => ({
+          id: `w_${slot.itemId || slot.slotIndex}`,
+          type: slot.itemName?.includes("광석") || slot.itemName === "광산 드릴" || slot.itemName === "금괴" ? "material" : "product", // 이름 추론 로직 (임시)
           quantity: slot.quantity,
-          name: slot.item_name,
+          name: slot.itemName,
         }))
       };
     } catch (err) {
@@ -300,7 +300,7 @@ export const InventoryAPI = {
   getInventory: async (companyId: number) => {
     // ✅ 실제 API 연동: GET /api/v1/inventory
     try {
-      const res = await apiClient.get('/storage/inventories'); // 백엔드 경로 수정
+      const res = await apiClient.get('/inventory'); // 백엔드 경로 수정
       return {
         data: res.data.data.map((slot: any) => ({
           id: slot.itemId || (slot.slotIndex * 1000), // id가 없으면 고유 임시 id

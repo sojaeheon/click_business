@@ -30,7 +30,12 @@ export default function App() {
   useEffect(() => {
     const initGame = async () => {
       try {
-        await fetchCompanyData(1);
+        // App.tsx 마운트 시, 게스트 모드 진입 직후의 캐시 삭제를 지키기 위해 강제 fetch전에 토큰 유무를 검사
+        const token = localStorage.getItem('accessToken');
+        if (token) {
+          // 회사 데이터 불러오기 요청
+          await fetchCompanyData(1);
+        }
       } catch (error) {
         console.error("Failed to load initial game status", error);
       } finally {
