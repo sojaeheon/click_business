@@ -7,9 +7,13 @@ import com.ssafy.ecosim.domain.inventory.repository.EquipmentInventoryRepository
 import com.ssafy.ecosim.domain.production.entity.Workstation;
 import com.ssafy.ecosim.domain.production.repository.WorkstationRepository;
 import com.ssafy.ecosim.domain.production.dto.response.WorkstationStatusResponse;
+import com.ssafy.ecosim.domain.company.entity.IndustryType;
 import com.ssafy.ecosim.domain.inventory.service.InventoryService;
 import com.ssafy.ecosim.domain.item.repository.ItemRepository;
+import com.ssafy.ecosim.domain.notification.dto.NotificationEvent;
+import com.ssafy.ecosim.domain.notification.entity.NotificationType;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +30,7 @@ public class WorkstationService {
         private final CompanyRepository companyRepository;
         private final ItemRepository itemRepository;
         private final InventoryService inventoryService;
+        private final ApplicationEventPublisher eventPublisher;
 
         /**
          * 공장(작업장) 생성
@@ -161,6 +166,14 @@ public class WorkstationService {
                         // 예약량 차감 및 생산완료량 증가
                         workstation.consumeReservedQuantity(consumedMaterial);
                         workstation.addProducedQuantity(producedYield);
+
+                        // 알림 이벤트 발행
+                        eventPublisher.publishEvent(new NotificationEvent(
+                                        company.getUser().getId(),
+                                        String.format("[%s] 생산이 %d개 완료되었습니다!", 
+                                                      company.getIndustryType().name(), producedYield),
+                                        NotificationType.PRODUCTION
+                        ));
                 }
 
                 // 최신화 완료 후 시간 동기화
