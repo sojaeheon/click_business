@@ -3,10 +3,11 @@ import App from "./App.tsx";
 import "./styles/index.css";
 
 async function enableMocking() {
-  if (!import.meta.env.DEV) {
-    return;
+  if (!import.meta.env.DEV || import.meta.env.VITE_USE_MOCK === 'false') {
+    return; // VITE_USE_MOCK=false 일 때만 실제 백엔드 사용
   }
   const { worker } = await import('./mocks/browser');
+  console.log("mock 사용 중")
   return worker.start({ onUnhandledRequest: 'bypass' });
 }
 
