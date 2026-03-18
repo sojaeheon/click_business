@@ -71,11 +71,10 @@ function DiscardPanel({ totalMaterial, totalProduct, materialName, productName, 
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={() => { setSelectedType("material"); setQty(""); }}
-              className={`flex items-center gap-3 px-4 py-3 rounded-2xl border-2 transition-all font-bold text-sm cursor-pointer ${
-                selectedType === "material"
+              className={`flex items-center gap-3 px-4 py-3 rounded-2xl border-2 transition-all font-bold text-sm cursor-pointer ${selectedType === "material"
                   ? "bg-yellow-50 border-yellow-400 text-yellow-800"
                   : "bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300"
-              }`}
+                }`}
             >
               <div className={`w-3 h-3 rounded-full ${selectedType === "material" ? "bg-yellow-500" : "bg-gray-300"}`} />
               <div className="text-left">
@@ -85,11 +84,10 @@ function DiscardPanel({ totalMaterial, totalProduct, materialName, productName, 
             </button>
             <button
               onClick={() => { setSelectedType("product"); setQty(""); }}
-              className={`flex items-center gap-3 px-4 py-3 rounded-2xl border-2 transition-all font-bold text-sm cursor-pointer ${
-                selectedType === "product"
+              className={`flex items-center gap-3 px-4 py-3 rounded-2xl border-2 transition-all font-bold text-sm cursor-pointer ${selectedType === "product"
                   ? "bg-blue-50 border-blue-400 text-blue-800"
                   : "bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300"
-              }`}
+                }`}
             >
               <div className={`w-3 h-3 rounded-full ${selectedType === "product" ? "bg-blue-500" : "bg-gray-300"}`} />
               <div className="text-left">
@@ -111,9 +109,8 @@ function DiscardPanel({ totalMaterial, totalProduct, materialName, productName, 
               value={qty}
               onChange={(e) => setQty(e.target.value)}
               placeholder={`최대 ${maxQty.toLocaleString()}개`}
-              className={`flex-1 border-2 rounded-xl px-4 py-3 text-right text-xl font-black focus:outline-none transition-colors ${
-                isOver ? "border-red-400 bg-red-50 text-red-700" : "border-gray-200 bg-gray-50 text-gray-800 focus:border-gray-400"
-              }`}
+              className={`flex-1 border-2 rounded-xl px-4 py-3 text-right text-xl font-black focus:outline-none transition-colors ${isOver ? "border-red-400 bg-red-50 text-red-700" : "border-gray-200 bg-gray-50 text-gray-800 focus:border-gray-400"
+                }`}
             />
             <button
               onClick={() => setQty(String(maxQty))}
@@ -155,11 +152,10 @@ function DiscardPanel({ totalMaterial, totalProduct, materialName, productName, 
           <button
             onClick={handleConfirm}
             disabled={!canDiscard}
-            className={`flex-1 py-3 rounded-2xl font-black transition-all ${
-              canDiscard
+            className={`flex-1 py-3 rounded-2xl font-black transition-all ${canDiscard
                 ? "bg-red-500 text-white hover:bg-red-600 cursor-pointer shadow-lg shadow-red-200"
                 : "bg-gray-100 text-gray-400 cursor-not-allowed"
-            }`}
+              }`}
           >
             폐기 확인
           </button>
@@ -185,6 +181,8 @@ export function WarehousePage() {
 
   const [slots, setSlots] = useState<SlotData[]>([]);
   const [showDiscard, setShowDiscard] = useState(false);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const totalSlots = 100;
@@ -239,10 +237,13 @@ export function WarehousePage() {
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
     e.dataTransfer.setData("text/plain", index.toString());
+    setDraggingIndex(index);
   };
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
   const handleDrop = (e: React.DragEvent, targetIndex: number) => {
     e.preventDefault();
+    setDragOverIndex(null);
+    setDraggingIndex(null);
     const sourceIndexStr = e.dataTransfer.getData("text/plain");
     if (!sourceIndexStr) return;
     const sourceIndex = parseInt(sourceIndexStr, 10);
@@ -315,11 +316,10 @@ export function WarehousePage() {
             }
             setShowDiscard(true);
           }}
-          className={`flex items-center gap-2 px-4 py-3 rounded-2xl border-2 font-black text-sm transition-all shadow-lg cursor-pointer ${
-            hasAnyItem
+          className={`flex items-center gap-2 px-4 py-3 rounded-2xl border-2 font-black text-sm transition-all shadow-lg cursor-pointer ${hasAnyItem
               ? "bg-red-50 border-red-300 text-red-600 hover:bg-red-100 hover:border-red-400 hover:shadow-red-200"
               : "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed opacity-60"
-          }`}
+            }`}
           title="아이템 폐기"
         >
           <Trash2 className="w-4 h-4" />
@@ -357,6 +357,9 @@ export function WarehousePage() {
                   draggable={!slot.locked && hasItem}
                   onDragStart={(e) => handleDragStart(e, idx)}
                   onDragOver={handleDragOver}
+                  onDragEnter={() => !slot.locked && setDragOverIndex(idx)}
+                  onDragLeave={() => dragOverIndex === idx && setDragOverIndex(null)}
+                  onDragEnd={() => { setDragOverIndex(null); setDraggingIndex(null); }}
                   onDrop={(e) => handleDrop(e, idx)}
                   onClick={() => {
                     if (slot.locked) handleUnlockSlot(slot.id);
@@ -370,6 +373,8 @@ export function WarehousePage() {
                         ? "bg-white/60 border-transparent shadow-md hover:shadow-xl hover:-translate-y-1 cursor-grab active:cursor-grabbing backdrop-blur-md"
                         : "bg-white/30 border-dashed border-gray-400 hover:bg-white/50 hover:border-gray-500"
                     }
+                    ${dragOverIndex === idx && !slot.locked ? "ring-4 ring-blue-400 ring-offset-2 scale-105 z-10 border-blue-400 bg-blue-50/40" : ""}
+                    ${draggingIndex === idx ? "opacity-40 scale-95" : ""}
                   `}
                 >
                   <span className="absolute top-3 left-4 text-lg font-bold text-gray-500/80 tracking-widest z-10">
@@ -378,11 +383,10 @@ export function WarehousePage() {
 
                   {slot.locked ? (
                     <div className="flex flex-col items-center justify-center text-gray-400 w-full h-full">
-                      <Lock className={`w-12 h-12 mb-2 transition-all ${
-                        warehouseExpandTickets > 0
+                      <Lock className={`w-12 h-12 mb-2 transition-all ${warehouseExpandTickets > 0
                           ? "group-hover:scale-110 group-hover:text-amber-500 text-slate-400"
                           : "text-gray-300"
-                      }`} />
+                        }`} />
                       {warehouseExpandTickets > 0 ? (
                         <span className="text-xs font-bold text-amber-700 bg-amber-200 px-3 py-1 rounded-full shadow-sm mt-1">확장 가능</span>
                       ) : (
