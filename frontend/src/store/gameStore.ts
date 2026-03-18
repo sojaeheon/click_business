@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 // 🚨 gameApi.ts에 정의된 정확한 이름인 대문자 CompanyAPI로 가져옵니다.
-import { CompanyAPI } from "../api/gameApi";
+import { CompanyAPI, WarehouseAPI, InventoryAPI, BankAPI } from "../api/gameApi";
 
 // ─────────────────────────────────────────────────────────────────────────
 // 1. 타입 정의 (Types)
@@ -125,37 +125,22 @@ export const useGameStore = create<GameState>()(
     (set, get) => ({
       companyName: "",
       industry: "금 제련업",
-      money: 1000000,
+      money: 5000000,
       currency: "₩",
       capital: 5000000,
-      debt: 2000000,
-      warehouseMaxSlots: 10,
+      debt: 0,
+      warehouseMaxSlots: 6,
       inventoryMax: 4,
-      alerts: [
-        { id: "mock11", message: "[시장] 경쟁사 신제품 출시 소식", detail: "시장 점유율에 영향을 미칠 수 있습니다.", timeAgo: "방금 전", read: false },
-        { id: "mock1", message: "[시스템] 시장 조사 보고서가 도착했습니다.", detail: "금주 수요량 증가 예상", timeAgo: "1분 전", read: false },
-        { id: "mock2", message: "[창고] 자재 물류 트럭 도착", detail: "고급 철재 500개 입고 대기 중", timeAgo: "3분 전", read: false },
-        { id: "mock12", message: "[재무] 이달의 법인세 납부 안내", detail: "기한 내 납부하지 않으면 가산세가 부과됩니다.", timeAgo: "10분 전", read: false },
-        { id: "mock3", message: "[인사] 신입 사원 면접 평가 완료", timeAgo: "20분 전", read: true },
-        { id: "mock13", message: "[시스템] 게임 클라이언트 업데이트 (v1.2.0)", detail: "UI 테마 및 성능 개선이 확정되었습니다.", timeAgo: "2시간 전", read: true },
-        { id: "mock4", message: "[생산] 라인 A 점검 알림", detail: "정기 점검까지 2시간 남았습니다. 생산에 유의하세요.", timeAgo: "3시간 전", read: true },
-        { id: "mock5", message: "[은행] 대출 이자율 변동 안내", timeAgo: "어제", read: true }
-      ],
-      news: [
-        { id: "news1", headline: "속보! [O][O]공장 석유 유출 사고...", date: "TODAY 3rd Mar", isBreaking: true, summary: "대규모 환경 오염 우려" },
-        { id: "news2", headline: "철강 가격 3개월 만에 최고치 경신", date: "2nd Mar", isBreaking: false },
-      ],
+      alerts: [],
+      news: [],
       activeModal: null,
       selectedBuilding: null,
       activeBuildingPage: null,
-      bankData: { loanRate: 5.5, depositRate: 2.3, currentLoan: 500000, currentDeposit: 150000 },
-      warehouseItems: [
-        { id: "m1", type: "material", quantity: 47 },
-        { id: "p1", type: "product", quantity: 253 },
-      ],
+      bankData: { loanRate: 5.5, depositRate: 2.3, currentLoan: 0, currentDeposit: 0 },
+      warehouseItems: [],
       hrData: { currentLevel: 1, expectedLevel: 2, successRate: 70, materialCurrent: 1, materialMax: 2 },
       isLoading: false,
-      // 인베토리 아이템 (mock 시작값: 견습 광부 1개)
+      // 인베토리 아이템 (기본 캐릭터 지급 1개)
       inventoryItems: [
         { id: "inv_default_1", type: "worker_수습_광부", name: "수습 광부", icon: "⛏️", quantity: 1, level: 1, workerType: "miner" },
       ],
@@ -310,20 +295,67 @@ export const useGameStore = create<GameState>()(
       fetchCompanyData: async (companyId: number) => {
         set({ isLoading: true });
         try {
-          const response = await CompanyAPI.getStatus(companyId);
-          const realData = response.data;
+          // 백엔드 API 종합 호출 (fallback 포함)
+          const [companyRes, warehouseRes, inventoryRes, bankRes] = await Promise.all([
+            CompanyAPI.getStatus(companyId),
+            WarehouseAPI.getWarehouseItems(companyId),
+            InventoryAPI.getInventory(companyId),
+            BankAPI.getSummary(companyId)
+          ]);
+
+          const realData = companyRes.data;
+          
+          let wTickets = 0;
+          let iTickets = 0;
+          const workers: InventoryItem[] = [];
+
+          inventoryRes.data.forEach((item: any) => {
+            if (item.type === "ticket_warehouse" || item.id === "ticket_warehouse_expand") {
+              wTickets += item.quantity || 1;
+            } else if (item.type === "ticket_inventory" || item.id === "ticket_inventory_expand") {
+              iTickets += item.quantity || 1;
+            } else {
+              workers.push(item);
+            }
+          });
+
+          // 기본 캐릭터 (수습 광부) 지급 보장 (비어있을 경우)
+          if (workers.length === 0) {
+            workers.push({
+              id: "inv_default_1",
+              type: "worker_수습_광부",
+              name: "수습 광부",
+              icon: "⛏️",
+              quantity: 1,
+              level: 1,
+              workerType: "miner"
+            });
+          }
 
           set({
             money: realData?.cash ?? get().money,
             capital: realData?.total_asset ?? get().capital,
             companyName: realData?.name ?? get().companyName,
             industry: realData?.industry_type ?? get().industry,
-            warehouseMaxSlots: realData?.slots?.warehouse_slots ?? get().warehouseMaxSlots,
-            inventoryMax: realData?.slots?.inventory_slots ?? get().inventoryMax,
+            // 과거 캐시에 의해 프론트엔드 슬롯이 각각 10, 50으로 고정된 유저들을 위한 강제 보정 로직
+            warehouseMaxSlots: realData?.slots?.warehouse_slots ?? (get().warehouseMaxSlots === 10 ? 6 : get().warehouseMaxSlots),
+            inventoryMax: realData?.slots?.inventory_slots ?? (get().inventoryMax === 50 ? 4 : get().inventoryMax),
+            warehouseItems: warehouseRes.data as WarehouseItem[],
+            inventoryItems: workers,
+            warehouseExpandTickets: wTickets,
+            inventoryExpandTickets: iTickets,
+            bankData: {
+              ...get().bankData,
+              loanRate: bankRes.data.loanRate,
+              depositRate: bankRes.data.depositRate,
+              currentLoan: bankRes.data.currentLoan,
+              currentDeposit: bankRes.data.currentDeposit,
+            },
+            debt: bankRes.data.currentLoan, // 은행의 대출금액과 동기화
             isLoading: false
           });
         } catch (error) {
-          console.error("회사 정보 불러오기 실패:", error);
+          console.error("전반적인 회사 게임 데이터 로드 실패:", error);
           set({ isLoading: false });
         }
       }

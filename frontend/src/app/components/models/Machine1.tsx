@@ -8,7 +8,7 @@ import { useGLTF, useAnimations } from '@react-three/drei'
 import { SkeletonUtils } from 'three-stdlib'
 
 export function Machine1({ isWorking, ...props }: any) {
-  const group = React.useRef<any>()
+  const group = React.useRef<any>(null)
   const { scene, animations } = useGLTF('/models/props/machine1.glb')
   const clone = React.useMemo(() => SkeletonUtils.clone(scene), [scene])
   const { nodes, materials } = useGraph(clone) as any
@@ -18,9 +18,9 @@ export function Machine1({ isWorking, ...props }: any) {
     if (names.length > 0) {
       const actionName = names[0]; // 보통 첫 번째 애니메이션
       if (isWorking) {
-        actions[actionName].reset().fadeIn(0.5).play();
+        actions[actionName]?.reset().fadeIn(0.5).play();
       } else {
-        actions[actionName].fadeOut(0.5);
+        actions[actionName]?.fadeOut(0.5);
       }
     }
   }, [isWorking, actions, names]);

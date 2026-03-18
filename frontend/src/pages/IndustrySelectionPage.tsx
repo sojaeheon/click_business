@@ -62,10 +62,14 @@ export const IndustrySelectionPage = () => {
     }
 
     setIsSubmitting(true);
+    let mappedIndustry = 'GOLD_MINING';
+    if (selectedIndustry === '금 제련업') mappedIndustry = 'GOLD_SMELTING';
+    if (selectedIndustry === '제조업') mappedIndustry = 'MANUFACTURING';
+
     try {
       await CompanyAPI.create({
         companyName: companyName.trim(),
-        industryType: selectedIndustry,
+        industryType: mappedIndustry,
       });
     } catch (e) {
       console.warn("회사 생성 API 실패, 목업으로 진행:", e);

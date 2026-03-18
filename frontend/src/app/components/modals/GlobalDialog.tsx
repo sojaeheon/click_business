@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { UserPlus } from "lucide-react";
 import { useGame } from "../../../store/gameStore";
-import { useInventoryStore } from "../../../store/useAppStore";
+
 import { useAlertStore } from "../../../store/useAlertStore";
 import { getWorkerIcon, WorkerCard } from "../ui/WorkerCard";
 import { useGameStore } from "../../../store/gameStore";
