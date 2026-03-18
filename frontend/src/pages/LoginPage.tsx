@@ -12,6 +12,7 @@ export const LoginPage = () => {
 
   const handleLogin = () => {
     // 💡 백엔드 연동: 구글 OAuth2 로그인 요청
+    localStorage.removeItem('isGuest');
     window.location.href = authApi.getLoginUrl();
   };
 
@@ -21,6 +22,7 @@ const handleGuestMode = async () => {
       // 기존 잔여 게임 데이터가 존재할 수 있으므로 삭제 (state 초기화 용도)
       localStorage.removeItem('game-storage');
       localStorage.setItem('accessToken', data.data.accessToken);
+      localStorage.setItem('isGuest', 'true');
       navigate('/industry-selection');
     } catch (error) {
       console.error("게스트 로그인 실패:", error);

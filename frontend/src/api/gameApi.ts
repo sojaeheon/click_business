@@ -3,6 +3,7 @@ import { WORKER_DEFINITIONS } from '../constants/workers';
 
 // 💡 헬퍼 함수: 가짜 로딩 시간(0.5초)을 만들어주는 함수입니다.
 const mockDelay = (ms = 500) => new Promise(resolve => setTimeout(resolve, ms));
+const isGuestMode = () => localStorage.getItem('isGuest') === 'true';
 
 export const CompanyAPI = {
   getStatus: async (companyId: number) => {
@@ -29,7 +30,7 @@ export const CompanyAPI = {
           industry_type: undefined, // store에 있는 기존 로컬 정보 유지
           cash: 5000000,
           total_asset: 12000000,
-          slots: { warehouse_slots: 10, inventory_slots: 50 }
+          slots: undefined
         }
       };
     }
@@ -185,7 +186,12 @@ export const MarketAPI = {
       console.warn("API 연동 실패! MarketAPI.getOrderbook 목업 데이터 사용", err);
       await mockDelay();
       return {
-        data: []
+        data: isGuestMode() ? [] : [
+          { price: 3000, qty: 50, type: 'SELL' },
+          { price: 2900, qty: 120, type: 'SELL' },
+          { price: 2800, qty: 200, type: 'BUY' },
+          { price: 2700, qty: 80, type: 'BUY' },
+        ]
       };
     }
   },
@@ -210,7 +216,7 @@ export const BankAPI = {
     } catch (err) {
       console.warn("API 연동 실패! BankAPI.getSummary 목업 데이터 사용", err);
       await mockDelay();
-      return { data: { loanRate: 5.5, depositRate: 2.3, currentLoan: 0, currentDeposit: 0 } };
+      return { data: { loanRate: 5.5, depositRate: 2.3, currentLoan: isGuestMode() ? 0 : 1000000, currentDeposit: isGuestMode() ? 0 : 500000 } };
     }
   },
   processLoan: (data: { companyId: number; type: 'BORROW' | 'REPAY' | 'DEPOSIT' | 'WITHDRAW'; amount: number }) => apiClient.post('/bank/loans', data)
@@ -281,7 +287,10 @@ export const WarehouseAPI = {
       console.warn("API 연동 실패! WarehouseAPI 목업 데이터 사용", err);
       await mockDelay();
       return {
-        data: []
+        data: isGuestMode() ? [] : [
+          { id: "m1", type: "material", quantity: 47, name: "광산 드릴" },
+          { id: "p1", type: "product", quantity: 253, name: "금광석" },
+        ]
       };
     }
   }
@@ -307,9 +316,19 @@ export const InventoryAPI = {
       console.warn("API 연동 실패! InventoryAPI.getInventory 목업 데이터 사용", err);
       await mockDelay();
       return {
-        data: [
+        data: isGuestMode() ? [
           { id: "inv_default_1", type: "worker_수습_광부", itemName: "수습 광부", itemType: "EQUIPMENT", quantity: 1, level: 1, slotIndex: 1 }
-        ]
+        ] : WORKER_DEFINITIONS.map((w, i) => ({
+          id: i + 1,
+          name: w.displayName,
+          level: 1,
+          locked: i >= 4,
+          quantity: i < 3 ? 2 : 1,
+          icon: w.icon,
+          modelPath: w.modelPath,
+          workerType: w.type,
+          type: `worker_${w.displayName?.replace(/ /g, "_")}` // required for gameStore mapping!
+        }))
       };
     }
   },

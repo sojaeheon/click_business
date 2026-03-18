@@ -129,7 +129,7 @@ export const useGameStore = create<GameState>()(
       currency: "₩",
       capital: 5000000,
       debt: 0,
-      warehouseMaxSlots: 10,
+      warehouseMaxSlots: 6,
       inventoryMax: 4,
       alerts: [],
       news: [],
