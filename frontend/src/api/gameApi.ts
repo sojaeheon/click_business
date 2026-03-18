@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { WORKER_DEFINITIONS } from '../constants/workers';
 
 // 💡 헬퍼 함수: 가짜 로딩 시간(0.5초)을 만들어주는 함수입니다.
 const mockDelay = (ms = 500) => new Promise(resolve => setTimeout(resolve, ms));
@@ -37,78 +38,96 @@ export const CompanyAPI = {
 
 // 💡 작업장(Workstation) 백엔드 연동 전 임시 테스트용 목업 상태
 let mockWorkIsWorking = false;
-let mockWorkProgress = 0; // 0 ~ 100 퍼센트
-let mockWorkTotalQuantity = 0; // 유저가 처음에 요청한 총 수량
-let mockWorkUncollected = 0; // 현재 컨베이어에 쌓여있는 미수령 아이템 개수
+let mockWorkProgress = 0;      // 0 ~ 100 퍼센트
+let mockWorkTotalQuantity = 0; // 총 생산 예상 개수 (유저 입력값)
+let mockWorkUncollected = 0;   // 생산 완료된 미수령 아이템 개수
 let mockWorkInterval: ReturnType<typeof setInterval> | null = null;
+let mockWorkStartedAt = 0;     // 작업 시작 timestamp(ms)
+let mockWorkTotalMs = 0;       // 총 소요 예상 시간(ms)
 
 export const WorkstationAPI = {
   getStatus: async (companyId: number) => {
     // ✅ 실제 API 연결: GET /api/v1/workstations/{workstationId}
     try {
-      const res = await apiClient.get('/workstations/1'); // workstationId 임시 1
+      const res = await apiClient.get('/workstations/1');
       const data = res.data.data;
-      // 서버에서 progress = 0~100 퍼센트, producedQuantity = 미수령 생산 개수
       return {
         data: {
           isWorking: data.isActive,
           progress: data.progress ?? 0,
-          producedQuantity: data.producedQuantity ?? 0,
-          totalQuantity: data.totalQuantity ?? 500, // 서버가 줄 경우
+          producedQuantity: data.outputQuantity ?? data.producedQuantity ?? 0,
+          totalQuantity: data.reservedQuantity ?? data.totalQuantity ?? 0,
+          remainingMs: null as number | null, // 백엔드 미지원 → null
         }
       };
     } catch (err) {
       console.warn("API 연동 실패! WorkstationAPI.getStatus 목업 데이터 사용", err);
+      const elapsed = mockWorkIsWorking ? Date.now() - mockWorkStartedAt : 0;
+      const remaining = mockWorkIsWorking ? Math.max(0, mockWorkTotalMs - elapsed) : 0;
       return {
         data: {
           isWorking: mockWorkIsWorking,
           progress: Math.min(100, mockWorkProgress),
           producedQuantity: mockWorkUncollected,
           totalQuantity: mockWorkTotalQuantity || 0,
+          remainingMs: mockWorkIsWorking ? remaining : null,
         }
       };
     }
   },
+  // data.quantity = 유저가 요청한 총 생산 수량 (개 단위)
+  // 사이클 = Math.ceil(qty / resProd), 총 시간 = cycles * 60초
   start: async (data: { companyId: number; recipeId: number; quantity: number; workerId: number }) => {
+    let resProd = 1;
+    let reqMat = 1;
     try {
-      await apiClient.post(`/workstations/1/reserve`, { quantity: data.quantity });
-      await apiClient.post(`/workstations/1/process`, { outputItemId: 1 });
+      const { useGameStore } = await import('../store/gameStore');
+      const names = useGameStore.getState().getIndustryItemNames();
+      resProd = names.resProd;
+      reqMat = names.reqMat;
+    } catch (e) {}
+
+    const cycles = Math.ceil(data.quantity / resProd); // 몇 사이클 돌아야 하는지
+    const reserveQty = cycles * reqMat;                // 창고에서 꺼낼 재료 수
+
+    try {
+      // ✅ 실제 API: reserve로 재료 예약 → toggle로 가동 시작
+      await apiClient.post(`/workstations/1/reserve`, { quantity: reserveQty });
+      await apiClient.post(`/workstations/1/toggle`); // process 대신 toggle
       return { data: { success: true, message: "작업이 시작되었습니다." } };
     } catch (err) {
       console.warn("API 연동 실패! WorkstationAPI.start 목업 데이터 사용", err);
       await mockDelay();
 
-      let resProd = 1;
-      try {
-        const { useGameStore } = await import('../store/gameStore');
-        resProd = useGameStore.getState().getIndustryItemNames().resProd;
-      } catch (e) {}
-
-      mockWorkTotalQuantity = data.quantity * resProd;
+      const totalMs = cycles * 60000; // 실제 스펙: 1사이클 = 1분
+      mockWorkTotalQuantity = cycles * resProd; // 총 생산 예상 개수
       mockWorkUncollected = 0;
       mockWorkIsWorking = true;
       mockWorkProgress = 0;
-      
-      let producedSoFar = 0;
-      if (!mockWorkInterval) {
-        mockWorkInterval = setInterval(() => {
-          if (mockWorkProgress < 100) {
-            // 실제론 1분당이지만, 목업 테스트를 위해 quantity 1당 5초 소요 (총 소요 = qty * 5초)
-            const tickPercent = 100 / ((data.quantity * 5000) / 500);
-            mockWorkProgress += tickPercent; 
-            if (mockWorkProgress > 100) mockWorkProgress = 100;
+      mockWorkStartedAt = Date.now();
+      mockWorkTotalMs = totalMs;
 
-            const expectedItems = Math.floor((mockWorkProgress / 100) * mockWorkTotalQuantity);
-            const newlyProduced = expectedItems - producedSoFar;
-            if (newlyProduced > 0) {
-              mockWorkUncollected += newlyProduced;
-              producedSoFar = expectedItems;
-            }
-          } else {
-            if (mockWorkInterval) { clearInterval(mockWorkInterval); mockWorkInterval = null; }
+      let producedSoFar = 0;
+      if (mockWorkInterval) { clearInterval(mockWorkInterval); mockWorkInterval = null; }
+      const intervalMs = 500;
+      const totalTicks = totalMs / intervalMs;
+      const tickPercent = 100 / totalTicks;
+
+      mockWorkInterval = setInterval(() => {
+        if (mockWorkProgress < 100) {
+          mockWorkProgress += tickPercent;
+          if (mockWorkProgress > 100) mockWorkProgress = 100;
+          const expectedItems = Math.floor((mockWorkProgress / 100) * mockWorkTotalQuantity);
+          const newlyProduced = expectedItems - producedSoFar;
+          if (newlyProduced > 0) {
+            mockWorkUncollected += newlyProduced;
+            producedSoFar = expectedItems;
           }
-        }, 500); 
-      }
+        } else {
+          if (mockWorkInterval) { clearInterval(mockWorkInterval); mockWorkInterval = null; }
+          mockWorkIsWorking = false;
+        }
+      }, intervalMs);
 
       return { data: { success: true, message: "작업이 시작되었습니다. (Mock)" } };
     }
@@ -228,14 +247,16 @@ export const InventoryAPI = {
       console.warn("API 연동 실패! InventoryAPI.getInventory 목업 데이터 사용", err);
       await mockDelay();
       return {
-        data: [
-          { id: 1, name: "수습 광부 (Mock)", level: 1, locked: false },
-          { id: 2, name: "숙련된 제련공 (Mock)", level: 3, locked: false },
-          { id: 3, name: "전설의 대장장이 (Mock)", level: 5, locked: false },
-          { id: 4, locked: false },
-          { id: 5, locked: true },
-          { id: 6, locked: true },
-        ]
+        data: WORKER_DEFINITIONS.map((w, i) => ({
+          id: i + 1,
+          name: w.displayName,
+          level: 1,
+          locked: i >= 4,  // 5번째부터 잠김
+          quantity: i < 3 ? 2 : 1, // 낮은 레벨은 2개 보유
+          icon: w.icon,
+          modelPath: w.modelPath,
+          workerType: w.type,
+        }))
       };
     }
   },

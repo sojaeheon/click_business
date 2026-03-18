@@ -5,6 +5,7 @@ import { Canvas } from "@react-three/fiber";
 import { Html, useGLTF, OrbitControls, useAnimations, useTexture } from "@react-three/drei";
 import * as THREE from "three";
 import { BackButton } from "../../app/components/ui/backbutton";
+import { getWorkerIcon, getWorkerModelPath } from "../../app/components/ui/WorkerCard";
 
 function CharacterModel({ url }: { url: string }) {
   const { scene, animations } = useGLTF(url);
@@ -120,13 +121,7 @@ function LevelUpEffect() {
 }
 
 function getModelPathForWorker(name: string) {
-  if (!name) return "/models/characters/Barbarian.glb";
-  if (name.includes("야만") || name.includes("전사") || name.includes("광부")) return "/models/characters/Barbarian.glb";
-  if (name.includes("기사") || name.includes("제련")) return "/models/characters/Knight.glb";
-  if (name.includes("마법")) return "/models/characters/Mage.glb";
-  if (name.includes("궁수")) return "/models/characters/Ranger.glb";
-  if (name.includes("도적")) return "/models/characters/Rogue.glb";
-  return "/models/characters/Barbarian.glb";
+  return getWorkerModelPath(name);
 }
 
 export function HRPage() {
@@ -306,11 +301,19 @@ export function HRPage() {
             {Array.isArray(slots) && slots.map((item) => {
               const itemName = item.name || item.item_name;
               const itemId = item.id || item.item_id;
-              const isWorker = itemName && (itemName.includes("광부") || itemName.includes("제련") || itemName.includes("대장") || itemName.includes("전사") || itemName.includes("기사") || itemName.includes("도적") || itemName.includes("대장장이"));
+              // 일꾼 종류 판별: 이름으로 구분
+              const isWorker = itemName && (
+                itemName.includes("광부") || itemName.includes("제련") ||
+                itemName.includes("대장") || itemName.includes("전사") ||
+                itemName.includes("기사") || itemName.includes("도적") ||
+                itemName.includes("대장장이")
+              );
               // @ts-ignore
               const isLocked = item.locked !== undefined ? item.locked : false;
 
               if (!isWorker || isLocked) return null;
+
+              const workerIcon = getWorkerIcon(itemName);
 
               return (
                 <button
@@ -319,11 +322,12 @@ export function HRPage() {
                     setSelectedWorker(item);
                     setIsInventoryOpen(false);
                   }}
-                  className="w-full text-left rounded-3xl border-[4px] p-5 flex justify-between items-center transition-all bg-white border-slate-200 hover:border-amber-400 hover:shadow-xl hover:-translate-y-1 cursor-pointer"
+                  className="w-full text-left rounded-3xl border-[4px] p-4 flex items-center gap-4 transition-all bg-white border-slate-200 hover:border-amber-400 hover:shadow-xl hover:-translate-y-1 cursor-pointer"
                 >
+                  <span className="text-3xl flex-shrink-0">{workerIcon}</span>
                   <div>
-                    <h3 className="text-xl font-black text-slate-800">{itemName}</h3>
-                    <p className="text-md font-bold text-amber-600 mt-1">Lv. {(item as any).level || 1}</p>
+                    <h3 className="text-lg font-black text-slate-800">{itemName}</h3>
+                    <p className="text-sm font-bold text-amber-600 mt-0.5">Lv. {(item as any).level || 1}</p>
                   </div>
                 </button>
               );

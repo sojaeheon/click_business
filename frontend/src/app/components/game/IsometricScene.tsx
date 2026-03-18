@@ -77,7 +77,7 @@ function OceanTile({ position, scale }: { position: [number, number, number], sc
 function OceanGrid() {
   // 블렌더 바다 원본 크기(30) * OceanTile의 스케일(2) = 타일 1장의 실제 크기(60)
   const TILE_SIZE = 60;
-  const GRID_RADIUS = 3; // 카메라가 보는 범위를 덮을 타일 반경 (3이면 7x7=49장 렌더링)
+  const GRID_RADIUS = 1; // 최적화: 1이면 3x3=9장 렌더링 (기존 3→1 축소)
 
   const tiles = [];
 
@@ -595,6 +595,8 @@ export function GameScene({
 }) {
   const { openBuildingPage } = useGame();
   const [inWorkstation, setInWorkstation] = useState(false);
+  // 활성 시작시 requestedQty/totalMs를 Workstation 컴포넌트에 주입하는 콜백
+  const workstationStartRef = useRef<((opts: { requestedQty: number; totalMs: number }) => void) | null>(null);
 
   const go = useCallback((name: string, label: string) => {
     onDialog?.({
@@ -610,24 +612,35 @@ export function GameScene({
       isWorking: isWorkstationWorking,
       onStart: async (qty) => {
         try {
+          // ✅ 산업별 스펙 계산: cycles, 재료 소모, 총 시간
+          const store = useGameStore.getState();
+          const { reqMat, resProd } = store.getIndustryItemNames();
+          const cycles = Math.ceil(qty / resProd);
+          const totalMsNeeded = cycles * 60000;
+          const materialNeeded = cycles * reqMat;
+
+          // ✅ 재료 창고에서 차감 (updateMaterial 음수 = 차감)
+          const deducted = store.updateMaterial(-materialNeeded);
+          if (Math.abs(deducted) < materialNeeded) {
+            useAlertStore.getState().openAlert("재료가 부족합니다.", "경고");
+            return;
+          }
+
           await WorkstationAPI.start({ companyId: 1, recipeId: 1, quantity: qty, workerId: 1 });
           setIsWorkstationWorking(true);
-          useGameStore.getState().addAlert({ message: "생산 시작", detail: "작업장에서 생산이 시작되었습니다." });
+
+          // ✅ Workstation 컴포넌트에 목표 개수 & 예상 시간 전달
+          workstationStartRef.current?.({ requestedQty: cycles * resProd, totalMs: totalMsNeeded });
+
+          store.addAlert({ message: "생산 시작 🏭", detail: `재료 ${materialNeeded}개 소모 • ${cycles * resProd}개 생산 예정 (${cycles}분)` });
         } catch (e) {
           console.error(e);
           useAlertStore.getState().openAlert("작업 시작에 실패했습니다.", "경고");
         }
       },
       onStop: async () => {
-        try {
-          await WorkstationAPI.collect(1);
-          setIsWorkstationWorking(false);
-          useGameStore.getState().addAlert({ message: "생산 완료", detail: "작업장 결과물을 수령했습니다." });
-          useAlertStore.getState().openAlert("결과물을 성공적으로 수령하여 창고에 보관했습니다.", "수령 완료");
-        } catch (e) {
-          console.error(e);
-          useAlertStore.getState().openAlert("수령에 실패했습니다.", "경고");
-        }
+        // 수령은 3D 씩 더미 클릭으로 처리되므로 모달에서는 실제 collect 안 함
+        setIsWorkstationWorking(false);
       },
     });
   }, [onDialog, isWorkstationWorking, setIsWorkstationWorking]);
@@ -648,7 +661,7 @@ export function GameScene({
         intensity={2.0}
         castShadow
         shadow-bias={-0.0001}
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={[1024, 1024]}
       >
         <orthographicCamera attach="shadow-camera" args={[-80, 80, 80, -80, 0.5, 150]} />
       </directionalLight>
@@ -671,10 +684,12 @@ export function GameScene({
         inWorkstation={inWorkstation}
         onOpenModal={handleWorkstationClick}
         onStoreGold={(count) => {
-          console.log(`금괴 ${count}개 창고 저장 요청`);
-          useAlertStore.getState().openAlert(`금괴 ${count}개를 창고에 저장했습니다!`, "아이템 획득");
+          // 실제 창고 저장은 Workstation 내부에서 gameStore.updateProduct로 처리됨
+          // 여기에서는 추가 아이템 혼력 없도록 alert만 저장
+          console.log(`[Workstation] ${count}개 창고 저장 완료`);
         }}
         onWorkChange={setIsWorkstationWorking}
+        onRegisterStart={(fn) => { workstationStartRef.current = fn; }}
       />
 
       {!isLoginMode && (
@@ -816,7 +831,8 @@ export function IsometricScene({ isLoginMode = false }: { isLoginMode?: boolean 
           flat orthographic
           camera={{ position: [cx, cy, cz], zoom: isLoginMode ? 40 : CONFIG.CAMERA.initialZoom }}
           shadows
-          gl={{ antialias: true, alpha: true }}
+          gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+          performance={{ min: 0.5 }}
           tabIndex={0}
           onCreated={({ gl }) => {
             gl.domElement.tabIndex = 0;
@@ -848,23 +864,32 @@ export function IsometricScene({ isLoginMode = false }: { isLoginMode?: boolean 
   );
 }
 
-// ✨ 프리로드 목록
+// ✨ 프리로드 목록 (최적화: 공통 + 현재 산업 props만 선별)
 [
+  // ── 환경/건물 (필수) ──
   M.base, M.bank, M.hr, M.market, M.warehouse,
   M.roadStraight, M.roadCornerCurved,
   M.roadJunction, M.roadTsplit,
-  M.streetlight, M.trafficlightA, M.trafficlightB,
-  M.bush, M.firehydrant, M.boxA, M.boxB,
-  M.carHatchback, M.carPolice, M.carSedan, M.carStationwagon, M.carTaxi,
-  M.minigame, M.ocean,
-  "/models/props/animated_conveyer_belt.glb",
+  // ── 차들 / 소품 일부 ──
+  M.carHatchback, M.carSedan, M.carPolice,
+  M.ocean,
+  // ── 캐릭터 + 애니메이션 ──
   "/models/characters/Barbarian.glb",
   "/models/animations/Rig_Medium_Tools.glb",
   "/models/animations/Rig_Medium_MovementBasic.glb",
   "/models/animations/Rig_Medium_General.glb",
+  // ── 금 제련업 (컨베이어) 관련 ──
+  "/models/props/animated_conveyer_belt.glb",
   "/models/props/Gold_Bar.gltf",
-  "/models/props/Gold_Bars.gltf",
   "/models/props/Gold_Bars_Stack_Small.gltf",
   "/models/props/Gold_Bars_Stack_Medium.gltf",
   "/models/props/Gold_Bars_Stack_Large.gltf",
+  // ── 금광업 관련 ──
+  "/models/props/rocks_B.gltf",
+  "/models/props/Gold_Nuggets.gltf",
+  "/models/props/Gold_Nugget_Medium.gltf",
+  // ── 제조업 관련 ──
+  "/models/props/machine1.glb",
+  "/models/props/drill.glb",
+  "/models/props/toolbox.glb",
 ].forEach(url => useGLTF.preload(url));

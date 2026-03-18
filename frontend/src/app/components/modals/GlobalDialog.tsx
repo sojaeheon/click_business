@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { UserPlus } from "lucide-react";
-import { useGame } from "../../../store/gameStore"; // ⚠️ 경로를 프로젝트에 맞게 수정해 주세요!
+import { useGame } from "../../../store/gameStore";
 import { useInventoryStore } from "../../../store/useAppStore";
 import { useAlertStore } from "../../../store/useAlertStore";
+import { getWorkerIcon } from "../ui/WorkerCard";
 
 // 다른 곳에서도 쓸 수 있게 export 해줍니다.
 export interface ConfirmData {
@@ -17,12 +18,14 @@ export interface ConfirmData {
 export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: () => void }) {
   const R: React.CSSProperties = { fontFamily: "'KerisKeduR', sans-serif" };
   const { state } = useGame();
-  const [qty, setQty] = useState(1);
+  // qty 초기값 = 1사이클의 생산 개수 (산업별 최소 단위)
+  const defaultQty = state.getIndustryItemNames().resProd;
+  const [qty, setQty] = useState(defaultQty);
   const [isCollecting, setIsCollecting] = useState(false);
   const [particles, setParticles] = useState<{ id: number, x: number, y: number, tx: number, ty: number, delay: number }[]>([]);
 
   // 장착 일꾼 데이터
-  const [equippedWorker, setEquippedWorker] = useState<{id: number, name: string, level: number} | null>(null);
+  const [equippedWorker, setEquippedWorker] = useState<{ id: number, name: string, level: number } | null>(null);
 
   const [slots, setSlots] = useState<any[]>([]);
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
@@ -37,7 +40,7 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !isCollecting) onClose();
-      // 스페이스바 직시입장 로직 (일반 건물인 경우)
+      // 스페이스바 즉시입장 로직 (일반 건물인 경우)
       if (e.code === "Space" && !isCollecting && data.type === "building" && data.action) {
         e.preventDefault();
         data.action();
@@ -50,10 +53,17 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
 
   if (data.type === "workstation") {
     const { material, product, reqMat, resProd } = state.getIndustryItemNames();
-    const materialPerUnit = reqMat;
     const warehouseStock = state.warehouseItems.find(i => i.type === "material")?.quantity || 0;
-    const totalMaterial = qty * materialPerUnit;
-    const totalProduced = qty * resProd;
+    
+    // qty = 유저가 생산하고 싶은 총 아이템 개수
+    // cycles = 실제 돌아야 할 사이클 수 (1사이클 = 1분)
+    const cycles = Math.ceil(qty / resProd);
+    const totalMaterial = cycles * reqMat;      // 소모될 재료
+    const totalProduced = cycles * resProd;     // 실제 생산되는 개수 (올림 반영)
+    const totalSecs = cycles * 60;              // 총 소요 시간 (초)
+    const mins = Math.floor(totalSecs / 60);
+    const secs = totalSecs % 60;
+    const timeLabel = secs === 0 ? `${mins}분` : `${mins}분 ${secs}초`;
     const hasEnough = warehouseStock >= totalMaterial;
 
     const handleCollect = (e: React.MouseEvent) => {
@@ -105,24 +115,25 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
         `}} />
 
         <div className="bg-white rounded-[2rem] shadow-2xl p-8 flex flex-col gap-5 border-4 border-slate-200" style={{ ...R, minWidth: 400 }} onClick={(e) => e.stopPropagation()}>
-          
+
           {/* 모달 헤더 및 일꾼 장착 슬롯 통합 */}
           <div className="flex items-center gap-5 border-b-2 border-slate-100 pb-5">
             <button
               onClick={() => {
                 if (!data.isWorking) setIsInventoryOpen(true);
               }}
-              className={`relative w-[88px] h-[88px] flex flex-col items-center justify-center rounded-2xl shadow-inner border-[3px] transition-all overflow-hidden group flex-shrink-0 ${
-                equippedWorker
+              className={`relative w-[88px] h-[88px] flex flex-col items-center justify-center rounded-2xl shadow-inner border-[3px] transition-all overflow-hidden group flex-shrink-0 ${equippedWorker
                   ? "bg-gradient-to-br from-blue-100 to-indigo-50 border-blue-300"
                   : data.isWorking
-                  ? "bg-slate-100 border-slate-300 opacity-50 cursor-not-allowed grayscale"
-                  : "bg-slate-50 border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 cursor-pointer"
-              }`}
+                    ? "bg-slate-100 border-slate-300 opacity-50 cursor-not-allowed grayscale"
+                    : "bg-slate-50 border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 cursor-pointer"
+                }`}
             >
               {equippedWorker ? (
                 <>
-                  <span className="text-4xl drop-shadow-md group-hover:scale-110 transition-transform">🧑‍🔧</span>
+                  <span className="text-4xl drop-shadow-md group-hover:scale-110 transition-transform">
+                    {getWorkerIcon(equippedWorker.name)}
+                  </span>
                   <span className="absolute bottom-1 bg-blue-600/90 text-white font-black px-2 py-0.5 rounded text-[10px] shadow-sm">
                     Lv.{equippedWorker.level}
                   </span>
@@ -141,7 +152,7 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                 </div>
               )}
             </button>
-            
+
             <div className="flex-1 flex flex-col justify-center">
               <h2 className="text-[26px] font-black text-slate-800 tracking-widest leading-none mb-1.5">작업장</h2>
               <div className="flex items-center gap-2">
@@ -159,24 +170,26 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
             <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-2xl p-6 flex flex-col gap-5 border border-slate-200 shadow-sm relative overflow-hidden">
               {/* 배경 장식 */}
               <div className="absolute -right-6 -top-6 text-9xl opacity-5 pointer-events-none">🏭</div>
-              
+
               <div className="text-center relative z-10">
-                <label className="text-sm font-black text-slate-400 uppercase tracking-widest">생산 수량 설정</label>
-                <div className="text-[10px] text-slate-500 font-bold mt-0.5">(수량 1 단위 = 1분 가동)</div>
+                <label className="text-sm font-black text-slate-400 uppercase tracking-widest">총 생산 수량 설정</label>
+                <div className="text-[10px] text-slate-500 font-bold mt-0.5">
+                  1 사이클 당 {resProd}개 생산 · {reqMat}개 재료 소모
+                </div>
               </div>
-              
+
               <div className="flex items-center justify-center gap-3 relative z-10">
-                <button 
-                  className="w-14 h-14 rounded-2xl bg-white border-b-4 border-2 border-slate-200 border-b-slate-300 font-black text-slate-400 hover:bg-slate-50 hover:text-slate-600 hover:border-b-slate-400 active:translate-y-1 active:border-b-0 transition-all text-2xl shadow-sm flex items-center justify-center cursor-pointer select-none" 
-                  onClick={(e) => { e.stopPropagation(); setQty(q => Math.max(1, q - 1)); }}
+                <button
+                  className="w-14 h-14 rounded-2xl bg-white border-b-4 border-2 border-slate-200 border-b-slate-300 font-black text-slate-400 hover:bg-slate-50 hover:text-slate-600 hover:border-b-slate-400 active:translate-y-1 active:border-b-0 transition-all text-2xl shadow-sm flex items-center justify-center cursor-pointer select-none"
+                  onClick={(e) => { e.stopPropagation(); setQty(q => Math.max(resProd, q - resProd)); }}
                 >−</button>
                 <div className="relative group flex-1">
                   <input
-                    type="number" min={1} value={qty}
+                    type="number" min={resProd} step={resProd} value={qty}
                     onChange={e => {
                       const val = parseInt(e.target.value, 10);
-                      if (!isNaN(val) && val >= 1) setQty(val);
-                      else if (e.target.value === '') setQty(1);
+                      if (!isNaN(val) && val >= resProd) setQty(val);
+                      else if (e.target.value === '') setQty(resProd);
                     }}
                     onKeyDown={e => {
                       // 모달 내 input에서 키 이벤트가 Three.js 캔버스로 전파되지 않도록 모두 차단
@@ -192,33 +205,44 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                     className="w-full text-center text-4xl font-black border-2 border-b-4 border-slate-200 rounded-2xl py-3 bg-white text-indigo-900 focus:outline-none focus:border-indigo-400 focus:border-b-indigo-500 shadow-inner hover:border-indigo-300 transition-colors"
                   />
                   <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none">
-                    <span className="text-indigo-300 font-bold text-base select-none bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">단위</span>
+                    <span className="text-indigo-300 font-bold text-base select-none bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">개</span>
                   </div>
                 </div>
-                <button 
-                  className="w-14 h-14 rounded-2xl bg-white border-b-4 border-2 border-slate-200 border-b-slate-300 font-black text-slate-400 hover:bg-slate-50 hover:text-slate-600 hover:border-b-slate-400 active:translate-y-1 active:border-b-0 transition-all text-2xl shadow-sm flex items-center justify-center cursor-pointer select-none" 
-                  onClick={(e) => { e.stopPropagation(); setQty(q => q + 1); }}
+                <button
+                  className="w-14 h-14 rounded-2xl bg-white border-b-4 border-2 border-slate-200 border-b-slate-300 font-black text-slate-400 hover:bg-slate-50 hover:text-slate-600 hover:border-b-slate-400 active:translate-y-1 active:border-b-0 transition-all text-2xl shadow-sm flex items-center justify-center cursor-pointer select-none"
+                  onClick={(e) => { e.stopPropagation(); setQty(q => q + resProd); }}
                 >+</button>
               </div>
 
 
               <div className="flex flex-col gap-3 pt-5 border-t-2 border-slate-200 bg-white/50 rounded-xl px-4 py-3 relative z-10 mt-2">
+                {/* 라인 1: 소모 재료 */}
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-slate-500 font-bold flex items-center gap-1.5"><span className="text-lg">📦</span> 소모 재료 ({material}) <span className="text-[10px] text-slate-400 font-normal bg-slate-100 rounded px-1.5 py-0.5">창고</span></span>
                   <div className={`font-black tracking-widest px-3 py-1.5 rounded-lg border-b-2 flex items-center gap-2 ${hasEnough ? 'text-indigo-600 bg-indigo-50 border-indigo-200 border-b-indigo-300' : 'text-rose-500 border-rose-200 border-b-rose-300 bg-rose-50'}`}>
                     <span>{totalMaterial}</span>
-                    <span className="text-xs text-slate-300 font-bold">/</span> 
+                    <span className="text-xs text-slate-300 font-bold">/</span>
                     <span className={hasEnough ? 'text-indigo-400' : 'text-rose-400'}>{warehouseStock}</span>
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center text-sm mt-1">
+                {/* 라인 2: 예상 수확물 */}
+                <div className="flex justify-between items-center text-sm">
                   <span className="text-slate-500 font-bold flex items-center gap-1.5"><span className="text-lg">✨</span> 예상 수확물 ({product})</span>
                   <div className="font-black tracking-widest px-3 py-1.5 rounded-lg border-b-2 flex items-center gap-2 text-emerald-600 bg-emerald-50 border-emerald-200 border-b-emerald-300">
-                    <span>{totalProduced}</span>
+                    <span>{totalProduced}개</span>
                   </div>
                 </div>
-                
+
+                {/* 라인 3: 예상 소요 시간 */}
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500 font-bold flex items-center gap-1.5"><span className="text-lg">⏱️</span> 예상 소요 시간</span>
+                  <div className="font-black tracking-widest px-3 py-1.5 rounded-lg border-b-2 flex items-center gap-2 text-violet-600 bg-violet-50 border-violet-200 border-b-violet-300">
+                    <span>{timeLabel}</span>
+                    <span className="text-xs text-violet-300">({cycles}사이클)</span>
+                  </div>
+                </div>
+
                 {!hasEnough && (
                   <p className="text-xs font-bold text-rose-500 mt-1 flex items-center gap-1.5 justify-center animate-pulse bg-rose-100/50 py-2 rounded-lg border border-rose-200">
                     ⚠️ 재료가 <strong className="text-rose-600">{totalMaterial - warehouseStock}개</strong> 더 필요해요!
@@ -272,7 +296,7 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                 const isWorker = itemName && (itemName.includes("광부") || itemName.includes("제련") || itemName.includes("대장") || itemName.includes("전사") || itemName.includes("기사") || itemName.includes("도적") || itemName.includes("대장장이"));
                 // @ts-ignore
                 const isLocked = item.locked !== undefined ? item.locked : false;
-                
+
                 return (
                   <button
                     key={itemId || Math.random()}
@@ -284,17 +308,18 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                         useAlertStore.getState().openAlert("캐릭터(일꾼)만 장착할 수 있습니다.", "장착 불가");
                       }
                     }}
-                    className={`w-full text-left rounded-3xl border-[4px] p-5 flex justify-between items-center transition-all ${
-                      isWorker && !isLocked
+                    className={`w-full text-left rounded-3xl border-[4px] p-5 flex justify-between items-center transition-all ${isWorker && !isLocked
                         ? "bg-white border-slate-200 hover:border-amber-400 hover:shadow-xl hover:-translate-y-1 cursor-pointer"
                         : isLocked ? "bg-slate-50 border-slate-200 opacity-50 cursor-not-allowed grayscale" : "bg-slate-50 border-slate-200 hover:border-slate-300 cursor-not-allowed"
-                    }`}
+                      }`}
                   >
-                    <div>
-                      <h3 className={`text-xl font-black ${isWorker && !isLocked ? "text-slate-800" : "text-slate-500"}`}>{itemName || (isLocked ? "잠긴 슬롯" : "빈 슬롯")}</h3>
-                      {isWorker && !isLocked && <p className="text-md font-bold text-amber-600 mt-1">Lv. {(item as any).level || 1}</p>}
+                    <div className="flex items-center gap-3">
+                      {isWorker && !isLocked && <span className="text-3xl drop-shadow-md flex-shrink-0">{getWorkerIcon(itemName)}</span>}
+                      <div>
+                        <h3 className={`text-lg font-black ${isWorker && !isLocked ? "text-slate-800" : "text-slate-500"}`}>{itemName || (isLocked ? "잉금 슬롯" : "빈 슬롯")}</h3>
+                        {isWorker && !isLocked && <p className="text-sm font-bold text-amber-600 mt-0.5">Lv. {(item as any).level || 1}</p>}
+                      </div>
                     </div>
-                    {isWorker && !isLocked && <span className="text-4xl drop-shadow-md">🧑‍🔧</span>}
                   </button>
                 );
               })}
