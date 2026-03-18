@@ -21,12 +21,12 @@ const podiumColors: Record<number, string> = {
 
 export function RankingModal() {
   const { state } = useGame();
-  
+
   const [rankData, setRankData] = useState<RankEntry[]>(initialRankData);
   const [lastUpdated, setLastUpdated] = useState<string>("로딩 중...");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  
+
   const [showMyRank, setShowMyRank] = useState(false);
 
   useEffect(() => {
@@ -34,23 +34,23 @@ export function RankingModal() {
     RankingAPI.getTopRanks()
       .then((res) => {
         if (!isMounted) return;
-        
+
         // ✨ 수정 포인트 1: res.data.data가 아니라 res.data 입니다!
         // 그리고 api의 목업 데이터(companyName, score)를 컴포넌트 규격에 맞게 예쁘게 맵핑해줍니다.
         const formattedData = res.data.map((item: any) => ({
           rank: item.rank,
           name: item.companyName, // 대표자 이름 (현재는 회사명으로 대체)
           company: item.tier || "일반", // 회사명 자리 (현재는 티어로 대체)
-          amount: item.score.toLocaleString() + " ₵", // 점수를 돈 형식으로 변환
+          amount: item.score.toLocaleString() + " 원", // 점수를 돈 형식으로 변환
         }));
 
         setRankData(formattedData || []);
-        
+
         // 매 시 정각 포맷 구하기
         const now = new Date();
         const hr = now.getHours().toString().padStart(2, '0');
         setLastUpdated(`오늘 ${hr}:00 업데이트됨`);
-        
+
         setError(false);
       })
       .catch((err) => {
@@ -60,7 +60,7 @@ export function RankingModal() {
       .finally(() => {
         if (isMounted) setLoading(false);
       });
-      
+
     return () => { isMounted = false; };
   }, []);
 
@@ -69,10 +69,11 @@ export function RankingModal() {
   const rest = rankData?.slice(3) || [];
 
   // 내 순위 더미 데이터
-  const myRank = { rank: 2, amount: state.money.toLocaleString() + " ₵" };
+  const myRank = { rank: 2, amount: state.money.toLocaleString() + " 원" };
 
   return (
-    <div className="relative flex flex-col pointer-events-auto pb-6">
+    <div className="relative h-full flex flex-col pointer-events-auto overflow-y-auto hide-scrollbar" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+      <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
       <div className="flex items-center justify-between mb-2 flex-shrink-0">
         <div className="flex items-center gap-2">
           <Trophy className="w-5 h-5 text-yellow-600" />
@@ -169,7 +170,7 @@ export function RankingModal() {
 
       {/* 내 순위 팝업 */}
       {showMyRank && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center">
+        <div className="absolute inset-0 z-50 flex items-center justify-center pb-12">
           <div className="absolute inset-0 rounded-3xl" onClick={() => setShowMyRank(false)} />
           <div className="relative bg-white rounded-[2rem] border-[4px] border-slate-800 shadow-2xl p-8 w-80 text-center animate-in zoom-in-95 duration-200">
             <button

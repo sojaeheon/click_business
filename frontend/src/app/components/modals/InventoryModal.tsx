@@ -81,9 +81,9 @@ export function InventoryModal() {
         </button>
       </div>
 
-      <div className="flex gap-4 flex-1 mt-2">
+      <div className="flex gap-4 flex-1 mt-2 overflow-hidden min-h-0">
         {/* 왼쪽: 현재 장착된 일꾼 화면 - 세련된 스테이지 디자인 */}
-        <div className="w-1/2 bg-gradient-to-b from-blue-50/50 to-indigo-50/80 rounded-2xl border border-white shadow-[inset_0_2px_15px_rgba(255,255,255,0.8),0_10px_20px_-10px_rgba(0,0,0,0.1)] flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        <div className="w-1/2 h-full bg-gradient-to-b from-blue-50/50 to-indigo-50/80 rounded-2xl border border-white shadow-[inset_0_2px_15px_rgba(255,255,255,0.8),0_10px_20px_-10px_rgba(0,0,0,0.1)] flex flex-col items-center justify-center p-6 relative overflow-hidden">
           {/* 캐릭터 렌더링 영역 */}
           {equippedSlot ? (
             <div className="flex flex-col items-center animate-fade-in relative z-10 w-full">
@@ -115,8 +115,8 @@ export function InventoryModal() {
           )}
         </div>
 
-        {/* 오른쪽: 인벤토리 슬롯 (2x2 그리드) */}
-        <div className="w-1/2 bg-white rounded-xl border-2 border-gray-300 p-4 flex flex-col">
+        {/* 오른쪽: 인벤토리 슬롯 (2x2 그리드) - 이 내부에서만 스크롤 */}
+        <div className="w-1/2 h-full bg-white rounded-xl border-2 border-gray-300 p-4 flex flex-col overflow-hidden">
           {loading ? (
             <div className="flex-1 flex flex-col items-center justify-center text-gray-500">
               <Loader2 className="w-8 h-8 animate-spin mb-2" />
@@ -128,61 +128,64 @@ export function InventoryModal() {
               <p className="text-sm">서버 또는 목업 연결을 확인하세요.</p>
             </div>
           ) : (
-          <div className="grid grid-cols-2 gap-4 h-full">
-            {slots.map((slot) => {
-              const isExpandable = slot.locked && expandTickets > 0;
-              const isSelected = selectedSlot === slot.id;
+          <div className="flex-1 overflow-y-auto pr-1 hide-scrollbar" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+            <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
+            <div className="grid grid-cols-2 gap-4 pb-2">
+              {slots.map((slot) => {
+                const isExpandable = slot.locked && expandTickets > 0;
+                const isSelected = selectedSlot === slot.id;
 
-              return (
-                <button
-                  key={slot.id}
-                  onDoubleClick={() => handleSlotDoubleClick(slot)}
-                  onClick={() => {
-                    if (isExpandable) {
-                      handleUnlockSlot(slot.id);
-                    }
-                  }}
-                  className={`relative rounded-2xl flex flex-col items-center justify-center transition-all duration-300 h-full min-h-[140px] transform group
-                    ${slot.locked
-                      ? isExpandable
-                        ? "bg-slate-50 border border-slate-200 hover:border-yellow-400 hover:bg-yellow-50 hover:shadow-yellow-100/50 hover:shadow-lg cursor-pointer opacity-100 hover:-translate-y-1"
-                        : "bg-slate-100/50 border border-slate-200 opacity-60 cursor-not-allowed"
-                      : slot.name
-                        ? isSelected
-                          ? "bg-gradient-to-br from-blue-50 to-indigo-100 border border-blue-300 shadow-[0_5px_15px_rgba(59,130,246,0.2)] cursor-pointer ring-2 ring-blue-400 ring-offset-2 scale-105"
-                          : "bg-white border border-gray-200 hover:border-blue-300 hover:shadow-lg cursor-pointer hover:-translate-y-1 shadow-sm"
-                        : "bg-gray-50/80 border border-dashed border-gray-300 hover:border-gray-400 hover:bg-white cursor-pointer"
-                    }`}
-                >
-                  {/* 슬롯 번호 좌측 상단 (카드형 디자인) */}
-                  <span className="absolute top-2 left-3 text-sm font-bold text-gray-400/80 tracking-widest">
-                    #{slot.id}
-                  </span>
+                return (
+                  <button
+                    key={slot.id}
+                    onDoubleClick={() => handleSlotDoubleClick(slot)}
+                    onClick={() => {
+                      if (isExpandable) {
+                        handleUnlockSlot(slot.id);
+                      }
+                    }}
+                    className={`relative rounded-2xl flex flex-col items-center justify-center transition-all duration-300 min-h-[140px] transform group
+                      ${slot.locked
+                        ? isExpandable
+                          ? "bg-slate-50 border border-slate-200 hover:border-yellow-400 hover:bg-yellow-50 hover:shadow-yellow-100/50 hover:shadow-lg cursor-pointer opacity-100 hover:-translate-y-1"
+                          : "bg-slate-100/50 border border-slate-200 opacity-60 cursor-not-allowed"
+                        : slot.name
+                          ? isSelected
+                            ? "bg-gradient-to-br from-blue-50 to-indigo-100 border border-blue-300 shadow-[0_5px_15px_rgba(59,130,246,0.2)] cursor-pointer ring-2 ring-blue-400 ring-offset-2 scale-105"
+                            : "bg-white border border-gray-200 hover:border-blue-300 hover:shadow-lg cursor-pointer hover:-translate-y-1 shadow-sm"
+                          : "bg-gray-50/80 border border-dashed border-gray-300 hover:border-gray-400 hover:bg-white cursor-pointer"
+                      }`}
+                  >
+                    {/* 슬롯 번호 좌측 상단 (카드형 디자인) */}
+                    <span className="absolute top-2 left-3 text-sm font-bold text-gray-400/80 tracking-widest">
+                      #{slot.id}
+                    </span>
 
-                  {slot.locked ? (
-                    <div className="flex flex-col items-center text-gray-400">
-                      <Lock className={`w-10 h-10 mb-1 transition-transform ${isExpandable && "group-hover:scale-110 group-hover:text-yellow-600"}`} />
-                    </div>
-                  ) : slot.name ? (
-                    <div className="flex flex-col items-center relative z-10 mt-2">
-                      <span className="text-5xl mb-2 drop-shadow-md transition-transform group-hover:scale-110">🧑‍🔧</span>
-                      <span className={`text-sm font-bold px-3 py-1 rounded-full shadow-sm ${isSelected ? "bg-blue-500 text-white" : "text-gray-700 bg-white border border-gray-100"}`}>
-                        Lv.{slot.level} {slot.name}
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="text-xs text-gray-400 font-medium">비어있음</span>
-                  )}
+                    {slot.locked ? (
+                      <div className="flex flex-col items-center text-gray-400">
+                        <Lock className={`w-10 h-10 mb-1 transition-transform ${isExpandable && "group-hover:scale-110 group-hover:text-yellow-600"}`} />
+                      </div>
+                    ) : slot.name ? (
+                      <div className="flex flex-col items-center relative z-10 mt-2">
+                        <span className="text-5xl mb-2 drop-shadow-md transition-transform group-hover:scale-110">🧑‍🔧</span>
+                        <span className={`text-sm font-bold px-3 py-1 rounded-full shadow-sm ${isSelected ? "bg-blue-500 text-white" : "text-gray-700 bg-white border border-gray-100"}`}>
+                          Lv.{slot.level} {slot.name}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-400 font-medium">비어있음</span>
+                    )}
 
-                  {/* 자물쇠 슬롯 하단의 0/1 표시 */}
-                  {slot.locked && (
-                    <div className="absolute bottom-2 right-3 text-sm font-bold text-gray-400 bg-white border border-gray-200 px-2 py-0.5 rounded shadow-sm">
-                      {expandTickets}/1
-                    </div>
-                  )}
-                </button>
-              );
-            })}
+                    {/* 자물쇠 슬롯 하단의 0/1 표시 */}
+                    {slot.locked && (
+                      <div className="absolute bottom-2 right-3 text-sm font-bold text-gray-400 bg-white border border-gray-200 px-2 py-0.5 rounded shadow-sm">
+                        {expandTickets}/1
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
           )}
         </div>

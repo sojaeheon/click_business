@@ -1,13 +1,32 @@
+import { useState, useEffect } from "react";
 import { Building2, Package, Backpack, BarChart3, Factory } from "lucide-react";
 import { useGame, useGameStore } from "../../../store/gameStore";
-import { useInventoryStore } from "../../../store/useAppStore";
+import { InventoryAPI } from "../../../api/gameApi";
 
 export function CompanyProfile() {
   const { state } = useGame();
   const usedSlots = useGameStore(s => s.getWarehouseUsage().usedSlots);
   const maxSlots = useGameStore(s => s.warehouseMaxSlots);
-  const inventorySlots = useInventoryStore(s => s.slots);
-  const inventoryUsed = inventorySlots.filter(s => s.item_name).length;
+  
+  const [inventoryUsed, setInventoryUsed] = useState(0);
+  const [inventoryUnlocked, setInventoryUnlocked] = useState(state.inventoryMax);
+
+  // 이자가 포함된 총 부채 계산
+  const totalDebt = Math.floor(state.bankData.currentLoan * (1 + state.bankData.loanRate / 100));
+
+  useEffect(() => {
+    InventoryAPI.getInventory(1)
+      .then((res) => {
+        const slots = res.data;
+        const used = slots.filter((s: any) => s.name).length;
+        const unlocked = slots.filter((s: any) => !s.locked).length;
+        setInventoryUsed(used);
+        setInventoryUnlocked(unlocked);
+      })
+      .catch((err) => {
+        console.error("인벤토리 오류:", err);
+      });
+  }, []);
 
   return (
     <div className="h-full flex flex-col">
@@ -30,20 +49,20 @@ export function CompanyProfile() {
               <span className="text-lg text-gray-800" style={{ fontWeight: 700 }}>{state.companyName}</span>
             </div>
 
-            {/* 2. 현재보유자본 */}
+            {/* 2. 현재보유자본(보유 돈 연동) */}
             <div className="flex items-center gap-3">
-              <span className="text-gray-500 text-sm w-24">보유자본 :</span>
+              <span className="text-gray-500 text-sm w-24">보유 돈 :</span>
               <div className="flex-1 border-b-2 border-gray-300 pb-1 flex items-center justify-between">
-                <span className="text-lg text-gray-700">{state.capital.toLocaleString()}</span>
+                <span className="text-lg text-gray-700">{state.money.toLocaleString()}</span>
                 <span className="text-gray-500 text-sm">원</span>
               </div>
             </div>
 
-            {/* 3. 부채 */}
+            {/* 3. 부채(은행 부채 연동 + 이자) */}
             <div className="flex items-center gap-3">
               <span className="text-gray-500 text-sm w-24">부 채 :</span>
               <div className="flex-1 border-b-2 border-gray-300 pb-1 flex items-center justify-between">
-                <span className="text-lg text-gray-700">{state.debt.toLocaleString()}</span>
+                <span className="text-lg text-gray-700">{totalDebt.toLocaleString()}</span>
                 <span className="text-gray-500 text-sm">원</span>
               </div>
             </div>
@@ -74,7 +93,7 @@ export function CompanyProfile() {
             </div>
             <div className="flex items-center gap-3">
               <span className="text-gray-500 text-sm w-28">인벤토리 :</span>
-              <span className="text-gray-700">{inventoryUsed} / {state.inventoryMax}</span>
+              <span className="text-gray-700">{inventoryUsed} / {inventoryUnlocked}</span>
               <Backpack className="w-5 h-5 text-gray-400 ml-auto" />
             </div>
           </div>
