@@ -185,12 +185,7 @@ export const MarketAPI = {
       console.warn("API 연동 실패! MarketAPI.getOrderbook 목업 데이터 사용", err);
       await mockDelay();
       return {
-        data: [
-          { price: 3000, qty: 50, type: 'SELL' },
-          { price: 2900, qty: 120, type: 'SELL' },
-          { price: 2800, qty: 200, type: 'BUY' },
-          { price: 2700, qty: 80, type: 'BUY' },
-        ]
+        data: []
       };
     }
   },
@@ -215,7 +210,7 @@ export const BankAPI = {
     } catch (err) {
       console.warn("API 연동 실패! BankAPI.getSummary 목업 데이터 사용", err);
       await mockDelay();
-      return { data: { loanRate: 5.5, depositRate: 2.3, currentLoan: 1000000, currentDeposit: 500000 } };
+      return { data: { loanRate: 5.5, depositRate: 2.3, currentLoan: 0, currentDeposit: 0 } };
     }
   },
   processLoan: (data: { companyId: number; type: 'BORROW' | 'REPAY' | 'DEPOSIT' | 'WITHDRAW'; amount: number }) => apiClient.post('/bank/loans', data)
@@ -286,10 +281,7 @@ export const WarehouseAPI = {
       console.warn("API 연동 실패! WarehouseAPI 목업 데이터 사용", err);
       await mockDelay();
       return {
-        data: [
-          { id: "m1", type: "material", quantity: 47, name: "광산 드릴" },
-          { id: "p1", type: "product", quantity: 253, name: "금광석" },
-        ]
+        data: []
       };
     }
   }
@@ -315,16 +307,9 @@ export const InventoryAPI = {
       console.warn("API 연동 실패! InventoryAPI.getInventory 목업 데이터 사용", err);
       await mockDelay();
       return {
-        data: WORKER_DEFINITIONS.map((w, i) => ({
-          id: i + 1,
-          name: w.displayName,
-          level: 1,
-          locked: i >= 4,  // 5번째부터 잠김
-          quantity: i < 3 ? 2 : 1, // 낮은 레벨은 2개 보유
-          icon: w.icon,
-          modelPath: w.modelPath,
-          workerType: w.type,
-        }))
+        data: [
+          { id: "inv_default_1", type: "worker_수습_광부", itemName: "수습 광부", itemType: "EQUIPMENT", quantity: 1, level: 1, slotIndex: 1 }
+        ]
       };
     }
   },
