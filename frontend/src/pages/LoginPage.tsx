@@ -11,7 +11,7 @@ export const LoginPage = () => {
   const navigate = useNavigate();
 
   const handleLogin = () => {
-    // 💡 백엔드 연동: 구글 로그인 요청
+    // 💡 백엔드 연동: 구글 OAuth2 로그인 요청
     window.location.href = authApi.getLoginUrl();
   };
 
