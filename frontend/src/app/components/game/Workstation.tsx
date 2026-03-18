@@ -10,21 +10,17 @@ import { useAlertStore } from "../../../store/useAlertStore";
 import { WorkstationAPI } from "../../../api/gameApi";
 import { EnvModel } from "./BaseComponents";
 import { AreaLabel } from "./BuildingComponents";
+import { HelpCircle, AlertTriangle } from "lucide-react";
 import {
-    GOLD_STACK_MODELS, MAX_PILES, MAX_TOTAL, MAX_GOLD_CAP,
+    GOLD_STACK_MODELS, MAX_TOTAL, MAX_GOLD_CAP, DEFAULT_WORKSTATION_CAP,
     BW, BELT_S, TW, TILE_S,
 } from "./constants";
 
-// ─── 각 더미의 레벨 계산 ─────────────────────────────────────────
-function getStackLevels(totalCount: number): number[] {
-    const levels: number[] = [];
-    let remaining = Math.min(totalCount, MAX_TOTAL);
-    for (let i = 0; i < MAX_PILES; i++) {
-        const lvl = Math.min(remaining, GOLD_STACK_MODELS.length);
-        levels.push(lvl);
-        remaining -= lvl;
-    }
-    return levels;
+// ─── 단일 더미의 레벨 계산 (storedCount 비율로) ────────────────
+// 적재량 0이면 0, 가득이면 MAX_TOTAL(4)─레벨
+function getSingleStackLevel(count: number, cap: number): number {
+    if (count <= 0 || cap <= 0) return 0;
+    return Math.max(1, Math.ceil((count / cap) * MAX_TOTAL));
 }
 
 // ─── 더미 단계별 모델 (산업별 분기) ─────────────────────────────
@@ -143,9 +139,11 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
     const half = BW / 2;
 
     // ── 상태 ─────────────────────────────────────────────────────
-    const [progress, setProgress] = useState(0);        // 0~100 %
-    const [storedCount, setStoredCount] = useState(0);  // 작업장 임시 적재 개수
-    const [requestedQty, setRequestedQty] = useState(0);// 유저가 요청한 총 목표 개수
+    const [progress, setProgress] = useState(0);
+    const [storedCount, setStoredCount] = useState(0);
+    const [producedCount, setProducedCount] = useState(0);
+    const [requestedQty, setRequestedQty] = useState(0);
+    const [maxCapacity, setMaxCapacity] = useState(DEFAULT_WORKSTATION_CAP); // 백엔드에서 받아오는 당 회차 작업장 적재 한도
     const [flyingBars, setFlyingBars] = useState<number[]>([]);
     const [gaugeHovered, setGaugeHovered] = useState(false);
     const [remainingSec, setRemainingSec] = useState<number | null>(null);
@@ -174,27 +172,23 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
 
     // ── 파생 상태 ─────────────────────────────────────────────────
     const isCompleted     = progress >= 100;
-    const isFull          = storedCount >= MAX_GOLD_CAP;
+    const isFull          = storedCount >= maxCapacity;
     const isWarehouseFull = usedSlots >= warehouseMaxSlots;
-    const cannotProduce   = isFull || isWarehouseFull;
+    const cannotProduce   = isFull; // 작업장 적재량 기준으로만 판단
 
     // ── 알림: 생산 중단 ──────────────────────────────────────────
     useEffect(() => {
         if (isWorking && cannotProduce) {
             useGameStore.getState().addAlert({
                 message: "작업 라인 중단",
-                detail: isFull ? "작업장 임시 보관함이 가득 찼습니다." : "창고 공간이 부족합니다."
+                detail: "작업장 임시 보관함이 가득 찼습니다."
             });
         }
     }, [isWorking, cannotProduce, isFull]);
 
     // ── 3D 위치 ───────────────────────────────────────────────────
     const beltEndPos: [number, number, number] = [-0.75 + 2.5, 0.5, 1];
-    const stackPositions: [number, number, number][] = [
-        [half * 0.6,  0.3, -half * 0.7],
-        [half * 0.15, 0.3, -half * 0.7],
-        [half * 0.6,  0.3, -half * 0.2],
-    ];
+    // Removed: const stackPositions: [number, number, number][] = [...]
 
     // ── 생산 상태 폴링 ────────────────────────────────────────────
     useEffect(() => {
@@ -210,7 +204,9 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
                     const apiRem   = (res.data as any).remainingMs as number | null ?? null;
                     setProgress(pct);
                     setStoredCount(produced);
+                    setProducedCount(produced);
                     if (total > 0) setRequestedQty(total);
+                    if ((res.data as any).maxCapacity) setMaxCapacity((res.data as any).maxCapacity);
                     if (apiRem !== null) setRemainingSec(Math.ceil(apiRem / 1000));
                     if (!res.data.isWorking) onWorkChange?.(false);
                 }
@@ -228,6 +224,7 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
                         const working  = res.data.isWorking;
 
                         setProgress(pct);
+                        setProducedCount(produced); // HUD 생산 카운터
                         if (total > 0) setRequestedQty(total);
 
                         // 남은 시간
@@ -294,17 +291,15 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
         return () => clearInterval(tick);
     }, [isWorking, isCompleted]);
 
-    // ── 더미 시각화 ───────────────────────────────────────────────
-    const totalGold = storedCount > 0
-        ? Math.max(1, Math.floor((storedCount / MAX_GOLD_CAP) * MAX_TOTAL))
-        : 0;
-    const levels       = getStackLevels(totalGold);
-    const nextPileIdx  = levels.findIndex(l => l < GOLD_STACK_MODELS.length);
-    const targetPile   = nextPileIdx >= 0 ? nextPileIdx : MAX_PILES - 1;
+    // ── 더미 시각화: 단일 스택, 레벨만 변화 ─────────────────────
+    const singleStackLevel = getSingleStackLevel(storedCount, maxCapacity);
+    const stackPos: [number, number, number] = [half * 0.4, 0.3, -half * 0.4];
 
     const handleBarArrive = useCallback((barId: number) => {
         setFlyingBars(prev => prev.filter(id => id !== barId));
     }, []);
+
+    const targetPile = 0; // 더미 단일화로 항상 0번 인덱스
 
     // ── 남은 시간 포맷 ─────────────────────────────────────────
     const fmtTime = (sec: number | null): string => {
@@ -322,11 +317,13 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
             ? [MACHINE_CONFIG.position[0] * BELT_S, 4.5, MACHINE_CONFIG.position[2] * BELT_S]
             : [0.75 * BELT_S, 3.5, 1 * BELT_S];
 
-    // ── 커서 ─────────────────────────────────────────────────────
+    // ── 커서: canvas 상위의 body에 직접 pointer 적용 ─────────────
     useEffect(() => {
-        document.body.style.cursor = (gaugeHovered && storedCount > 0 && !isWarehouseFull) ? 'pointer' : 'auto';
-        return () => { document.body.style.cursor = 'auto'; };
-    }, [gaugeHovered, storedCount, isWarehouseFull]);
+        const canvasWrapper = document.querySelector('canvas')?.parentElement as HTMLElement | null;
+        const target = canvasWrapper ?? document.body;
+        target.style.cursor = (gaugeHovered && storedCount > 0) ? 'pointer' : '';
+        return () => { target.style.cursor = ''; };
+    }, [gaugeHovered, storedCount]);
 
     // ═══════════════════════════════════════════
     // JSX
@@ -370,9 +367,9 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
                                     {fmtTime(remainingSec)}
                                 </span>
                             </div>
-                            {/* 현재 생산 개수 / 목표 */}
+                            {/* 현재 생산 개수 / 요청 개수 (HUD 표기 — storedCount와 별도) */}
                             <div className="bg-gray-950/85 border border-emerald-600/50 text-emerald-300 text-xs font-black rounded-lg px-3 py-1 tracking-wider tabular-nums">
-                                {storedCount}
+                                {producedCount}
                                 <span className="text-gray-500 font-bold"> / {requestedQty > 0 ? requestedQty : '?'}</span>
                                 <span className="text-gray-600 ml-1 text-[10px]">개</span>
                             </div>
@@ -386,19 +383,69 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
             )}
 
             {/* ─────────────────────────────────────────────────────
+                HUD ③ 상태 아이콘 (배경 없음, 텍스트 + 검은 stroke)
+            ───────────────────────────────────────────────────── */}
+            <group position={[toolHudPos[0], toolHudPos[1] + 1.2, toolHudPos[2]]}>
+                <Html center zIndexRange={[30, 0]}>
+                    <div className="flex flex-col items-center justify-center select-none">
+                        <style>{`
+                            .icon-stroke {
+                                -webkit-text-stroke: 3px #000;
+                                paint-order: stroke fill;
+                                line-height: 1;
+                                animation: bounce-icon 0.8s ease-in-out infinite alternate;
+                            }
+                            .icon-stroke-clickable {
+                                -webkit-text-stroke: 3px #000;
+                                paint-order: stroke fill;
+                                line-height: 1;
+                                animation: bounce-icon 0.8s ease-in-out infinite alternate;
+                                cursor: pointer;
+                                transition: transform 0.1s;
+                            }
+                            .icon-stroke-clickable:hover { transform: scale(1.2); }
+                            @keyframes bounce-icon {
+                                from { transform: translateY(0px); }
+                                to   { transform: translateY(-8px); }
+                            }
+                        `}</style>
+                        {/* 적재량 가득 → 노란 ! (클릭 가능) */}
+                        {isFull && (
+                            <span
+                                className="icon-stroke-clickable"
+                                style={{ fontSize: '64px', color: '#facc15' }}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    useAlertStore.getState().openAlert(
+                                        `작업장 내 임시 보관함이 가득 찼습니다.(${storedCount}/${maxCapacity}개)\n더미를 클릭하여 창고에 이동하면 생산이 재개됩니다.`,
+                                        '! 생산 중단 — 적재 꽉 찼'
+                                    );
+                                }}
+                            >!</span>
+                        )}
+                        {/* 작동 중지 → 빨간 ? */}
+                        {!isWorking && !isFull && (
+                            <span className="icon-stroke" style={{ fontSize: '64px', color: '#ef4444' }}>?</span>
+                        )}
+                    </div>
+                </Html>
+            </group>
+
+            {/* ─────────────────────────────────────────────────────
                 생산품 더미 (클릭 → 창고에 저장)
             ───────────────────────────────────────────────────── */}
             <group
-                onPointerOver={(e) => { e.stopPropagation(); setGaugeHovered(true); }}
-                onPointerOut={(e)  => { e.stopPropagation(); setGaugeHovered(false); }}
+                onPointerEnter={(e) => { e.stopPropagation(); setGaugeHovered(true); }}
+                onPointerLeave={(e)  => { e.stopPropagation(); setGaugeHovered(false); }}
                 onClick={async (e) => {
                     e.stopPropagation();
-                    if (storedCount > 0 && !isWarehouseFull) {
+                    if (storedCount > 0) {
                         try {
-                            // ✅ gameStore.updateProduct → warehouseItems.product 수량 증가
+                            // ✅ gameStore.updateProduct → warehouseItems.product 수량 증액 후 실제 추가량
                             const added = updateProduct(storedCount);
                             if (added > 0) {
                                 await WorkstationAPI.collect(1);
+                                // storedCount만 줄임 — producedCount는 이번 생산 누적값이므로 건드리지 않음
                                 setStoredCount(prev => Math.max(0, prev - added));
                                 onStoreGold?.(added);
                                 useGameStore.getState().addAlert({
@@ -406,27 +453,26 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
                                     detail: `${added}개를 창고에 저장했습니다.`
                                 });
                                 useAlertStore.getState().openAlert(`${added}개를 창고에 저장했습니다.`, "수령 완료 ✅");
+                            } else {
+                                useGameStore.getState().addAlert({ message: "수령 불가", detail: "창고가 완전히 가득 찼습니다." });
+                                useAlertStore.getState().openAlert("창고에 더 이상 남은 공간이 없습니다.", "수령 불가");
                             }
                         } catch (err) {
                             console.error("수령 실패:", err);
                         }
-                    } else if (isWarehouseFull) {
-                        useGameStore.getState().addAlert({ message: "수령 불가", detail: "창고가 가득 찼습니다." });
-                        useAlertStore.getState().openAlert("창고가 가득 찼습니다.", "수령 불가");
                     }
                 }}
             >
-                {/* 클릭 히트박스 */}
-                <mesh position={[half * 0.45, 1, -half * 0.45]}>
-                    <boxGeometry args={[half * 2.5, 2, half * 2.5]} />
+                {/* 클릭 히트박스 — 더미 모델 실제 크기에 맞춰 축소 */}
+                <mesh position={[half * 0.45, 0.5, -half * 0.45]}>
+                    <boxGeometry args={[half * 1.4, 1.5, half * 1.4]} />
                     <meshBasicMaterial transparent opacity={0.0} depthWrite={false} />
                 </mesh>
 
-                {stackPositions.map((pos, i) => (
-                    <group key={i} position={pos}>
-                        <ProductStack stackLevel={levels[i]} industry={industry} />
-                    </group>
-                ))}
+                {/* 더미 스택 — 단일 */}
+                <group position={stackPos}>
+                    <ProductStack stackLevel={singleStackLevel} industry={industry} />
+                </group>
             </group>
 
             {/* ─────────────────────────────────────────────────────
@@ -448,7 +494,7 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
                             >
                                 <span>📦</span>
                                 <span className="tabular-nums">{storedCount}</span>
-                                <span className="text-gray-500 font-bold">/{MAX_GOLD_CAP}</span>
+                                <span className="text-gray-500 font-bold">/{maxCapacity}</span>
                             </div>
                             {/* 클릭 안내 */}
                             {!isWarehouseFull ? (
@@ -470,7 +516,7 @@ export function Workstation({ position, isWorking, inWorkstation, onOpenModal, o
                 <FlyingProduct
                     key={barId}
                     startPos={beltEndPos}
-                    endPos={stackPositions[targetPile]}
+                    endPos={stackPos}
                     onArrive={() => handleBarArrive(barId)}
                     industry={industry}
                 />

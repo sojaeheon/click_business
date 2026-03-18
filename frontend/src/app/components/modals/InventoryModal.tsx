@@ -1,14 +1,15 @@
 import { useState, useMemo } from "react";
-import { Lock, ShoppingBag, HelpCircle, X, Package } from "lucide-react";
+import { Lock, ShoppingBag, HelpCircle, X, Trash2 } from "lucide-react";
 import { useGameStore } from "../../../store/gameStore";
 import { useAlertStore } from "../../../store/useAlertStore";
 import type { InventoryItem } from "../../../store/gameStore";
 
 export function InventoryModal() {
-  const { inventoryItems, inventoryExpandTickets, inventoryMax, useInventoryTicket } = useGameStore();
+  const { inventoryItems, inventoryExpandTickets, inventoryMax, useInventoryTicket, removeInventoryItem } = useGameStore();
 
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<InventoryItem | null>(null);
 
   // 슬롯 클릭 로직
   const handleSlotClick = (item: InventoryItem | null, idx: number) => {
@@ -24,6 +25,15 @@ export function InventoryModal() {
     const success = useInventoryTicket();
     if (success) {
       useAlertStore.getState().openAlert("인벤토리 슬롯이 확장되었습니다.", "안내");
+    }
+  };
+
+  const handleDeleteItem = () => {
+    if (confirmDelete) {
+      removeInventoryItem(confirmDelete.id);
+      if (selectedSlot === confirmDelete.id) setSelectedSlot(null);
+      useAlertStore.getState().openAlert(`${confirmDelete.name}을(를) 버렸습니다.`, "아이템 폐기");
+      setConfirmDelete(null);
     }
   };
 
@@ -78,15 +88,21 @@ export function InventoryModal() {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-6 pb-4">
               {slots.map((item, idx) => {
                 const isLocked = idx >= inventoryMax;
-                const isExpandable = isLocked && idx === inventoryMax; // 바로 다음 잠긴 슬롯만 확장 가능하게
+                // 확장권이 있을 때만 바로 다음 잠긴 슬롯 활성화
+                const isExpandable = isLocked && idx === inventoryMax && inventoryExpandTickets > 0;
                 const isSelected = item && selectedSlot === item.id;
 
                 return (
                   <button
                     key={'slot-' + idx}
                     onClick={() => {
-                      if (isExpandable) handleUnlockSlot();
-                      handleSlotClick(item, idx);
+                      if (isExpandable) {
+                        handleUnlockSlot();
+                      } else if (isLocked) {
+                        useAlertStore.getState().openAlert("확장권이 없습니다. 미니게임에서 획득할 수 있습니다.", "슬롯 잠금");
+                      } else {
+                        handleSlotClick(item, idx);
+                      }
                     }}
                     className={`relative rounded-[24px] flex flex-col items-center justify-center transition-all duration-300 min-h-[140px] transform group
                       ${isLocked
@@ -133,6 +149,20 @@ export function InventoryModal() {
                          {inventoryExpandTickets}/1
                        </div>
                     )}
+
+                    {/* 🗑️ 휴지통 버튼: 아이템 있는 슬롯에만, hover 시 표시 */}
+                    {!isLocked && item && (
+                      <button
+                        className="absolute top-2 right-2 w-8 h-8 bg-red-50 border border-red-200 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-100 cursor-pointer z-20"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmDelete(item);
+                        }}
+                        title="아이템 버리기"
+                      >
+                        <Trash2 className="w-4 h-4 text-red-500" />
+                      </button>
+                    )}
                   </button>
                 );
               })}
@@ -163,6 +193,7 @@ export function InventoryModal() {
                 <ul className="space-y-2 text-slate-600 font-bold text-sm ml-2">
                   <li className="flex gap-2"><span className="text-amber-500">•</span> 미니게임 등에서 획득한 <strong className="text-amber-600 bg-amber-50 px-2 rounded">확장권</strong> 사용</li>
                   <li className="flex gap-2"><span className="text-amber-500">•</span> 자물쇠 슬롯을 클릭하면 슬롯이 해제됩니다.</li>
+                  <li className="flex gap-2"><span className="text-red-500">•</span> 슬롯에 마우스를 올리면 🗑️ 버튼으로 아이템을 버릴 수 있습니다.</li>
                 </ul>
               </div>
             </div>

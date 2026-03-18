@@ -58,7 +58,7 @@ export function MinigamePage() {
   const closeBuildingPage = useGameStore((state) => state.closeBuildingPage);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  const TOTAL_CLICKS = 100;
+  const TOTAL_CLICKS = 10;
   const [gameState, setGameState] = useState<"locked" | "playing" | "success" | "failure">("locked");
   const [timeLeft, setTimeLeft] = useState(10);
   const [clicksLeft, setClicksLeft] = useState(TOTAL_CLICKS);
@@ -117,10 +117,19 @@ export function MinigamePage() {
 
   const handleUnlock = async () => {
     if (isProcessing) return;
-    const currentMoney = useGameStore.getState().money;
+    const { money, inventoryItems, inventoryMax } = useGameStore.getState();
 
-    if (currentMoney < 100000) {
-      setShowErrorAlert(true); // 잔액 부족 시 기본 alert 대신 shadcn 팝업 열기
+    // 인벤토리 가득 찼으면 게임 결제 차단
+    if (inventoryItems.length >= inventoryMax) {
+      useAlertStore.getState().openAlert(
+        `인벤토리가 가득 찼습니다. (${inventoryItems.length}/${inventoryMax})\n아이템을 버리거나 인벤토리를 확장한 후 이용하세요.`,
+        "게임 참여 불가"
+      );
+      return;
+    }
+
+    if (money < 100000) {
+      setShowErrorAlert(true);
       return;
     }
 
@@ -133,7 +142,7 @@ export function MinigamePage() {
       setIsStarted(false); // 준비 상태
     } catch (e) {
       console.error(e);
-      useAlertStore.getState().openAlert("게임 입장에 실패했습니다.", "오류"); // API 에러 같은 심각한 오류는 일단 남겨둡니다.
+      useAlertStore.getState().openAlert("게임 입장에 실패했습니다.", "오류");
     } finally {
       setIsProcessing(false);
     }

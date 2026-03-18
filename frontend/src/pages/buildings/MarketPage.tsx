@@ -396,8 +396,27 @@ export function MarketPage() {
                     value={quantity || ""}
                     onChange={(e) => setQuantity(Number(e.target.value))}
                     placeholder="수량 입력"
-                    className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-right text-xl font-black text-slate-800 focus:outline-none focus:border-slate-400 transition-colors"
+                    className={`w-full bg-slate-50 border-2 rounded-xl px-4 py-3 text-right text-xl font-black text-slate-800 focus:outline-none transition-colors ${
+                      mode === 'sell' && quantity > warehouseItems.filter(i => i.type === 'product').reduce((a, i) => a + i.quantity, 0)
+                        ? 'border-rose-400 focus:border-rose-500'
+                        : 'border-slate-200 focus:border-slate-400'
+                    }`}
                   />
+                  {/* 판매 모드: 보유량 표시 & 초과 경고 */}
+                  {mode === 'sell' && (() => {
+                    const owned = warehouseItems.filter(i => i.type === 'product').reduce((a, i) => a + i.quantity, 0);
+                    const isOver = quantity > owned;
+                    return (
+                      <div className={`text-xs font-bold mt-0.5 text-right transition-colors ${
+                        isOver ? 'text-rose-500' : 'text-slate-400'
+                      }`}>
+                        {isOver
+                          ? `판매 가능 수량 초과! 보유: ${owned.toLocaleString()}개`
+                          : `보유 중: ${owned.toLocaleString()}개`
+                        }
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="h-[2px] bg-slate-100 w-full" />
