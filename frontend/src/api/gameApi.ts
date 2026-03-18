@@ -178,16 +178,21 @@ export const WorkstationAPI = {
 
 export const MarketAPI = {
   getOrderbook: async (itemId: number) => {
-    // return apiClient.get('/market/orderbook', { params: { itemId } });
-    await mockDelay();
-    return {
-      data: [
-        { price: 3000, qty: 50, type: 'SELL' },
-        { price: 2900, qty: 120, type: 'SELL' },
-        { price: 2800, qty: 200, type: 'BUY' },
-        { price: 2700, qty: 80, type: 'BUY' },
-      ]
-    };
+    try {
+      const res = await apiClient.get('/market/orderbooks', { params: { item_id: itemId } });
+      return { data: res.data.data };
+    } catch (err) {
+      console.warn("API 연동 실패! MarketAPI.getOrderbook 목업 데이터 사용", err);
+      await mockDelay();
+      return {
+        data: [
+          { price: 3000, qty: 50, type: 'SELL' },
+          { price: 2900, qty: 120, type: 'SELL' },
+          { price: 2800, qty: 200, type: 'BUY' },
+          { price: 2700, qty: 80, type: 'BUY' },
+        ]
+      };
+    }
   },
   createOrder: async (data: { companyId: number; itemId: number; type: 'BUY' | 'SELL'; price: number; qty: number }) => {
     // ✅ 실제 API 연동
@@ -204,9 +209,14 @@ export const MarketAPI = {
 
 export const BankAPI = {
   getSummary: async (companyId: number) => {
-    // return apiClient.get('/bank/summary', { params: { companyId } });
-    await mockDelay();
-    return { data: { loanRate: 5.5, depositRate: 2.3, currentLoan: 1000000, currentDeposit: 500000 } };
+    try {
+      const res = await apiClient.get('/bank/summary');
+      return { data: res.data.data };
+    } catch (err) {
+      console.warn("API 연동 실패! BankAPI.getSummary 목업 데이터 사용", err);
+      await mockDelay();
+      return { data: { loanRate: 5.5, depositRate: 2.3, currentLoan: 1000000, currentDeposit: 500000 } };
+    }
   },
   processLoan: (data: { companyId: number; type: 'BORROW' | 'REPAY' | 'DEPOSIT' | 'WITHDRAW'; amount: number }) => apiClient.post('/bank/loans', data)
 };
@@ -218,47 +228,87 @@ export const HRAPI = {
 
 export const MinigameAPI = {
   claimReward: async (data: { companyId: number; clicks: number; isFever: boolean }) => {
-    // return apiClient.post('/minigame/claim', data);
-    await mockDelay();
-    return { data: { success: true, reward: 500 } };
+    try {
+      const res = await apiClient.post('/minigame/claim', data);
+      return { data: res.data.data };
+    } catch (err) {
+      console.warn("API 연동 실패! MinigameAPI.claimReward 목업 데이터 사용", err);
+      await mockDelay();
+      return { data: { success: true, reward: 500 } };
+    }
   },
   unlockGame: async (data: { companyId: number; amount: number }) => {
-    // return apiClient.post('/minigame/unlock', data);
-    await mockDelay();
-    return { data: { success: true } };
+    try {
+      const res = await apiClient.post('/minigame/unlock', data);
+      return { data: res.data.data };
+    } catch (err) {
+      console.warn("API 연동 실패! MinigameAPI.unlockGame 목업 데이터 사용", err);
+      await mockDelay();
+      return { data: { success: true } };
+    }
   },
 };
 
 export const RankingAPI = {
   getTopRanks: async () => {
-    // ❌ 원래 코드: return apiClient.get('/ranking/top');
-    // ✅ 랭킹 모달용 가짜 데이터
-    await mockDelay();
-    return {
-      data: [
-        { rank: 1, companyName: "삼성제철", score: 99999, tier: "챌린저" },
-        { rank: 2, companyName: "현대광업", score: 88888, tier: "다이아" },
-        { rank: 3, companyName: "딸깍 컴퍼니", score: 77777, tier: "플래티넘" },
-        { rank: 4, companyName: "SSAFY 광물", score: 66666, tier: "골드" },
-        { rank: 5, companyName: "개미구멍", score: 55555, tier: "실버" },
-      ]
-    };
+    try {
+      const res = await apiClient.get('/ranking/top');
+      return { data: res.data.data };
+    } catch (err) {
+      console.warn("API 연동 실패! RankingAPI.getTopRanks 목업 데이터 사용", err);
+      await mockDelay();
+      return {
+        data: [
+          { rank: 1, companyName: "삼성제철", score: 99999, tier: "챌린저" },
+          { rank: 2, companyName: "현대광업", score: 88888, tier: "다이아" },
+          { rank: 3, companyName: "딸깍 컴퍼니", score: 77777, tier: "플래티넘" },
+          { rank: 4, companyName: "SSAFY 광물", score: 66666, tier: "골드" },
+          { rank: 5, companyName: "개미구멍", score: 55555, tier: "실버" },
+        ]
+      };
+    }
   },
+};
+
+export const WarehouseAPI = {
+  getWarehouseItems: async (companyId: number) => {
+    try {
+      const res = await apiClient.get('/storage/warehouses');
+      return {
+        data: res.data.map((slot: any) => ({
+          id: `w_${slot.item_id || slot.slot_index}`,
+          type: slot.item_name?.includes("광석") || slot.item_name === "광산 드릴" || slot.item_name === "금괴" ? "material" : "product", // 이름 추론 로직 (임시)
+          quantity: slot.quantity,
+          name: slot.item_name,
+        }))
+      };
+    } catch (err) {
+      console.warn("API 연동 실패! WarehouseAPI 목업 데이터 사용", err);
+      await mockDelay();
+      return {
+        data: [
+          { id: "m1", type: "material", quantity: 47, name: "광산 드릴" },
+          { id: "p1", type: "product", quantity: 253, name: "금광석" },
+        ]
+      };
+    }
+  }
 };
 
 export const InventoryAPI = {
   getInventory: async (companyId: number) => {
     // ✅ 실제 API 연동: GET /api/v1/inventory
     try {
-      const res = await apiClient.get('/inventory');
+      const res = await apiClient.get('/storage/inventories'); // 백엔드 경로 수정
       return {
         data: res.data.data.map((slot: any) => ({
           id: slot.itemId || (slot.slotIndex * 1000), // id가 없으면 고유 임시 id
           name: slot.itemName || undefined,
-          level: slot.itemType === 'EQUIPMENT' ? slot.quantity : 1, // 장비는 quantity 등 화면 요구에 맞춤
+          level: slot.itemType === 'EQUIPMENT' ? Math.max(1, slot.quantity) : 1, // 장비는 quantity 등 화면 요구에 맞춤
           locked: false, // 백엔드에 아직 locked 컬럼 미지원
           quantity: slot.quantity,
-          slotIndex: slot.slotIndex
+          slotIndex: slot.slotIndex,
+          type: slot.itemType === 'TICKET' ? `ticket_${slot.itemName?.includes("창고") ? "warehouse" : "inventory"}` : `worker_${slot.itemName?.replace(/ /g, "_")}`
         }))
       };
     } catch (err) {

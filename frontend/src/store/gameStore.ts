@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 // 🚨 gameApi.ts에 정의된 정확한 이름인 대문자 CompanyAPI로 가져옵니다.
-import { CompanyAPI } from "../api/gameApi";
+import { CompanyAPI, WarehouseAPI, InventoryAPI, BankAPI } from "../api/gameApi";
 
 // ─────────────────────────────────────────────────────────────────────────
 // 1. 타입 정의 (Types)
@@ -310,8 +310,29 @@ export const useGameStore = create<GameState>()(
       fetchCompanyData: async (companyId: number) => {
         set({ isLoading: true });
         try {
-          const response = await CompanyAPI.getStatus(companyId);
-          const realData = response.data;
+          // 백엔드 API 종합 호출 (fallback 포함)
+          const [companyRes, warehouseRes, inventoryRes, bankRes] = await Promise.all([
+            CompanyAPI.getStatus(companyId),
+            WarehouseAPI.getWarehouseItems(companyId),
+            InventoryAPI.getInventory(companyId),
+            BankAPI.getSummary(companyId)
+          ]);
+
+          const realData = companyRes.data;
+          
+          let wTickets = 0;
+          let iTickets = 0;
+          const workers: InventoryItem[] = [];
+
+          inventoryRes.data.forEach((item: any) => {
+            if (item.type === "ticket_warehouse" || item.id === "ticket_warehouse_expand") {
+              wTickets += item.quantity || 1;
+            } else if (item.type === "ticket_inventory" || item.id === "ticket_inventory_expand") {
+              iTickets += item.quantity || 1;
+            } else {
+              workers.push(item);
+            }
+          });
 
           set({
             money: realData?.cash ?? get().money,
@@ -320,10 +341,22 @@ export const useGameStore = create<GameState>()(
             industry: realData?.industry_type ?? get().industry,
             warehouseMaxSlots: realData?.slots?.warehouse_slots ?? get().warehouseMaxSlots,
             inventoryMax: realData?.slots?.inventory_slots ?? get().inventoryMax,
+            warehouseItems: warehouseRes.data as WarehouseItem[],
+            inventoryItems: workers,
+            warehouseExpandTickets: wTickets,
+            inventoryExpandTickets: iTickets,
+            bankData: {
+              ...get().bankData,
+              loanRate: bankRes.data.loanRate,
+              depositRate: bankRes.data.depositRate,
+              currentLoan: bankRes.data.currentLoan,
+              currentDeposit: bankRes.data.currentDeposit,
+            },
+            debt: bankRes.data.currentLoan, // 은행의 대출금액과 동기화
             isLoading: false
           });
         } catch (error) {
-          console.error("회사 정보 불러오기 실패:", error);
+          console.error("전반적인 회사 게임 데이터 로드 실패:", error);
           set({ isLoading: false });
         }
       }
