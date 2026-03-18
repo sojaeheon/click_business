@@ -45,14 +45,14 @@ export interface InventoryItem {
 
 /** 미니게임 보상 랜덤 풀 (8종) */
 export const REWARD_ITEM_POOL: Omit<InventoryItem, "id">[] = [
-  { type: "worker_수습_광부",     name: "수습 광부",       icon: "⛏️",  quantity: 1, level: 1, workerType: "miner" },
-  { type: "worker_숙련_광부",     name: "숙련 광부",       icon: "⛏️",  quantity: 1, level: 2, workerType: "miner" },
-  { type: "worker_초보_제련공",   name: "초보 제련공",     icon: "🔥",  quantity: 1, level: 1, workerType: "smelter" },
-  { type: "worker_숙련_제련공",   name: "숙련 제련공",     icon: "🔥",  quantity: 1, level: 2, workerType: "smelter" },
-  { type: "worker_견습_대장장이", name: "견습 대장장이",   icon: "🔨",  quantity: 1, level: 1, workerType: "manufacturer" },
-  { type: "worker_숙련_대장장이", name: "숙련 대장장이",   icon: "🔨",  quantity: 1, level: 2, workerType: "manufacturer" },
-  { type: "ticket_warehouse",      name: "창고 확장권",     icon: "📦",  quantity: 1 },
-  { type: "ticket_inventory",      name: "인벤토리 확장권", icon: "🎒",  quantity: 1 },
+  { type: "worker_수습_광부", name: "수습 광부", icon: "⛏️", quantity: 1, level: 1, workerType: "miner" },
+  { type: "worker_숙련_광부", name: "숙련 광부", icon: "⛏️", quantity: 1, level: 2, workerType: "miner" },
+  { type: "worker_초보_제련공", name: "초보 제련공", icon: "🔥", quantity: 1, level: 1, workerType: "smelter" },
+  { type: "worker_숙련_제련공", name: "숙련 제련공", icon: "🔥", quantity: 1, level: 2, workerType: "smelter" },
+  { type: "worker_견습_대장장이", name: "견습 대장장이", icon: "🔨", quantity: 1, level: 1, workerType: "manufacturer" },
+  { type: "worker_숙련_대장장이", name: "숙련 대장장이", icon: "🔨", quantity: 1, level: 2, workerType: "manufacturer" },
+  { type: "ticket_warehouse", name: "창고 확장권", icon: "📦", quantity: 1 },
+  { type: "ticket_inventory", name: "인벤토리 확장권", icon: "🎒", quantity: 1 },
 ];
 
 export interface HRData { currentLevel: number; expectedLevel: number; successRate: number; materialCurrent: number; materialMax: number; }
@@ -239,9 +239,7 @@ export const useGameStore = create<GameState>()(
       },
 
       updateMaterial: (amount) => {
-        const { usedSlots } = get().getWarehouseUsage();
         let actualAdded = amount;
-
         set(state => {
           const newItems = [...state.warehouseItems];
           const matIdx = newItems.findIndex(i => i.type === "material");
@@ -251,14 +249,24 @@ export const useGameStore = create<GameState>()(
             if (currentQty + amount < 0) return state;
             actualAdded = amount;
           } else {
-            const totalQty = newItems.reduce((acc, i) => acc + i.quantity, 0);
-            const freeSpace = (state.warehouseMaxSlots * MAX_PER_SLOT) - totalQty;
+            let slotsByOther = 0;
+            state.warehouseItems.forEach(i => {
+              if (i.type !== "material") slotsByOther += Math.ceil(i.quantity / MAX_PER_SLOT);
+            });
+            const slotsAvailable = state.warehouseMaxSlots - slotsByOther;
+            let freeSpace = 0;
+            if (slotsAvailable <= 0) {
+              const currentSlots = Math.ceil(currentQty / MAX_PER_SLOT);
+              freeSpace = Math.max(0, (currentSlots * MAX_PER_SLOT) - currentQty);
+            } else {
+              freeSpace = Math.max(0, (slotsAvailable * MAX_PER_SLOT) - currentQty);
+            }
             actualAdded = Math.min(amount, freeSpace);
           }
 
           if (matIdx >= 0) {
             newItems[matIdx] = { ...newItems[matIdx], quantity: currentQty + actualAdded };
-          } else {
+          } else if (actualAdded > 0) {
             newItems.push({ id: "m1", type: "material", quantity: actualAdded });
           }
           return { warehouseItems: newItems };
@@ -277,14 +285,24 @@ export const useGameStore = create<GameState>()(
             if (currentQty + amount < 0) return state;
             actualAdded = amount;
           } else {
-            const totalQty = newItems.reduce((acc, i) => acc + i.quantity, 0);
-            const freeSpace = (state.warehouseMaxSlots * MAX_PER_SLOT) - totalQty;
+            let slotsByOther = 0;
+            state.warehouseItems.forEach(i => {
+              if (i.type !== "product") slotsByOther += Math.ceil(i.quantity / MAX_PER_SLOT);
+            });
+            const slotsAvailable = state.warehouseMaxSlots - slotsByOther;
+            let freeSpace = 0;
+            if (slotsAvailable <= 0) {
+              const currentSlots = Math.ceil(currentQty / MAX_PER_SLOT);
+              freeSpace = Math.max(0, (currentSlots * MAX_PER_SLOT) - currentQty);
+            } else {
+              freeSpace = Math.max(0, (slotsAvailable * MAX_PER_SLOT) - currentQty);
+            }
             actualAdded = Math.min(amount, freeSpace);
           }
 
           if (pIdx >= 0) {
             newItems[pIdx] = { ...newItems[pIdx], quantity: currentQty + actualAdded };
-          } else {
+          } else if (actualAdded > 0) {
             newItems.push({ id: "p1", type: "product", quantity: actualAdded });
           }
           return { warehouseItems: newItems };

@@ -23,7 +23,7 @@ export default function App() {
 
   // ─── 조작 가이드 모달 상태 (App 레벨에서 관리 → pointer-events 문제 해결) ───
   const [showGuide, setShowGuide] = useState(false);
-  const [autoGuide] = useState(() => !localStorage.getItem("hideControlGuide"));
+  const [autoGuide, setAutoGuide] = useState(() => !localStorage.getItem("hideControlGuide"));
 
   // ──────────────────────────────────────────────────────────
   // 1. 초기 데이터 불러오기
@@ -73,6 +73,7 @@ export default function App() {
 
         // 2. 조작 가이드 모달 닫기
         setShowGuide(false);
+        setAutoGuide(false);
 
         // 3. 메인 HUD 모달 & 건물 상세 페이지 닫기
         const state = useGameStore.getState();
@@ -145,7 +146,7 @@ export default function App() {
       {/* ✅ 조작 가이드 모달 — App 최상위에서 렌더 (pointer-events-none 영향 없음) */}
       <ControlGuideModal
         forceOpen={showGuide || autoGuide}
-        onForceClose={() => setShowGuide(false)}
+        onForceClose={() => { setShowGuide(false); setAutoGuide(false); }}
       />
     </div>
   );

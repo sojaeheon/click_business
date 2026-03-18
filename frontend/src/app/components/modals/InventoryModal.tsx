@@ -1,19 +1,53 @@
 import { useState, useMemo } from "react";
-import { Lock, ShoppingBag, HelpCircle, X, Package } from "lucide-react";
+import { Lock, ShoppingBag, HelpCircle, X, Trash2 } from "lucide-react";
 import { useGameStore } from "../../../store/gameStore";
 import { useAlertStore } from "../../../store/useAlertStore";
 import type { InventoryItem } from "../../../store/gameStore";
 
 export function InventoryModal() {
-  const { inventoryItems, inventoryExpandTickets, inventoryMax, useInventoryTicket } = useGameStore();
+  const { inventoryItems, inventoryExpandTickets, inventoryMax, useInventoryTicket, removeInventoryItem } = useGameStore();
 
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<InventoryItem | null>(null);
 
-  // 슬롯 클릭 로직
-  const handleSlotClick = (item: InventoryItem | null, idx: number) => {
-    if (!item) return;
-    setSelectedSlot(selectedSlot === item.id ? null : item.id);
+  const [unlockedSlotsCount, setUnlockedSlotsCount] = useState(4);
+  const [localItems, setLocalItems] = useState(() => {
+    const items = [...inventoryItems];
+    return items;
+  });
+
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    const isLocked = index >= unlockedSlotsCount;
+    const item = localItems[index];
+    if (isLocked || !item) {
+      e.preventDefault();
+      return;
+    }
+    setDraggingIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault();
+    if (draggingIndex === null || draggingIndex === targetIndex) return;
+    const isLocked = targetIndex >= unlockedSlotsCount;
+    if (isLocked) return;
+
+    const newItems = [...localItems];
+    const temp = newItems[draggingIndex];
+    newItems[draggingIndex] = newItems[targetIndex];
+    newItems[targetIndex] = temp;
+
+    setLocalItems(newItems);
+    setDraggingIndex(null);
+    setDragOverIndex(null);
   };
 
   const handleUnlockSlot = () => {
@@ -23,50 +57,60 @@ export function InventoryModal() {
     }
     const success = useInventoryTicket();
     if (success) {
+      setUnlockedSlotsCount((prev) => prev + 1);
       useAlertStore.getState().openAlert("인벤토리 슬롯이 확장되었습니다.", "안내");
     }
   };
 
-  // 총 6개 슬롯 표시 (기본 확장 4개 + 잠긴 슬롯 2개 등)
-  const totalSlotsDisplay = 6;
-  const slots = useMemo(() => {
-    const list = new Array(totalSlotsDisplay).fill(null);
-    inventoryItems.forEach((item, i) => {
-      if (i < inventoryMax && i < totalSlotsDisplay) {
-        list[i] = item;
-      }
-    });
-    return list;
-  }, [inventoryItems, inventoryMax, totalSlotsDisplay]);
+  const handleDeleteItem = () => {
+    if (confirmDelete) {
+      removeInventoryItem(confirmDelete.id);
+      setLocalItems((prev) => prev.filter((item) => item?.id !== confirmDelete.id));
+      if (selectedSlot === confirmDelete.id) setSelectedSlot(null);
+      useAlertStore.getState().openAlert(`${confirmDelete.name}을(를) 버렸습니다.`, "아이템 폐기");
+      setConfirmDelete(null);
+    }
+  };
+
+  // 슬롯 그리드 렌더링 계산
+  const slotsToDisplay = useMemo(() => {
+    let lockedSlotsCount = 0;
+    while (lockedSlotsCount <= 2) {
+      lockedSlotsCount += 3;
+    }
+    const totalCount = unlockedSlotsCount + lockedSlotsCount;
+    const paddedCount = Math.ceil(totalCount / 3) * 3;
+    return new Array(paddedCount).fill(null);
+  }, [unlockedSlotsCount]);
 
   return (
     <div className="relative h-full flex flex-col">
       {/* 헤더 부분 */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <ShoppingBag className="w-6 h-6 text-gray-700" />
-          <h2 className="text-2xl text-gray-800 tracking-tight font-black">인벤토리</h2>
-          <span className="text-sm font-bold text-gray-500 bg-gray-100 px-3 py-1 rounded-full ml-2">
-            사용중 {inventoryItems.length} / 최대 {inventoryMax}
+          <ShoppingBag className="w-5 h-5 text-gray-700" />
+          <h2 className="text-xl text-gray-800 tracking-tight font-black">인벤토리</h2>
+          <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full ml-2">
+            사용중 {inventoryItems.length} / 최대 {unlockedSlotsCount}
           </span>
         </div>
         <button
           onClick={() => setShowHelp(true)}
-          className="bg-white border-2 border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700 w-10 h-10 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-sm"
+          className="bg-white border-2 border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700 w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-sm"
         >
-          <HelpCircle className="w-5 h-5" />
+          <HelpCircle className="w-4 h-4" />
         </button>
       </div>
 
-      <div className="flex gap-6 flex-1 mt-2 min-h-0">
-        {/* 인벤토리 슬롯 그리드 (전체 너비 사용) */}
-        <div className="w-full flex flex-col h-full bg-white rounded-[32px] border-4 border-gray-200 shadow-xl overflow-hidden p-6 relative">
-          <div className="absolute top-4 right-6 text-sm font-bold text-gray-500 bg-gray-100 px-4 py-2 rounded-full flex gap-2 items-center">
-            <span className="text-lg">🎒</span> 
-            확장권 <span className="text-indigo-600 font-black">{inventoryExpandTickets}</span> 개 보유
-          </div>
+      <div className="flex gap-6 flex-1 mt-1 min-h-0">
+        <div className="w-full flex flex-col h-full bg-white rounded-[24px] border-4 border-gray-200 shadow-xl overflow-hidden p-5 relative">
 
-          <h3 className="text-xl font-bold text-gray-700 mb-6 mt-2 ml-2">보유 아이템 목록</h3>
+          <div className="flex items-center justify-between mb-3 mt-1 px-2">
+            <h3 className="text-sm font-bold text-gray-500">보유 아이템 목록</h3>
+            <div className="text-xs font-bold text-gray-400 flex gap-1 items-center">
+              확장권 <span className="text-indigo-600 font-black">{inventoryExpandTickets}</span>개 보유
+            </div>
+          </div>
 
           <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
             <style>{`
@@ -75,63 +119,90 @@ export function InventoryModal() {
               .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
               .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
             `}</style>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-6 pb-4">
-              {slots.map((item, idx) => {
-                const isLocked = idx >= inventoryMax;
-                const isExpandable = isLocked && idx === inventoryMax; // 바로 다음 잠긴 슬롯만 확장 가능하게
+
+            <div className="grid grid-cols-3 gap-5 pb-4">
+              {slotsToDisplay.map((_, idx) => {
+                const isLocked = idx >= unlockedSlotsCount;
+                const isExpandable = isLocked && idx === unlockedSlotsCount;
+                const item = localItems[idx];
                 const isSelected = item && selectedSlot === item.id;
+                const hasTickets = inventoryExpandTickets > 0;
+                const isDragOver = dragOverIndex === idx;
 
                 return (
                   <button
                     key={'slot-' + idx}
+                    draggable={!isLocked && !!item}
+                    onDragStart={(e) => handleDragStart(e, idx)}
+                    onDragOver={handleDragOver}
+                    onDragEnter={() => !isLocked && setDragOverIndex(idx)}
+                    onDragLeave={() => setDragOverIndex(null)}
+                    onDrop={(e) => handleDrop(e, idx)}
                     onClick={() => {
-                      if (isExpandable) handleUnlockSlot();
-                      handleSlotClick(item, idx);
+                      if (hasTickets && isExpandable) handleUnlockSlot();
+                      else if (isLocked) useAlertStore.getState().openAlert("확장권이 없습니다. 미니게임에서 획득할 수 있습니다.", "슬롯 잠금");
+                      else if (item) setSelectedSlot(selectedSlot === item.id ? null : item.id);
                     }}
-                    className={`relative rounded-[24px] flex flex-col items-center justify-center transition-all duration-300 min-h-[140px] transform group
+                    className={`relative rounded-[20px] flex flex-col items-center justify-center transition-all duration-300 min-h-[140px] transform group
                       ${isLocked
-                        ? isExpandable
+                        ? hasTickets && isExpandable
                           ? "bg-amber-50/50 border-2 border-dashed border-amber-300 hover:bg-amber-100 hover:border-amber-400 cursor-pointer hover:-translate-y-1 shadow-sm"
-                          : "bg-gray-100/50 border-2 border-dashed border-gray-200 opacity-60 cursor-not-allowed"
+                          : "bg-gray-100/30 border-2 border-dashed border-gray-200 opacity-60 cursor-not-allowed"
                         : item
                           ? isSelected
                             ? "bg-gradient-to-br from-indigo-50 to-blue-50 border-2 border-indigo-400 shadow-[0_8px_20px_rgba(79,70,229,0.2)] cursor-pointer ring-4 ring-indigo-200 ring-offset-2 scale-105 z-10"
-                            : "bg-white border-2 border-gray-200 hover:border-indigo-300 hover:shadow-xl cursor-pointer hover:-translate-y-1 shadow-sm"
-                          : "bg-gray-50/50 border-2 border-dashed border-gray-300 hover:bg-gray-100 cursor-pointer"
-                      }`}
+                            : "bg-white border-2 border-slate-200 hover:border-indigo-300 hover:shadow-lg cursor-pointer hover:-translate-y-1 shadow-sm"
+                          : "bg-gray-50/50 border-2 border-dashed border-slate-200 hover:bg-slate-100/50 cursor-pointer"
+                      }
+                      ${isDragOver ? "ring-4 ring-blue-300 ring-offset-2 scale-105 z-10 border-blue-400" : ""}
+                    `}
                   >
-                    <span className="absolute top-3 left-4 text-xs font-black text-gray-400 tracking-wider">
+                    <span className="absolute top-2 left-3 text-[10px] font-black text-gray-400 tracking-wider">
                       #{idx + 1}
                     </span>
 
                     {isLocked ? (
-                      <div className="flex flex-col items-center">
-                        <Lock className={`w-8 h-8 mb-2 ${isExpandable ? "text-amber-500 group-hover:scale-110 group-hover:animate-pulse transition-all" : "text-gray-300"}`} />
-                        {isExpandable && (
+                      <div className="flex flex-col items-center pointer-events-none">
+                        <Lock className={`w-8 h-8 mb-2 ${hasTickets && isExpandable ? "text-amber-500 group-hover:scale-110 group-hover:animate-pulse transition-all" : "text-gray-300"}`} />
+                        {isExpandable && hasTickets && (
                           <span className="text-xs font-bold text-amber-700 bg-amber-200 px-3 py-1 rounded-full shadow-sm mt-1">
                             확장 가능
                           </span>
                         )}
                       </div>
                     ) : item ? (
-                      <div className="flex flex-col items-center z-10 mt-2 pointer-events-none">
-                        <span className="text-5xl mb-3 drop-shadow-md group-hover:scale-110 transition-transform">{item.icon}</span>
-                        <div className={`px-4 py-1.5 rounded-full shadow-sm truncate max-w-[120px] 
-                          ${isSelected ? "bg-indigo-500 text-white font-black" : "bg-white border-2 border-gray-100 text-gray-700 font-bold"}`}>
+                      <div className="flex flex-col items-center z-10 p-2 pointer-events-none">
+                        <span className="text-4xl mb-2 drop-shadow-md group-hover:scale-110 transition-transform">{item.icon}</span>
+                        <div className={`px-3 py-1 rounded-full shadow-sm truncate max-w-[100px] text-xs
+                          ${isSelected ? "bg-indigo-500 text-white font-black" : "bg-white border text-gray-700 font-bold"}`}>
                           {item.type.startsWith("ticket_") ? item.name : `Lv.${item.level} ${item.name}`}
                         </div>
                         {item.type.startsWith("ticket_") && (
-                          <span className="absolute top-3 right-4 font-black text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full text-xs">x{item.quantity}</span>
+                          <span className="absolute top-2 right-3 font-black text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded-full text-[10px]">x{item.quantity}</span>
                         )}
                       </div>
                     ) : (
-                      <span className="text-sm text-gray-400 font-bold opacity-0 group-hover:opacity-100 transition-opacity">빈 슬롯</span>
+                      <span className="text-xs text-gray-400 font-bold opacity-0 group-hover:opacity-100 transition-opacity">빈 슬롯</span>
                     )}
 
                     {isExpandable && (
-                       <div className="absolute bottom-3 right-4 text-xs font-black text-amber-600 bg-white border-2 border-amber-200 px-2.5 py-1 rounded-lg shadow-sm">
-                         {inventoryExpandTickets}/1
-                       </div>
+                      <div className="absolute bottom-3 right-4 text-[10px] font-black text-amber-600">
+                        {inventoryExpandTickets}/1
+                      </div>
+                    )}
+
+                    {/* 🗑️ 휴지통 버튼 */}
+                    {!isLocked && item && (
+                      <button
+                        className="absolute top-2 right-2 w-8 h-8 bg-red-50 border border-red-200 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-100 cursor-pointer z-20"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmDelete(item);
+                        }}
+                        title="아이템 버리기"
+                      >
+                        <Trash2 className="w-4 h-4 text-red-500" />
+                      </button>
                     )}
                   </button>
                 );
@@ -140,6 +211,34 @@ export function InventoryModal() {
           </div>
         </div>
       </div>
+
+      {/* 삭제 확인 모달 */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setConfirmDelete(null)} />
+          <div className="relative bg-white rounded-2xl border-4 border-red-200 shadow-2xl p-6 w-[350px] animate-fade-in">
+            <h3 className="text-lg font-black text-gray-800 mb-3">아이템 폐기</h3>
+            <p className="text-sm text-gray-600 mb-1">
+              <span className="font-bold text-red-600">{confirmDelete.name}</span>을(를) 정말 버리시겠습니까?
+            </p>
+            <p className="text-xs text-gray-400 mb-5">이 작업은 되돌릴 수 없습니다.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleDeleteItem}
+                className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 transition-colors cursor-pointer"
+              >
+                버리기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 사용법 모달 */}
       {showHelp && (
@@ -163,6 +262,8 @@ export function InventoryModal() {
                 <ul className="space-y-2 text-slate-600 font-bold text-sm ml-2">
                   <li className="flex gap-2"><span className="text-amber-500">•</span> 미니게임 등에서 획득한 <strong className="text-amber-600 bg-amber-50 px-2 rounded">확장권</strong> 사용</li>
                   <li className="flex gap-2"><span className="text-amber-500">•</span> 자물쇠 슬롯을 클릭하면 슬롯이 해제됩니다.</li>
+                  <li className="flex gap-2"><span className="text-blue-500">•</span> 아이템을 드래그하여 슬롯 위치를 변경할 수 있습니다.</li>
+                  <li className="flex gap-2"><span className="text-red-500">•</span> 슬롯에 마우스를 올리면 🗑️ 버튼으로 아이템을 버릴 수 있습니다.</li>
                 </ul>
               </div>
             </div>
@@ -179,4 +280,3 @@ export function InventoryModal() {
     </div>
   );
 }
-

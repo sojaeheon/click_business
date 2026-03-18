@@ -102,7 +102,7 @@ export const WorkstationAPI = {
       const names = useGameStore.getState().getIndustryItemNames();
       resProd = names.resProd;
       reqMat = names.reqMat;
-    } catch (e) {}
+    } catch (e) { }
 
     // 개수 비례 계산 (사이클 올림 없이 qty 그대로 반영)
     const ratio = data.quantity / resProd;
@@ -128,7 +128,7 @@ export const WorkstationAPI = {
 
       let producedSoFar = 0;
       if (mockWorkInterval) { clearInterval(mockWorkInterval); mockWorkInterval = null; }
-      const intervalMs = 500;
+      const intervalMs = 10;
       const totalTicks = totalMs / intervalMs;
       const tickPercent = 100 / totalTicks;
 
@@ -162,11 +162,11 @@ export const WorkstationAPI = {
 
       // 중간 수령 처리: 미수령 개수만 0으로 비움 (진행도는 그대로, 아직 작업중이면 계속 작업)
       mockWorkUncollected = 0;
-      
+
       // 이미 100% 진행된 상태에서 수납했다면 작업 완료된 것으로 보고 상태 리셋
       if (mockWorkProgress >= 100) {
-          mockWorkProgress = 0;
-          mockWorkIsWorking = false;
+        mockWorkProgress = 0;
+        mockWorkIsWorking = false;
       }
 
       return { data: { success: true, message: "수령 완료 (Mock)" } };

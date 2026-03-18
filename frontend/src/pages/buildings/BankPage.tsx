@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Delete, HelpCircle, Newspaper } from "lucide-react";
+import { Delete, HelpCircle, Newspaper, X } from "lucide-react";
 import { useGame, useGameStore } from "../../store/gameStore";
 import { BankAPI } from "../../api/gameApi";
 import { BackButton } from "../../app/components/ui/backbutton";
@@ -12,6 +12,7 @@ export function BankPage() {
   const { state, closeBuildingPage } = useGame();
   const { bankData, news, money, debt } = state;
 
+  const [showOverlay, setShowOverlay] = useState(true);
   const [mode, setMode] = useState<BankMode>(null);
   const [step, setStep] = useState<StepMode>("input");
   const [inputValue, setInputValue] = useState("");
@@ -109,7 +110,7 @@ export function BankPage() {
         }
         useGameStore.getState().updateDebt(-amount);
       } else if (mode === "deposit") {
-        // 예금: 돈이 나감
+        // 예금: 돈이 나가고 예금이 증가함
         const success = useGameStore.getState().updateMoney(-amount);
         if (!success) {
           useAlertStore.getState().openAlert("보유 금액이 부족합니다.", "경고");
@@ -117,9 +118,21 @@ export function BankPage() {
           setIsProcessing(false);
           return;
         }
+        useGameStore.getState().updateBankData({ 
+          currentDeposit: (bankData.currentDeposit || 0) + amount 
+        });
       } else if (mode === "withdraw") {
-        // 인출: 돈이 들어옴
+        // 인출: 돈이 들어오고 예금이 감소함
+        if ((bankData.currentDeposit || 0) < amount) {
+          useAlertStore.getState().openAlert("예금 잔액이 부족합니다.", "경고");
+          setStep("input");
+          setIsProcessing(false);
+          return;
+        }
         useGameStore.getState().updateMoney(amount);
+        useGameStore.getState().updateBankData({ 
+          currentDeposit: (bankData.currentDeposit || 0) - amount 
+        });
       }
 
       setStep("done");
@@ -198,9 +211,16 @@ export function BankPage() {
             font-weight: 900;
             font-display: swap;
         }
+        @keyframes marquee {
+          0% { transform: translateX(0%); }
+          100% { transform: translateX(-50%); }
+        }
+        .animate-marquee {
+          animation: marquee 12s linear infinite;
+        }
       `}</style>
       <div
-        className="absolute inset-0 z-40 flex flex-col"
+        className="absolute inset-0 z-40 flex flex-col overflow-hidden"
         style={{
           backgroundImage: "url('/images/bank.png')",
           backgroundSize: 'cover',
@@ -210,6 +230,28 @@ export function BankPage() {
           fontFamily: 'NanumSquareNeo, sans-serif'
         }}
       >
+        {/* 전체 화면 차단 오버레이 (회색 불투명) + 끄기 버튼 */}
+        {showOverlay && (
+          <div className="absolute inset-0 z-[60] bg-slate-900/40 backdrop-blur-[1px] cursor-not-allowed pointer-events-auto">
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowOverlay(false);
+              }}
+              className="absolute top-6 right-8 z-[80] w-12 h-12 bg-white flex items-center justify-center rounded-full hover:bg-slate-50 hover:scale-105 active:scale-95 transition-all cursor-pointer shadow-xl border-2 border-slate-300"
+            >
+              <X className="w-6 h-6 text-slate-800" />
+            </button>
+
+            {/* 중앙 점검 안내 흐르는 텍스트 배너 */}
+            <div className="absolute top-1/2 -translate-y-1/2 left-0 w-full overflow-hidden z-[70] pointer-events-none bg-white/95 backdrop-blur-md py-8 border-y-4 border-rose-500 flex shadow-2xl">
+              <div className="flex animate-marquee whitespace-nowrap text-4xl font-black text-rose-600 tracking-wider">
+                <span className="px-12 flex-shrink-0">은행 서비스를 점검하고 있습니다. 빠르고 안정적인 서비스를 위해 노력중이니 조금만 기다려주세요.</span>
+                <span className="px-12 flex-shrink-0">은행 서비스를 점검하고 있습니다. 빠르고 안정적인 서비스를 위해 노력중이니 조금만 기다려주세요.</span>
+              </div>
+            </div>
+          </div>
+        )}
         {/* Header Bar */}
         <div className="w-full h-28 bg-[#1E3A8A] flex flex-col shadow-xl relative z-50">
           <div className="max-w-[85%] mx-auto w-full flex flex-col justify-between h-full p-4 relative">
@@ -255,7 +297,7 @@ export function BankPage() {
               closeBuildingPage();
             }
           }}
-          className="absolute top-[56px] -translate-y-1/2 left-8 z-50"
+          className="absolute top-[56px] -translate-y-1/2 left-8 z-[100] cursor-pointer"
         />
 
         {!mode ? (
@@ -403,16 +445,23 @@ export function BankPage() {
 
               {/* Right: Info Check & Confirm */}
               <div className="w-1/2 flex flex-col justify-center h-full gap-6 max-w-md">
-                {/* 보유 금액 및 부채 표시 */}
+                {/* 보유 금액 및 부채/예금 표시 */}
                 <div className="w-full flex flex-col gap-3">
                   <div className="w-full bg-slate-50/90 backdrop-blur-sm rounded-xl border-2 border-slate-200 px-6 py-4 flex justify-between items-center shadow-sm">
                     <span className="text-lg font-bold text-slate-600">보유 금액</span>
                     <span className="text-blue-600 font-black text-3xl">{money.toLocaleString()} 원</span>
                   </div>
-                  <div className="w-full bg-slate-50/90 backdrop-blur-sm rounded-xl border-2 border-slate-200 px-6 py-4 flex justify-between items-center shadow-sm">
-                    <span className="text-lg font-bold text-slate-600">보유 부채</span>
-                    <span className="text-rose-600 font-black text-3xl">{debt.toLocaleString()} 원</span>
-                  </div>
+                  {mode === "loan" || mode === "repay" ? (
+                    <div className="w-full bg-slate-50/90 backdrop-blur-sm rounded-xl border-2 border-slate-200 px-6 py-4 flex justify-between items-center shadow-sm">
+                      <span className="text-lg font-bold text-slate-600">보유 부채</span>
+                      <span className="text-rose-600 font-black text-3xl">{debt.toLocaleString()} 원</span>
+                    </div>
+                  ) : (
+                    <div className="w-full bg-slate-50/90 backdrop-blur-sm rounded-xl border-2 border-slate-200 px-6 py-4 flex justify-between items-center shadow-sm">
+                      <span className="text-lg font-bold text-slate-600">보유 예금</span>
+                      <span className="text-emerald-600 font-black text-3xl">{(bankData.currentDeposit || 0).toLocaleString()} 원</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Amount Display */}
