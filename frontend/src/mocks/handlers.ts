@@ -1,4 +1,5 @@
 import { http, HttpResponse, delay } from 'msw'
+import { defaultGameState } from '../store/gameStore'
 
 export const handlers = [
   // 시장 거래 (Market)
@@ -62,12 +63,14 @@ export const handlers = [
     await delay(600);
     // 임의의 실패 예외 처리 테스트를 원하면 아래 주석 해제하여 500 에러를 반환할 수 있습니다.
     // return new HttpResponse(null, { status: 500 });
-    return HttpResponse.json([
-      { id: 1, name: "일꾼A", level: 2 },
-      { id: 2 },
-      { id: 3 },
-      { id: 4, locked: true },
-    ]);
+    return HttpResponse.json({
+      data: [
+        { slotIndex: 0, itemId: 1, itemName: "철광석", itemType: "MATERIAL", quantity: 120, maxQuantity: 500 },
+        { slotIndex: 1, itemId: 2, itemName: "목재", itemType: "MATERIAL", quantity: 80, maxQuantity: 500 },
+        { slotIndex: 2, itemId: 3, itemName: "철검", itemType: "PRODUCT", quantity: 30, maxQuantity: 500 },
+        { slotIndex: 3, itemId: null, itemName: null, itemType: null, quantity: 0, maxQuantity: 500 },
+      ]
+    });
   }),
   http.get('*/api/v1/bank/summary', async () => {
     await delay(400);

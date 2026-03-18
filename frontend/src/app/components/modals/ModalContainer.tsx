@@ -1,6 +1,6 @@
 import { X, Building2, Newspaper, Trophy, Backpack, Bell, Settings, LucideIcon } from "lucide-react";
-import { useGame } from "../../store/gameStore";
-import type { ModalTab } from "../../store/gameStore";
+import { useGame } from "../../../store/gameStore";
+import type { ModalTab } from "../../../store/gameStore";
 import { CompanyProfile } from "./CompanyProfile";
 import { NewsModal } from "./NewsModal";
 import { RankingModal } from "./RankingModal";
@@ -81,7 +81,7 @@ export function ModalContainer() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto p-5">
+        <div className="flex-1 overflow-hidden p-5 flex flex-col min-h-0 relative">
           <ModalTabContent tab={state.activeModal} />
         </div>
       </div>

@@ -1,60 +1,55 @@
 import { useState } from "react";
-import { ImageOff, ArrowLeft } from "lucide-react";
-import { useGame } from "../../store/gameStore";
-import type { NewsItem } from "../../store/gameStore";
+import { ArrowLeft, Newspaper, TrendingUp, ChevronRight } from "lucide-react";
+import { useGame } from "../../../store/gameStore";
+import type { NewsItem } from "../../../store/gameStore";
 
 // 뉴스 상세 페이지 뷰
 function NewsDetail({ news, onBack }: { news: NewsItem; onBack: () => void }) {
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col pb-8">
       {/* 상단: 뒤로가기 */}
       <button
         onClick={onBack}
-        className="flex items-center gap-2 text-base font-semibold text-gray-500 hover:text-gray-800 cursor-pointer mb-6 w-fit transition-colors"
+        className="flex items-center gap-2 text-base font-semibold text-slate-500 hover:text-slate-800 cursor-pointer mb-6 w-fit transition-colors"
       >
         <ArrowLeft className="w-5 h-5" />
         뉴스 목록
       </button>
 
-      {/* 이미지 영역 */}
-      <div className="relative bg-gray-200 h-60 rounded-2xl overflow-hidden mb-6 flex items-center justify-center flex-shrink-0">
-        {news.isBreaking && (
-          <div
-            className="absolute top-5 -left-8 bg-red-500 text-white px-14 py-1.5 text-sm rotate-[-20deg] shadow-lg z-10"
-            style={{ fontWeight: 700 }}
-          >
-            BREAKING NEWS!!
-          </div>
-        )}
-        <div className="flex flex-col items-center text-gray-400 z-0">
-          <ImageOff className="w-16 h-16 mb-2" />
-          <span className="text-base text-gray-500">뉴스 이미지 공간</span>
-        </div>
-      </div>
-
-      {/* 제목 + 날짜 */}
-      <div className="mb-5 px-2">
-        {news.isBreaking && (
-          <span className="text-sm font-bold text-red-500 bg-red-50 border border-red-200 px-3 py-1 rounded-full mr-3">
-            BREAKING
+      {/* 내부 카드 영역 */}
+      <div className="bg-white rounded-3xl border-4 border-slate-200 p-8 flex flex-col relative shadow-sm">
+        {/* 상단 타임배너 & 카테고리 */}
+        <div className="flex items-center gap-3 mb-6">
+          <span className="text-slate-500 text-sm font-bold flex items-center gap-1">
+            <Newspaper className="w-4 h-4"/> 데일리 브리핑
           </span>
-        )}
-        <span className="text-sm text-gray-400 font-medium">{news.date}</span>
-        <h2 className="text-2xl text-gray-800 mt-2 leading-tight" style={{ fontWeight: 800 }}>
+          {news.isBreaking && (
+            <span className="bg-red-500 text-white text-[11px] font-black px-2.5 py-0.5 rounded-md tracking-wider">속보</span>
+          )}
+          <span className="bg-amber-100 text-amber-700 text-[11px] font-bold px-2 py-0.5 rounded-md border border-amber-200">경제/산업</span>
+        </div>
+
+        {/* 제목 */}
+        <h2 className="text-3xl font-black text-slate-900 leading-tight mb-3 break-keep">
           {news.headline}
         </h2>
-      </div>
 
-      {/* 본문 */}
-      <div className="flex-1 bg-white rounded-2xl border-2 border-gray-200 p-6 overflow-auto">
-        {news.summary ? (
-          <p className="text-gray-700 text-base leading-relaxed">{news.summary}</p>
-        ) : (
-          <p className="text-gray-400 text-base leading-relaxed italic">
-            뉴스 본문 내용이 여기에 표시됩니다.<br /><br />
-            {/* 💡 [백엔드 연동] GET /api/v1/news/{news.id} 로 본문 내용 가져오기 */}
+        {/* 날짜 */}
+        <div className="text-sm text-slate-400 font-bold mb-5 flex items-center gap-2">
+          <span>발행일</span>
+          <span className="w-1 h-1 bg-slate-300 rounded-full"/>
+          <span>{news.date}</span>
+        </div>
+
+        <hr className="border-slate-200 mb-6" />
+
+        {/* 본문 (왼쪽 블랙 바 포인트) */}
+        <div className="flex-1 flex items-start">
+          <div className="w-[4px] self-stretch bg-slate-800 rounded-full mr-5 flex-shrink-0" />
+          <p className="text-lg font-bold text-slate-700 leading-relaxed break-keep">
+            {news.summary || "상세 기사 내용이 여기에 표시됩니다. 본문 데이터가 로드되면 확인 가능합니다."}
           </p>
-        )}
+        </div>
       </div>
     </div>
   );
@@ -63,61 +58,86 @@ function NewsDetail({ news, onBack }: { news: NewsItem; onBack: () => void }) {
 // 뉴스 목록 뷰
 function NewsList({ onSelect }: { onSelect: (news: NewsItem) => void }) {
   const { state } = useGame();
-  const breakingNews = state.news.find((n) => n.isBreaking);
-  const otherNews = state.news.filter((n) => !n.isBreaking);
+  
+  // 첫번째 뉴스를 주요 뉴스(속보 우선, 없으면 첫번째)로 지정
+  const breakingNews = state.news.find((n) => n.isBreaking) || state.news[0];
+  const otherNews = state.news.filter((n) => n.id !== breakingNews?.id);
 
   return (
-    <div className="flex gap-6 h-full">
-      {/* 왼쪽: 속보 */}
-      <div className="flex-[3]">
+    <div className="flex gap-6 items-stretch pb-2">
+      {/* 왼쪽: 헤드라인 뉴스 (은행 스타일) */}
+      <div className="flex flex-col" style={{ flex: 5.5 }}>
         {breakingNews && (
           <button
             onClick={() => onSelect(breakingNews)}
-            className="w-full h-full text-left bg-white rounded-2xl border-2 border-gray-300 overflow-hidden hover:border-gray-400 transition-colors cursor-pointer flex flex-col"
+            className="w-full text-left bg-white rounded-3xl border-4 border-slate-200 p-8 hover:border-slate-300 transition-colors cursor-pointer flex flex-col shadow-sm group min-h-[400px] h-full"
           >
-            <div className="relative bg-gray-200 h-64 flex items-center justify-center overflow-hidden flex-shrink-0">
-              <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/30" />
-              <div
-                className="absolute top-8 -left-10 bg-red-500 text-white px-16 py-2 text-base rotate-[-20deg] shadow-lg z-10"
-                style={{ fontWeight: 800 }}
-              >
-                BREAKING NEWS!!
-              </div>
-              <div className="flex flex-col items-center text-gray-400 z-0">
-                <ImageOff className="w-16 h-16 mb-2" />
-                <span className="text-base text-gray-500">메인 뉴스 이미지</span>
-              </div>
+            {/* 카테고리 & 속보 배지 */}
+            <div className="flex items-center gap-3 mb-5">
+              {breakingNews.isBreaking && (
+                <span className="bg-red-500 text-white text-[11px] font-black px-2.5 py-0.5 rounded-md tracking-wider">주요속보</span>
+              )}
             </div>
-            <div className="p-6 flex-1 flex flex-col justify-center">
-              <p className="text-gray-800 text-2xl mb-2" style={{ fontWeight: 800 }}>{breakingNews.headline}</p>
-              <div className="flex items-center gap-2 mt-auto">
-                <span className="text-base text-blue-600" style={{ fontWeight: 700 }}>TODAY</span>
-                <span className="text-sm text-gray-500 font-medium">{breakingNews.date.replace("TODAY ", "")}</span>
-              </div>
+
+            {/* 제목 */}
+            <h3 className="text-2xl font-black text-slate-900 leading-tight mb-4 group-hover:text-indigo-700 transition-colors break-keep">
+              {breakingNews.headline}
+            </h3>
+
+            {/* 날짜 */}
+            <div className="text-sm text-slate-400 font-bold mb-5 flex items-center gap-2">
+               <span>발행일</span>
+               <span className="w-1 h-1 bg-slate-300 rounded-full"/>
+               <span>{breakingNews.date}</span>
+            </div>
+
+            <hr className="border-slate-200 mb-5 w-full" />
+
+            {/* 본문 짧게 미리보기 */}
+            <div className="flex-1 flex items-start">
+              <div className="w-[4px] self-stretch bg-indigo-600 rounded-full mr-5 flex-shrink-0" />
+              <p className="text-lg font-bold text-slate-600 leading-relaxed break-keep line-clamp-3">
+                {breakingNews.summary || "뉴스 본문 세부 내용이 이 영역에 표시됩니다. 전체 뉴스 목록에서 상세 기사를 확인하실 수 있습니다."}
+              </p>
+            </div>
+            
+            <div className="mt-6 flex justify-end w-full">
+               <span className="text-sm font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg flex items-center gap-1 group-hover:bg-indigo-100 transition-colors">
+                 자세히 보기 <ChevronRight className="w-4 h-4" />
+               </span>
             </div>
           </button>
         )}
       </div>
 
-      {/* 오른쪽: 과거 뉴스 목록 */}
-      <div className="flex-[2] space-y-4 overflow-y-auto pr-2">
-        {otherNews.map((news) => (
-          <button
-            key={news.id}
-            onClick={() => onSelect(news)}
-            className="w-full text-left bg-white rounded-2xl border-2 border-gray-300 p-4 hover:border-gray-400 hover:shadow-sm transition-all cursor-pointer flex gap-4 min-h-[100px]"
-          >
-            <div className="w-16 h-16 bg-gray-100 rounded-xl flex-shrink-0 flex items-center justify-center border-2 border-gray-200">
-              <ImageOff className="w-8 h-8 text-gray-400" />
-            </div>
-            <div className="flex-1 flex flex-col justify-center min-w-0">
-              <p className="text-base text-gray-800 line-clamp-2 leading-relaxed" style={{ fontWeight: 700 }}>
+      {/* 오른쪽: 이전 뉴스 리스트 */}
+      <div className="flex flex-col bg-slate-50 rounded-3xl border-2 border-slate-200 p-5 min-h-[400px] h-full" style={{ flex: 4.5 }}>
+         <div className="flex flex-col gap-3 flex-1 overflow-y-auto pr-1 hide-scrollbar" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+          <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
+          {otherNews.length > 0 ? otherNews.map((news) => (
+            <button
+              key={news.id}
+              onClick={() => onSelect(news)}
+              className="w-full text-left bg-white rounded-2xl border-2 border-slate-100 p-5 hover:border-slate-300 hover:shadow-md transition-all cursor-pointer flex flex-col min-h-[100px] group"
+            >
+              <div className="flex items-center justify-end mb-2">
+                 {news.isBreaking && (
+                    <span className="text-[10px] font-black text-rose-500 bg-rose-50 px-2 py-0.5 rounded border border-rose-100">속보</span>
+                 )}
+              </div>
+              <p className="text-base text-slate-800 line-clamp-2 leading-relaxed font-bold group-hover:text-indigo-600 transition-colors break-keep mb-3">
                 {news.headline}
               </p>
-              <p className="text-xs text-gray-400 mt-2 font-medium">{news.date}</p>
+              <div className="flex justify-end w-full mt-auto">
+                 <span className="text-[10px] font-bold text-slate-400">{news.date}</span>
+              </div>
+            </button>
+          )) : (
+            <div className="flex-1 flex items-center justify-center text-slate-400 font-bold text-sm">
+               더 이상 기사가 없습니다.
             </div>
-          </button>
-        ))}
+          )}
+        </div>
       </div>
     </div>
   );
@@ -127,8 +147,9 @@ function NewsList({ onSelect }: { onSelect: (news: NewsItem) => void }) {
 export function NewsModal() {
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
 
+  // 뉴스 모달 전체 레이아웃
   return (
-    <div className="h-full flex flex-col">
+    <div className="flex flex-col">
       {selectedNews ? (
         <NewsDetail news={selectedNews} onBack={() => setSelectedNews(null)} />
       ) : (

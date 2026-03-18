@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { BuildingPage } from "../../store/gameStore";
+import type { BuildingPage } from "../../../store/gameStore";
 
 // ─── 스케일/크기 상수 ────────────────────────────────────────────
 export const TILE_S = 1.5;
@@ -62,6 +62,7 @@ export const M = {
     carStationwagon: `${ENV}car_stationwagon.gltf`,
     carTaxi: `${ENV}car_taxi.gltf`,
     minigame: `${ENV}minecraft_pickaxe.gltf`,
+    ocean: `${ENV}ocean.glb`,
 };
 
 // ─── 자동차 경로 ─────────────────────────────────────────────────
@@ -112,13 +113,25 @@ export const EMOTES = [
     { id: "Digging", icon: "🪏" },
 ];
 
-// ─── 골드바 더미 모델 ────────────────────────────────────────────
-export const GOLD_STACK_MODELS = [
-    "/models/props/Gold_Bars.gltf",
-    "/models/props/Gold_Bars_Stack_Small.gltf",
-    "/models/props/Gold_Bars_Stack_Medium.gltf",
-    "/models/props/Gold_Bars_Stack_Large.gltf",
+// ─── 작업장 더미 모델 단일 구성 ────────────────────────────────
+// 더미를 하나로만 표시. 적재량(storedCount)에 따라 시각적으로 표현.
+export const STACK_LEVEL_MODELS = [
+    "/models/props/Gold_Bars.gltf",             // lv1: 소량
+    "/models/props/Gold_Bars_Stack_Small.gltf", // lv2: 중간
+    "/models/props/Gold_Bars_Stack_Medium.gltf",// lv3: 많음
+    "/models/props/Gold_Bars_Stack_Large.gltf", // lv4: 가득
 ];
-export const MAX_PILES = 3;
-export const MAX_TOTAL = MAX_PILES * GOLD_STACK_MODELS.length; // 12
-export const MAX_GOLD_CAP = 500;
+// 하위 호환성 별칭 (기존 코드에서 import하는 이름 유지)
+export const GOLD_STACK_MODELS = STACK_LEVEL_MODELS;
+
+// 더미 1스택으로 단일화. 기존 MAX_PILES/MAX_TOTAL은 주서에 남기도
+// 프론트가 참조하는 값만 남김
+export const MAX_PILES = 1;   // 더미 1개로 고정
+export const MAX_TOTAL = STACK_LEVEL_MODELS.length; // = 4 (레벨만 사용)
+
+// 작업장 내 최대 적재량
+// ⚠️ 백엔드 API에서 제공해야하는 값. 현재 WorkstationAPI.getStatus()
+//        응답의 maxCapacity 값으로 대체해야함.
+// 활용: Workstation.tsx에서 maxCapacity state로 저장하고 isFull 판단에 사용
+export const DEFAULT_WORKSTATION_CAP = 100; // fallback 값 (백엔드가 내려주지 않을 때)
+export const MAX_GOLD_CAP = DEFAULT_WORKSTATION_CAP; // 하위 호환성

@@ -15,8 +15,11 @@ import type {
 // ─────────────────────────────────────────────────────────────────────────
 export const authApi = {
     /** Google OAuth 로그인 페이지 URL 반환 */
-    getLoginUrl: () =>
-        `${import.meta.env.VITE_API_BASE_URL ?? '/api/v1'}/auth/google/login`,
+    getLoginUrl: () => {
+        const baseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+        // /api/v1을 제거하고 스프링 시큐리티 기본 OAuth2 엔드포인트로 연결
+        return baseUrl.replace('/api/v1', '') + '/oauth2/authorization/google';
+    },
 
     /** Authorization code로 JWT 발급 */
     callback: (code: string) =>
@@ -67,7 +70,7 @@ export const companyApi = {
 export const inventoryApi = {
     /** 인벤토리 슬롯 조회 */
     getSlots: () =>
-        apiClient.get<InventorySlot[]>('/storage/inventories'),
+        apiClient.get<ApiResponse<InventorySlot[]>>('/inventory'),
 
     /** 아이템 저장 */
     saveItem: (data: SaveInventoryItemRequest) =>

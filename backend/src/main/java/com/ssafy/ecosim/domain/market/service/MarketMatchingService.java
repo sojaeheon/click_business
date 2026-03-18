@@ -7,8 +7,12 @@ import com.ssafy.ecosim.domain.market.entity.OrderType;
 import com.ssafy.ecosim.domain.market.kafka.TradeEventPublisher;
 import com.ssafy.ecosim.domain.market.repository.redis.OrderBookManager;
 import com.ssafy.ecosim.domain.market.repository.redis.OrderDetailsCacheManager;
+import com.ssafy.ecosim.domain.notification.dto.NotificationEvent;
+import com.ssafy.ecosim.domain.notification.entity.NotificationType;
+import com.ssafy.ecosim.domain.company.repository.CompanyRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 
@@ -22,9 +26,12 @@ public class MarketMatchingService {
     private final OrderBookManager orderBookManager;
     private final OrderDetailsCacheManager orderDetailsCacheManager;
     private final TradeEventPublisher tradeEventPublisher;
+    private final CompanyRepository companyRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 특정 아이템에 대해 매칭을 수행합니다.
+     * 
      * @param itemId 아이템 식별자
      */
     public void matchItem(Integer itemId) {
@@ -51,8 +58,10 @@ public class MarketMatchingService {
 
             if (buyOrder == null || sellOrder == null) {
                 // 캐시가 유실된 경우 (있어서는 안 될 일이지만 안전장치)
-                if (buyOrder == null) orderBookManager.removeOrder(itemId, "BUY", buyOrderId);
-                if (sellOrder == null) orderBookManager.removeOrder(itemId, "SELL", sellOrderId);
+                if (buyOrder == null)
+                    orderBookManager.removeOrder(itemId, "BUY", buyOrderId);
+                if (sellOrder == null)
+                    orderBookManager.removeOrder(itemId, "SELL", sellOrderId);
                 continue;
             }
 
@@ -91,10 +100,13 @@ public class MarketMatchingService {
             orderBookManager.removeOrder(itemId, "SELL", sellOrder.getId());
         }
 
+        // Redis 시장가 갱신
+        orderBookManager.setMarketPrice(itemId, matchedPrice);
+
         // TradeEvent 발행
         TradeEventDto tradeEvent = TradeEventDto.builder()
                 .makerOrderId(sellOrder.getId()) // 가상의 Maker 설정 (매도자)
-                .takerOrderId(buyOrder.getId())  // 가상의 Taker 설정 (매수자)
+                .takerOrderId(buyOrder.getId()) // 가상의 Taker 설정 (매수자)
                 .itemId(itemId)
                 .makerOrderType(OrderType.SELL)
                 .matchedPrice(matchedPrice)
@@ -103,6 +115,32 @@ public class MarketMatchingService {
                 .build();
 
         tradeEventPublisher.publishTradeEvent(tradeEvent);
+
+        // 실시간 알림 발송
+        sendTradeNotifications(buyOrder, sellOrder, matchedPrice, matchedQuantity);
+    }
+
+    private void sendTradeNotifications(MarketOrder buyOrder, MarketOrder sellOrder, long price, long quantity) {
+        // 매수자 알림
+        if (!buyOrder.getIsVirtual()) {
+            companyRepository.findById(buyOrder.getCompanyId()).ifPresent(company -> {
+                eventPublisher.publishEvent(new NotificationEvent(
+                        company.getUser().getId(),
+                        String.format("[체결] 상품이 %d개 구매되었습니다. (가격: %d)", quantity, price),
+                        NotificationType.TRADE
+                ));
+            });
+        }
+        // 매도자 알림
+        if (!sellOrder.getIsVirtual()) {
+            companyRepository.findById(sellOrder.getCompanyId()).ifPresent(company -> {
+                eventPublisher.publishEvent(new NotificationEvent(
+                        company.getUser().getId(),
+                        String.format("[체결] 상품이 %d개 판매되었습니다. (가격: %d)", quantity, price),
+                        NotificationType.TRADE
+                ));
+            });
+        }
     }
 
     private void updateOrRemoveCache(MarketOrder order) {

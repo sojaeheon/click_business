@@ -4,10 +4,9 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { MapControls, useGLTF, useAnimations, Html } from "@react-three/drei";
 import * as THREE from "three";
 import { SkeletonUtils } from "three-stdlib";
-import { useGame } from "../../store/gameStore";
+import { useGame, useGameStore } from "../../../store/gameStore";
 import { WorkstationAPI } from "../../../api/gameApi";
 
-// ─── 분리된 모듈 imports ─────────────────────────────────────────
 import {
   TILE_S, BX, BZ, BW, ROAD_STEP, ROAD_S,
   outerX, outerZ, vRoadX1, vRoadX2,
@@ -19,182 +18,94 @@ import { WorldBounds } from "./SceneHelpers";
 import { AreaLabel, BuildingTile, Minigame } from "./BuildingComponents";
 import { Workstation } from "./Workstation";
 
-// ─── ConveyorBelt is only used in Workstation.tsx; no local import needed ──
-// @ts-ignore
-// (ConveyorBelt imported in Workstation.tsx)
+// ✨ 잘 분리해둔 모달을 불러옵니다!
+import { GlobalDialog, ConfirmData } from "../modals/GlobalDialog";
+import { useAlertStore } from "../../../store/useAlertStore";
+import { ControlGuideModal } from "../modals/ControlGuideModal";
 
-// ─── 다이얼로그 타입 ────────────────────────────────────────────
-interface ConfirmData {
-  type: "building" | "workstation";
-  label: string;
-  action?: () => void;
-  isWorking?: boolean;
-  onStart?: (quantity: number) => void;
-  onStop?: () => void;
-}
+// ─────────────────────────────────────────────────────────────────
+// 🌊 1. 바다 타일 1장 (OceanTile) - 구조 변경 완벽 대응!
+// ─────────────────────────────────────────────────────────────────
+function OceanTile({ position, scale }: { position: [number, number, number], scale: [number, number, number] }) {
+  const group = useRef<THREE.Group>(null);
 
-// ─── GlobalDialog: Canvas 밖 DOM 디아로그 ───────────────────────
-function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: () => void }) {
-  const R: React.CSSProperties = { fontFamily: "'KerisKeduR', sans-serif" };
-  const { state } = useGame();
-  const [qty, setQty] = useState(1);
-  const [isCollecting, setIsCollecting] = useState(false);
-  const [particles, setParticles] = useState<{ id: number, x: number, y: number, tx: number, ty: number, delay: number }[]>([]);
+  // 새로 구운 깔끔한 모델 불러오기
+  const { nodes, animations } = useGLTF(M.ocean) as any;
+  const { actions } = useAnimations(animations, group);
 
   useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !isCollecting) onClose();
-    };
-    window.addEventListener("keydown", handleEsc);
-    return () => window.removeEventListener("keydown", handleEsc);
-  }, [onClose, isCollecting]);
+    // ✨ 쓸데없는 애니메이션 다 빼고, 정확히 '평면Action'만 실행합니다!
+    if (actions && actions['평면Action']) {
+      const action = actions['평면Action'];
 
-  if (data.type === "workstation") {
-    const materialPerUnit = 3;
-    const warehouseStock = state.warehouseItems.find(i => i.type === "material")?.quantity || 0;
-    const totalMaterial = qty * materialPerUnit;
-    const canProduce = Math.floor(warehouseStock / materialPerUnit);
-    const hasEnough = warehouseStock >= totalMaterial;
-
-    const handleCollect = (e: React.MouseEvent) => {
-      setIsCollecting(true);
-      const rect = (e.target as HTMLButtonElement).getBoundingClientRect();
-      const newParticles = Array.from({ length: 15 }).map((_, i) => ({
-        id: Date.now() + i,
-        x: rect.left + rect.width / 2,
-        y: rect.top + rect.height / 2,
-        tx: (Math.random() - 0.5) * 150,
-        ty: (Math.random() - 0.5) * 150 - 50,
-        delay: Math.random() * 0.15
-      }));
-      setParticles(newParticles);
-
-      setTimeout(() => {
-        data.onStop?.();
-        onClose();
-      }, 1000);
-    };
-
-    return (
-      <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50 backdrop-blur-sm" onClick={() => !isCollecting && onClose()}>
-        
-        {/* Particle Styles & Elements */}
-        {particles.map((p) => (
-           <React.Fragment key={p.id}>
-             <style dangerouslySetInnerHTML={{__html: `
-               @keyframes particleFly_${p.id} {
-                 0% { transform: scale(0) translate(0, 0); opacity: 0; }
-                 20% { transform: scale(1.5) translate(${p.tx}px, ${p.ty}px); opacity: 1; }
-                 100% { transform: scale(0.5) translate(400px, -400px); opacity: 0; }
-               }
-             `}} />
-             <div 
-               className="fixed w-8 h-8 bg-yellow-400 rounded-full shadow-[0_0_20px_rgba(250,204,21,0.8)] pointer-events-none z-[100] flex items-center justify-center text-xl"
-               style={{ 
-                 left: p.x, top: p.y, 
-                 animation: `particleFly_${p.id} 1s cubic-bezier(0.25, 1, 0.5, 1) forwards`,
-                 animationDelay: p.delay + "s"
-               }}
-             >
-               ⭐️
-             </div>
-           </React.Fragment>
-        ))}
-        <style dangerouslySetInnerHTML={{__html: `
-          @keyframes spinSlow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        `}} />
-
-        <div className="bg-white rounded-[2rem] shadow-2xl p-8 flex flex-col gap-6 border-4 border-slate-200" style={{ ...R, minWidth: 360 }} onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center gap-4 border-b-2 border-slate-100 pb-4">
-            <div className={`w-16 h-16 flex items-center justify-center rounded-2xl shadow-inner ${data.isWorking ? 'bg-orange-100 border-2 border-orange-300' : 'bg-slate-100 border-2 border-slate-300'}`}>
-              <span className={`text-4xl ${data.isWorking ? 'animate-[spinSlow_4s_linear_infinite]' : ''}`}>⚙️</span>
-            </div>
-            <div>
-              <h2 className="text-2xl font-black text-slate-800 tracking-widest">작업장</h2>
-              <p className={`text-sm font-bold mt-1 ${data.isWorking ? 'text-orange-500 animate-pulse' : 'text-slate-400'}`}>
-                {data.isWorking ? '🔥 기계 가동 중...' : '💤 대기 중'}
-              </p>
-            </div>
-          </div>
-
-          {!data.isWorking ? (
-            <div className="bg-slate-50 rounded-2xl p-6 flex flex-col gap-4 border-2 border-slate-100">
-              <label className="text-sm font-bold text-slate-500 uppercase tracking-widest">생산 수량 설정</label>
-              <div className="flex items-center gap-4">
-                <button className="w-12 h-12 rounded-xl bg-white border-2 border-slate-200 font-black text-slate-700 hover:bg-slate-50 hover:border-slate-300 active:scale-95 transition-all text-xl shadow-sm" onClick={() => setQty(q => Math.max(1, q - 1))}>−</button>
-                <input
-                  type="number" min={1} value={qty}
-                  onChange={e => setQty(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="flex-1 text-center text-3xl font-black border-2 border-slate-200 rounded-xl py-2 bg-white text-slate-800 focus:outline-none focus:border-indigo-400"
-                />
-                <button className="w-12 h-12 rounded-xl bg-white border-2 border-slate-200 font-black text-slate-700 hover:bg-slate-50 hover:border-slate-300 active:scale-95 transition-all text-xl shadow-sm" onClick={() => setQty(q => q + 1)}>+</button>
-              </div>
-              <div className="flex flex-col gap-2 pt-4 border-t-2 border-slate-200 mt-2">
-                <div className="flex justify-between text-sm font-bold">
-                  <span className="text-slate-500">필요 재료</span>
-                  <span className={`${hasEnough ? 'text-slate-800' : 'text-rose-500'}`}>{totalMaterial}개</span>
-                </div>
-                <div className="flex justify-between text-sm font-bold">
-                  <span className="text-slate-500">창고 재고</span>
-                  <span className="text-slate-800">{warehouseStock}개</span>
-                </div>
-                {!hasEnough && (
-                  <p className="text-xs font-bold text-rose-500 mt-2 bg-rose-50 border-2 border-rose-100 rounded-xl p-3">
-                    ⚠️ 재료가 부족합니다. ({totalMaterial - warehouseStock}개 더 필요)
-                  </p>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="bg-orange-50 rounded-2xl p-8 flex flex-col items-center justify-center border-2 border-orange-200 gap-4">
-               <div className="relative w-24 h-24 flex items-center justify-center">
-                 <div className="absolute inset-0 border-8 border-orange-200 rounded-full" />
-                 <div className="absolute inset-0 border-8 border-transparent border-t-orange-500 rounded-full animate-spin" />
-                 <span className="text-4xl relative z-10 animate-bounce">🎁</span>
-               </div>
-               <span className="text-orange-600 font-black tracking-widest text-lg">생산이 완료되었습니다!</span>
-            </div>
-          )}
-
-          <div className="flex gap-3 mt-2">
-            {!data.isWorking ? (
-              <button
-                className={`flex-1 py-4 rounded-xl font-black text-lg transition-all active:scale-95 shadow-lg ${hasEnough ? 'bg-indigo-500 hover:bg-indigo-600 text-white shadow-indigo-200' : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}`}
-                disabled={!hasEnough}
-                onClick={() => { if (hasEnough) { data.onStart?.(qty); onClose(); } }}
-              >작업 시작 ▶</button>
-            ) : (
-              <button
-                className="flex-1 py-4 rounded-xl bg-gradient-to-r from-emerald-400 to-emerald-500 text-white font-black text-lg hover:from-emerald-500 hover:to-emerald-600 transition-all shadow-lg shadow-emerald-200 active:scale-95"
-                onClick={handleCollect}
-              >결과물 수령</button>
-            )}
-            <button className="px-6 py-4 rounded-xl bg-slate-100 text-slate-500 border-2 border-slate-200 font-black hover:bg-slate-200 hover:text-slate-700 transition-colors" onClick={() => !isCollecting && onClose()}>닫기</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+      // 유저님이 구워오신 0->1->0->1 완벽 루프 재생!
+      action.setLoop(THREE.LoopPingPong, Infinity);
+      action.setEffectiveTimeScale(0.5); // 🌊 파도 속도 (입맛에 맞게 조절)
+      action.play();
+    }
+  }, [actions]);
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/40 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white rounded-[2rem] shadow-2xl p-8 flex flex-col items-center gap-6 min-w-[280px] border-4 border-slate-200" style={R} onClick={(e) => e.stopPropagation()}>
-        <div className="w-20 h-20 rounded-full bg-indigo-50 flex items-center justify-center border-4 border-indigo-100 shadow-inner">
-          <span className="text-4xl">🏛️</span>
-        </div>
-        <p className="text-xl font-black text-slate-800 text-center leading-relaxed">
-          <span className="text-indigo-600 text-2xl">[{data.label}]</span><br />(으)로 이동하시겠습니까?
-        </p>
-        <div className="flex gap-3 w-full mt-4">
-          <button className="flex-1 py-4 rounded-xl bg-indigo-500 text-white font-black text-lg hover:bg-indigo-600 transition-colors shadow-lg active:scale-95" onClick={() => { data.action?.(); onClose(); }}>이동</button>
-          <button className="flex-1 py-4 rounded-xl bg-slate-100 text-slate-600 border-2 border-slate-200 font-black text-lg hover:bg-slate-200 transition-colors active:scale-95" onClick={onClose}>취소</button>
-        </div>
-      </div>
-    </div>
+    // 타일 크기
+    <group ref={group} position={position} scale={scale} dispose={null}>
+      {/* gltfjsx가 뽑아준 가장 안정적이고 깔끔한 원본 구조 그대로 사용! */}
+      <group name="Scene">
+        <mesh
+          name="LowPolyOcean"
+          geometry={nodes.LowPolyOcean.geometry}
+          morphTargetDictionary={nodes.LowPolyOcean.morphTargetDictionary}
+          morphTargetInfluences={nodes.LowPolyOcean.morphTargetInfluences}
+          receiveShadow={false}
+        >
+          {/* 청량하고 각진 바다 재질 */}
+          <meshStandardMaterial
+            color="#48cae4"
+            roughness={0.5}
+            metalness={0.3}
+            flatShading={true}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      </group>
+    </group>
   );
 }
 
-// ─── PlayerCharacter: WASD + 방향키 이동 ─────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// 🌊 2. 바다 타일맵 관리자 (OceanGrid) -> 예전 Ocean 컴포넌트 대체
+// ─────────────────────────────────────────────────────────────────
+function OceanGrid() {
+  // 블렌더 바다 원본 크기(30) * OceanTile의 스케일(2) = 타일 1장의 실제 크기(60)
+  const TILE_SIZE = 60;
+  const GRID_RADIUS = 1; // 최적화: 1이면 3x3=9장 렌더링 (기존 3→1 축소)
+
+  const tiles = [];
+
+  // 타일을 바둑판처럼 X축, Z축으로 쫙 깝니다.
+  for (let x = -GRID_RADIUS; x <= GRID_RADIUS; x++) {
+    for (let z = -GRID_RADIUS; z <= GRID_RADIUS; z++) {
+      // ✨ 핵심 마법: x와 z가 짝수냐 홀수냐에 따라 스케일을 2 또는 -2로 뒤집습니다!
+      // (음수 스케일을 주면 메쉬가 거울처럼 반전됩니다)
+      const scaleX = x % 2 === 0 ? 2 : -2;
+      const scaleZ = z % 2 === 0 ? 2 : -2;
+
+      tiles.push(
+        <OceanTile
+          key={`ocean-${x}-${z}`}
+          position={[x * TILE_SIZE, -0.8, z * TILE_SIZE]}
+          scale={[scaleX, 2, scaleZ]} // 뒤집힌 스케일 적용!
+        />
+      );
+    }
+  }
+
+  // 생성된 수십 장의 바다 타일을 한 번에 렌더링합니다.
+  return <group>{tiles}</group>;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 캐릭터 컴포넌트
+// ─────────────────────────────────────────────────────────────────
 function PlayerCharacter({
   isWorkstationWorking,
   onEnterBuilding,
@@ -210,13 +121,14 @@ function PlayerCharacter({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const posRef = useRef(new THREE.Vector3(0, 0, 0));
-  const keysRef = useRef({ w: false, a: false, s: false, d: false });
+  const keysRef = useRef({ w: false, a: false, s: false, d: false, jump: false });
   const lastBuildingRef = useRef<string | null>(null);
   const lastInWorkstation = useRef(false);
   const isWorking_ref = useRef(isWorkstationWorking);
-  const modeRef = useRef<"idle" | "walking" | "working" | "spawning">("spawning");
-  const [mode, setMode] = useState<"idle" | "walking" | "working" | "spawning">("spawning");
+  const modeRef = useRef<"idle" | "walking" | "working" | "spawning" | "jumping">("spawning");
+  const [mode, setMode] = useState<"idle" | "walking" | "working" | "spawning" | "jumping">("spawning");
   const [showMenu, setShowMenu] = useState(false);
+  const jumpVelocityRef = useRef(0);
   const [emotionAnim, setEmotionAnim] = useState<string | null>(null);
 
   const { scene: barbarianScene } = useGLTF("/models/characters/Barbarian.glb");
@@ -238,12 +150,9 @@ function PlayerCharacter({
   );
   const { actions } = useAnimations(allAnimations, groupRef);
 
-  // 키보드 이벤트
   useEffect(() => {
-    // 💡 핵심 버그 픽스: 모달이 팝업되면서 isPaused 상태가 되면 누르고 있던 모든 키 상태를 해제하여 유령입력 제거
     if (isPaused) {
-      keysRef.current = { w: false, a: false, s: false, d: false };
-      // early return을 하면 이벤트 등록이 안돼서 스페이스바/상호작용이 다 날아가므로 해제만 하고 넘어감
+      keysRef.current = { w: false, a: false, s: false, d: false, jump: false };
     }
 
     const setKey = (code: string, val: boolean) => {
@@ -256,16 +165,41 @@ function PlayerCharacter({
     };
     const onDown = (e: KeyboardEvent) => {
       if (isPaused) return;
-      if (e.code === 'Space' && !e.repeat) setShowMenu(true);
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+
+      // 1. 만약 모달이 꺼져있고 영역 안에 있는데 스페이스를 눌렀다면 다시 진입 모달을 띄운다.
+      if (e.code === 'Space' && !e.repeat) {
+        // 1-1. 건물 진입
+        if (lastBuildingRef.current) {
+          const b = BUILDING_AREAS.find(a => a.name === lastBuildingRef.current);
+          if (b) {
+            onEnterBuilding(b.name, b.label);
+            return;
+          }
+        }
+        
+        // 1-2. 작업장 상호작용 (요청에 따라 스페이스바에서 상호작용 해제)
+        // if (lastInWorkstation.current && !isWorking_ref.current) {
+        //   onOpenWorkstationModal?.();
+        //   return;
+        // }
+
+        // 1-3. 필드 점프 (위의 상호작용이 없었을 때만)
+        if (modeRef.current !== "jumping" && modeRef.current !== "spawning") {
+          keysRef.current.jump = true;
+        }
+      }
+
+      if (e.code === 'KeyE' && !e.repeat && !isPaused) {
+        setShowMenu(prev => !prev);
+      }
+
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
       setKey(e.code, true);
     };
     const onUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space') setShowMenu(false);
       setKey(e.code, false);
     };
-    // 브라우저 화면 포커스 나갈 때 유령입력 제거
-    const onBlur = () => { keysRef.current = { w: false, a: false, s: false, d: false }; };
+    const onBlur = () => { keysRef.current = { w: false, a: false, s: false, d: false, jump: false }; };
 
     window.addEventListener('keydown', onDown);
     window.addEventListener('keyup', onUp);
@@ -277,7 +211,6 @@ function PlayerCharacter({
     };
   }, [isPaused]);
 
-  // 스폰 애니메이션
   useEffect(() => {
     if (!actions) return;
     const spawnAct = actions["Spawn_Ground"] || actions["Spawn_Air"];
@@ -295,7 +228,6 @@ function PlayerCharacter({
     }
   }, [actions]);
 
-  // 애니메이션 제어
   useEffect(() => {
     if (!actions) return;
     Object.values(actions).forEach(a => a?.fadeOut(0.2));
@@ -304,9 +236,24 @@ function PlayerCharacter({
       return;
     }
     if (mode === "spawning") return;
+
+    const gameStore = useGameStore.getState();
+    const currentIndustry = gameStore.industry;
+
     if (mode === "working") {
-      const act = actions["Work_B"] || actions["Work_A"] || actions["Pickaxing"] || Object.values(actions)[0];
+      let act;
+      if (currentIndustry === "금광업") {
+        act = actions["Pickaxing"] || Object.values(actions)[0];
+      } else if (currentIndustry === "제조업") {
+        act = actions["Work_B"] || actions["Work_A"] || Object.values(actions)[0];
+      } else {
+        // 기본(금 제련업)
+        act = actions["Work_A"] || actions["Work_B"] || Object.values(actions)[0];
+      }
       if (act) act.setEffectiveTimeScale(1.2).reset().fadeIn(0.3).play();
+    } else if (mode === "jumping") {
+      const act = actions["Jump_A"] || actions["Jump_B"] || actions["Jump"] || Object.values(actions)[0];
+      if (act) act.setEffectiveTimeScale(1.5).reset().fadeIn(0.1).play();
     } else if (mode === "walking") {
       const act = actions["Running_A"] || actions["Walking_A"] || Object.values(actions)[0];
       if (act) act.setEffectiveTimeScale(1.5).reset().fadeIn(0.3).play();
@@ -332,13 +279,94 @@ function PlayerCharacter({
     if (isMoving && emotionAnim) setEmotionAnim(null);
     if (isMoving) {
       dir.normalize().multiplyScalar(10 * delta);
-      posRef.current.add(dir);
-      posRef.current.x = THREE.MathUtils.clamp(posRef.current.x, -outerX + 1, outerX - 1);
-      posRef.current.z = THREE.MathUtils.clamp(posRef.current.z, -outerZ + 1, outerZ - 1);
+      const nextPos = posRef.current.clone().add(dir);
+      let canMove = true;
+
+      // 1. 차 주변을 투과하지 않도록 충돌 (점프 체공 높이가 1.5 미만일 때)
+      if (posRef.current.y < 1.5) {
+        for (const carPos of Object.values(SHARED_STATE.cars)) {
+          const dx = nextPos.x - carPos.x;
+          const dz = nextPos.z - carPos.z;
+          if (dx * dx + dz * dz < 2.5 * 2.5) { // 자동차 충돌 반경
+            const oldDist = (posRef.current.x - carPos.x) ** 2 + (posRef.current.z - carPos.z) ** 2;
+            if (dx * dx + dz * dz < oldDist) { // 차에서 멀어지는 방향이면 허용
+              canMove = false; break;
+            }
+          }
+        }
+      }
+
+      // 2. 가로등, 수풀, 상자 (맵 위 데스크 모델) 무적 투과 방지
+      if (canMove && posRef.current.y < 1.0) {
+        for (const d of mapDecos) {
+          const rx = d.radius || 1.0;
+          const dx = nextPos.x - d.x;
+          const dz = nextPos.z - d.z;
+          if (dx * dx + dz * dz < rx * rx) {
+            const oldDist = (posRef.current.x - d.x) ** 2 + (posRef.current.z - d.z) ** 2;
+            if (dx * dx + dz * dz < oldDist) {
+              canMove = false; break;
+            }
+          }
+        }
+      }
+
+      // 3. 빌딩 뚫고 건물 뒤로 사라짐 방지
+      if (canMove && posRef.current.y < 1.0) {
+        for (const b of BUILDING_AREAS) {
+          const dx = nextPos.x - b.pos[0];
+          const dz = nextPos.z - b.pos[1];
+          if (dx * dx + dz * dz < 2.2 * 2.2) { // 빌딩 충돌 반경
+            const oldDist = (posRef.current.x - b.pos[0]) ** 2 + (posRef.current.z - b.pos[1]) ** 2;
+            if (dx * dx + dz * dz < oldDist) {
+              canMove = false; break;
+            }
+          }
+        }
+      }
+
+      // 4. 작업장 충돌 - 제거: 캐릭터가 작업장 안으로 들어가야 상호작용 가능
+      // if (canMove && posRef.current.y < 1.0) {
+      //   const dx = nextPos.x - WORKSTATION_POS[0];
+      //   const dz = nextPos.z - WORKSTATION_POS[1];
+      //   if (dx * dx + dz * dz < 2.0 * 2.0) {
+      //     const oldDist = (posRef.current.x - WORKSTATION_POS[0]) ** 2 + (posRef.current.z - WORKSTATION_POS[1]) ** 2;
+      //     if (dx * dx + dz * dz < oldDist) {
+      //       canMove = false;
+      //     }
+      //   }
+      // }
+
+
       groupRef.current.rotation.y = Math.atan2(dir.x, dir.z);
+
+      const buffer = 5.0; // 타일 밖으로 나갈 수 있게 넉넉하게 변경 (기존 0.2 -> 5.0)
+      if (canMove) {
+        posRef.current.copy(nextPos);
+        posRef.current.x = THREE.MathUtils.clamp(posRef.current.x, -outerX - buffer, outerX + buffer);
+        posRef.current.z = THREE.MathUtils.clamp(posRef.current.z, -outerZ - buffer, outerZ + buffer);
+      }
     }
 
-    groupRef.current.position.set(posRef.current.x, 0.35, posRef.current.z);
+    // 점프 물리 연산 (중력 및 속도)
+    if (keys.jump) {
+      if (modeRef.current !== "jumping") {
+        jumpVelocityRef.current = 10; // 점프 초기 파워를 살짝 높여서 차를 넘도록 조정
+      }
+      keys.jump = false; // 플래그 소모
+    }
+
+    if (jumpVelocityRef.current !== 0 || posRef.current.y > 0) {
+      jumpVelocityRef.current -= 25 * delta; // 중력
+      posRef.current.y += jumpVelocityRef.current * delta;
+
+      if (posRef.current.y <= 0) {
+        posRef.current.y = 0;
+        jumpVelocityRef.current = 0;
+      }
+    }
+
+    groupRef.current.position.set(posRef.current.x, posRef.current.y + 0.35, posRef.current.z);
     SHARED_STATE.playerPos.copy(groupRef.current.position);
 
     const px = posRef.current.x;
@@ -346,12 +374,26 @@ function PlayerCharacter({
     const halfBW = BW / 2;
     const inWorkstation = Math.abs(px - WORKSTATION_POS[0]) < halfBW && Math.abs(pz - WORKSTATION_POS[1]) < halfBW;
 
-    if (inWorkstation && !isWorking_ref.current && !lastInWorkstation.current) onOpenWorkstationModal?.();
     isWorking_ref.current = isWorkstationWorking;
+    const prevInWorkstation = lastInWorkstation.current;
     lastInWorkstation.current = inWorkstation;
     onInWorkstation?.(inWorkstation);
+    
+    // 작업장 진입함(오직 false -> true 순간) & 작업 중이 아닐 때 자동으로 모달 오픈
+    if (!prevInWorkstation && inWorkstation && !isWorkstationWorking) {
+      onOpenWorkstationModal?.();
+    }
 
-    let newMode: "idle" | "walking" | "working" = inWorkstation && isWorkstationWorking ? "working" : isMoving ? "walking" : "idle";
+    let newMode: "idle" | "walking" | "working" | "jumping" = "idle";
+
+    if (posRef.current.y > 0 || jumpVelocityRef.current > 0) {
+      newMode = "jumping";
+    } else if (inWorkstation && isWorkstationWorking) {
+      newMode = "working";
+    } else if (isMoving) {
+      newMode = "walking";
+    }
+
     if (newMode !== modeRef.current) { modeRef.current = newMode; setMode(newMode); }
 
     let currentBuilding: string | null = null;
@@ -394,7 +436,29 @@ function PlayerCharacter({
   );
 }
 
-// ─── AnimatedCar ─────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// 환경 및 기타 컴포넌트
+// ─────────────────────────────────────────────────────────────────
+
+type Deco = { x: number; z: number; type: keyof typeof M; rot?: number; s?: number; radius?: number };
+export const mapDecos: Deco[] = [
+  { x: -BX, z: -ROAD_S, type: "streetlight", rot: 90, s: 3, radius: 0.5 },
+  { x: BX, z: -ROAD_S, type: "streetlight", rot: 90, s: 3, radius: 0.5 },
+  { x: -BX, z: ROAD_S, type: "streetlight", rot: -90, s: 3, radius: 0.5 },
+  { x: BX, z: ROAD_S, type: "streetlight", rot: -90, s: 3, radius: 0.5 },
+  { x: -(BX / 2 - ROAD_S * 0.6), z: -ROAD_S * 0.6, type: "trafficlightA", rot: 45, s: 3, radius: 0.5 },
+  { x: (BX / 2 - ROAD_S * 0.6), z: -ROAD_S * 0.6, type: "trafficlightB", rot: 135, s: 3, radius: 0.5 },
+  { x: -(BX + BW * 0.4), z: -(BZ + BW * 0.4), type: "bush", s: 2.5, radius: 1.5 },
+  { x: (BX + BW * 0.4), z: -(BZ + BW * 0.4), type: "bush", s: 2.5, radius: 1.5 },
+  { x: -(BX + BW * 0.4), z: (BZ + BW * 0.4), type: "bush", s: 2.5, radius: 1.5 },
+  { x: (BX + BW * 0.4), z: (BZ + BW * 0.4), type: "bush", s: 2.5, radius: 1.5 },
+  { x: -BX + 2.5, z: BZ + 2.5, type: "firehydrant", s: 5, radius: 0.8 },
+  { x: BX - 2, z: -BZ * 0.5, type: "firehydrant", s: 5, radius: 0.8 },
+  { x: BX + BW * 0.5, z: -(BZ + BW * 0.3), type: "boxA", s: 3, radius: 1.0 },
+  { x: BX + BW * 0.5, z: -BZ + 0.5, type: "boxB", s: 3, radius: 1.2 },
+  { x: BX + BW * 0.5, z: -(BZ + BW * 0.1), type: "boxA", s: 3, radius: 1.0 },
+];
+
 function AnimatedCar({
   modelKey, path, speed = 4, initialProgress = 0,
 }: {
@@ -448,7 +512,6 @@ function AnimatedCar({
   );
 }
 
-// ─── MapEnvironment ───────────────────────────────────────────────
 function MapEnvironment() {
   const Y = 0;
   const hLineX: number[] = [];
@@ -486,25 +549,6 @@ function MapEnvironment() {
     [-BX, BZ], [0, BZ], [BX, BZ],
   ];
 
-  type Deco = { x: number; z: number; type: keyof typeof M; rot?: number; s?: number };
-  const decos: Deco[] = [
-    { x: -BX, z: -ROAD_S, type: "streetlight", rot: 90, s: 3 },
-    { x: BX, z: -ROAD_S, type: "streetlight", rot: 90, s: 3 },
-    { x: -BX, z: ROAD_S, type: "streetlight", rot: -90, s: 3 },
-    { x: BX, z: ROAD_S, type: "streetlight", rot: -90, s: 3 },
-    { x: -(BX / 2 - ROAD_S * 0.6), z: -ROAD_S * 0.6, type: "trafficlightA", rot: 45, s: 3 },
-    { x: (BX / 2 - ROAD_S * 0.6), z: -ROAD_S * 0.6, type: "trafficlightB", rot: 135, s: 3 },
-    { x: -(BX + BW * 0.4), z: -(BZ + BW * 0.4), type: "bush", s: 2.5 },
-    { x: (BX + BW * 0.4), z: -(BZ + BW * 0.4), type: "bush", s: 2.5 },
-    { x: -(BX + BW * 0.4), z: (BZ + BW * 0.4), type: "bush", s: 2.5 },
-    { x: (BX + BW * 0.4), z: (BZ + BW * 0.4), type: "bush", s: 2.5 },
-    { x: -BX + 2.5, z: BZ + 2.5, type: "firehydrant", s: 5 },
-    { x: BX - 2, z: -BZ * 0.5, type: "firehydrant", s: 5 },
-    { x: BX + BW * 0.5, z: -(BZ + BW * 0.3), type: "boxA", s: 3 },
-    { x: BX + BW * 0.5, z: -BZ + 0.5, type: "boxB", s: 3 },
-    { x: BX + BW * 0.5, z: -(BZ + BW * 0.1), type: "boxA", s: 3 },
-  ];
-
   return (
     <group>
       {baseTiles.map(([tx, tz], i) => (
@@ -517,7 +561,7 @@ function MapEnvironment() {
           <EnvModel url={M[r.type]} position={[r.x, Y, r.z]} rotation={[0, ((r.rot ?? 0) * Math.PI) / 180, 0]} scale={ROAD_S} />
         </React.Suspense>
       ))}
-      {decos.map((d, i) => (
+      {mapDecos.map((d, i) => (
         <React.Suspense key={`deco-${i}`} fallback={null}>
           <EnvModel url={M[d.type]} position={[d.x, Y + 0.5, d.z]} rotation={[0, ((d.rot ?? 0) * Math.PI) / 180, 0]} scale={(d.s ?? 1) * TILE_S} />
         </React.Suspense>
@@ -533,22 +577,26 @@ function MapEnvironment() {
   );
 }
 
-// ─── GameScene ────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// 게임 씬 메인 (조명, 객체 배치)
+// ─────────────────────────────────────────────────────────────────
 export function GameScene({
   isWorkstationWorking,
   setIsWorkstationWorking,
-  onEnterBuilding,
   isPaused,
   onDialog,
+  isLoginMode,
 }: {
   isWorkstationWorking: boolean;
   setIsWorkstationWorking: (v: boolean) => void;
-  onEnterBuilding: (name: string, label: string) => void;
   isPaused: boolean;
   onDialog?: (d: ConfirmData) => void;
+  isLoginMode?: boolean;
 }) {
   const { openBuildingPage } = useGame();
   const [inWorkstation, setInWorkstation] = useState(false);
+  // 활성 시작시 requestedQty/totalMs를 Workstation 컴포넌트에 주입하는 콜백
+  const workstationStartRef = useRef<((opts: { requestedQty: number; totalMs: number }) => void) | null>(null);
 
   const go = useCallback((name: string, label: string) => {
     onDialog?.({
@@ -564,59 +612,75 @@ export function GameScene({
       isWorking: isWorkstationWorking,
       onStart: async (qty) => {
         try {
+          // ✅ 개수 비례 계산: qty개 기준으로 재료·시간 산출
+          const store = useGameStore.getState();
+          const { reqMat, resProd } = store.getIndustryItemNames();
+          const ratio = qty / resProd;                        // 시간 비율
+          const totalMsNeeded = Math.ceil(ratio * 60000);    // ms (비례)
+          const materialNeeded = Math.ceil(ratio * reqMat);  // 재료 (올림)
+
+          // ✅ 재료 창고에서 차감 (updateMaterial 음수 = 차감)
+          const deducted = store.updateMaterial(-materialNeeded);
+          if (Math.abs(deducted) < materialNeeded) {
+            useAlertStore.getState().openAlert("재료가 부족합니다.", "경고");
+            return;
+          }
+
           await WorkstationAPI.start({ companyId: 1, recipeId: 1, quantity: qty, workerId: 1 });
-          console.log(`작업 시작: 수량 ${qty}`);
           setIsWorkstationWorking(true);
+
+          // ✅ Workstation 컴포넌트에 목표 개수 & 예상 시간 전달
+          workstationStartRef.current?.({ requestedQty: qty, totalMs: totalMsNeeded });
+
+          const timeSec = Math.ceil(ratio * 60);
+          const timeStr = timeSec >= 60
+            ? `${Math.floor(timeSec / 60)}분 ${timeSec % 60 > 0 ? timeSec % 60 + '초' : ''}`
+            : `${timeSec}초`;
+          store.addAlert({ message: "생산 시작 🏭", detail: `재료 ${materialNeeded}개 소모 • ${qty}개 생산 예정 (${timeStr})` });
         } catch (e) {
           console.error(e);
-          alert("작업 시작에 실패했습니다.");
+          useAlertStore.getState().openAlert("작업 시작에 실패했습니다.", "경고");
         }
       },
       onStop: async () => {
-        try {
-          await WorkstationAPI.collect(1);
-          console.log(`결과물 수령!`);
-          setIsWorkstationWorking(false);
-          alert("결과물을 성공적으로 수령하여 창고에 보관했습니다.");
-        } catch (e) {
-          console.error(e);
-          alert("수령에 실패했습니다.");
-        }
+        // 수령은 3D 씩 더미 클릭으로 처리되므로 모달에서는 실제 collect 안 함
+        setIsWorkstationWorking(false);
       },
     });
   }, [onDialog, isWorkstationWorking, setIsWorkstationWorking]);
 
   return (
     <>
-      <color attach="background" args={['#b1e2f6']} />
-      <fog attach="fog" args={['#b1e2f6', 40, 200]} />
-      {/* 1. 배경을 부드럽게 밝혀줄 은은한 빛 */}
-      <ambientLight intensity={0.9} color="#ffffff" />
+      <color attach="background" args={['#a5e1f9']} />
+      <fog attach="fog" args={['#a5e1f9', 300, 1000]} />
+      <ambientLight intensity={0.8} color="#ffffff" />
 
-      {/* 2. 메인 태양광: 강도 증가, 그림자 범위(shadow-camera)를 전체 맵(-60~60)이 덮이도록 확장 */}
+      {/* ✨ 바다 컴포넌트 추가 */}
+      <React.Suspense fallback={null}>
+        <OceanGrid />
+      </React.Suspense>
+
       <directionalLight
         position={[20, 40, 20]}
         intensity={2.0}
         castShadow
         shadow-bias={-0.0001}
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={[1024, 1024]}
       >
         <orthographicCamera attach="shadow-camera" args={[-80, 80, 80, -80, 0.5, 150]} />
       </directionalLight>
 
-      {/* 3. 너무 파래보이는 원인이었던 파란 보조광 삭제 및 화이트 컬러 스포트라이트로 윤곽선 확보 */}
       <spotLight position={[0, 20, 0]} intensity={1.5} distance={150} angle={1.2} penumbra={1} color="#6bd9e8" castShadow={false} />
       <directionalLight position={[-30, 15, -30]} intensity={0.5} color="#ffffff" />
 
-
       <MapEnvironment />
 
-      <BuildingTile position={[-BX, 0, -BZ]} modelUrl={M.hr} label="인력소" onClick={() => go("hr", "인력소")} />
-      <BuildingTile position={[0, 0, -BZ]} modelUrl={M.bank} label="은행" onClick={() => go("bank", "은행")} />
-      <BuildingTile position={[BX, 0, -BZ]} modelUrl={M.warehouse} label="창고" onClick={() => go("warehouse", "창고")} />
-      <BuildingTile position={[BX, 0, BZ]} modelUrl={M.market} label="마켓" onClick={() => go("market", "마켓")} />
+      <BuildingTile position={[-BX, 0, -BZ]} modelUrl={M.hr} label="인력소" />
+      <BuildingTile position={[0, 0, -BZ]} modelUrl={M.bank} label="은행" />
+      <BuildingTile position={[BX, 0, -BZ]} modelUrl={M.warehouse} label="창고" />
+      <BuildingTile position={[BX, 0, BZ]} modelUrl={M.market} label="마켓" />
 
-      <Minigame position={[-BX, 0, BZ]} onClick={() => go("minigame", "미니게임")} />
+      <Minigame position={[-BX, 0, BZ]} />
 
       <Workstation
         position={[0, 0, BZ]}
@@ -624,25 +688,29 @@ export function GameScene({
         inWorkstation={inWorkstation}
         onOpenModal={handleWorkstationClick}
         onStoreGold={(count) => {
-          console.log(`금괴 ${count}개 창고 저장 요청`);
-          alert(`금괴 ${count}개를 창고에 저장했습니다!`);
+          // 실제 창고 저장은 Workstation 내부에서 gameStore.updateProduct로 처리됨
+          // 여기에서는 추가 아이템 혼력 없도록 alert만 저장
+          console.log(`[Workstation] ${count}개 창고 저장 완료`);
         }}
+        onWorkChange={setIsWorkstationWorking}
+        onRegisterStart={(fn) => { workstationStartRef.current = fn; }}
       />
 
-      <React.Suspense fallback={null}>
-        <PlayerCharacter
-          isWorkstationWorking={isWorkstationWorking}
-          onEnterBuilding={go}
-          isPaused={isPaused}
-          onInWorkstation={setInWorkstation}
-          onOpenWorkstationModal={!isWorkstationWorking ? handleWorkstationClick : undefined}
-        />
-      </React.Suspense>
+      {!isLoginMode && (
+        <React.Suspense fallback={null}>
+          <PlayerCharacter
+            isWorkstationWorking={isWorkstationWorking}
+            onEnterBuilding={go}
+            isPaused={isPaused}
+            onInWorkstation={setInWorkstation}
+            onOpenWorkstationModal={!isWorkstationWorking ? handleWorkstationClick : undefined}
+          />
+        </React.Suspense>
+      )}
     </>
   );
 }
 
-// ─── canvas 포커스 복원 헬퍼 ─────────────────────────────────────
 function refocusCanvas(wrap: HTMLDivElement | null) {
   const canvas = wrap?.querySelector('canvas') as HTMLElement | null;
   if (canvas) {
@@ -651,11 +719,66 @@ function refocusCanvas(wrap: HTMLDivElement | null) {
   }
 }
 
-// ─── IsometricScene ──────────────────────────────────────────────
-export function IsometricScene() {
+// ─────────────────────────────────────────────────────────────────
+// 최상위 캔버스 컴포넌트 (App에서 호출됨)
+// ─────────────────────────────────────────────────────────────────
+export function IsometricScene({ isLoginMode = false }: { isLoginMode?: boolean } = {}) {
+  const { state, openModal, closeModal } = useGame();
   const [dialogData, setDialogData] = useState<ConfirmData | null>(null);
   const [isWorkstationWorking, setIsWorkstationWorking] = useState(false);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
+
+  const isGlobalPaused = isLoginMode || !!dialogData || !!state.activeModal || !!state.activeBuildingPage;
+
+  // ────────────────────────────────────────────────────────────
+  // ⌨️ UI 모달 전용 단축키 (자유로운 스위칭 & 토글 기능 탑재!)
+  // ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const handleHotkeys = (e: KeyboardEvent) => {
+      // 1. 채팅이나 인풋창 타이핑 중이면 단축키 무시
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      // 2. 🚨 완전 차단 (Hard Block): 건물 입장 창, 작업장 모달, 로그인 화면이 떠있을 때는 단축키 안 먹힘!
+      // (기존의 isGlobalPaused 대신, HUD 모달이 켜진 경우는 차단 조건에서 제외했습니다)
+      if (isLoginMode || !!dialogData || !!state.activeBuildingPage) return;
+
+      // 💡 핵심 기능: 현재 열린 창을 또 누르면 '닫기', 다른 창을 누르면 '바로 전환' 해주는 스마트 함수!
+      const toggleModal = (targetModal: "profile" | "news" | "ranking" | "inventory" | "alert" | "settings") => {
+        e.preventDefault();
+        if (state.activeModal === targetModal) {
+          closeModal(); // 열려있는 창의 단축키를 또 누르면 닫힘
+        } else {
+          openModal(targetModal); // 다른 창 단축키를 누르면 바로 그 창으로 덮어씌움(전환)
+        }
+      };
+
+      // 3. 키보드 입력 매핑
+      switch (e.key.toLowerCase()) {
+        // 🎒 인벤토리
+        case 'i': toggleModal("inventory"); break;
+
+        // 🏆 명예의 전당 (R -> K로 변경하여 새로고침 충돌 방지)
+        case 'k': toggleModal("ranking"); break;
+
+        // 📰 뉴스
+        case 'n': toggleModal("news"); break;
+
+        // 👤 기업 프로필
+        case 'p': toggleModal("profile"); break;
+
+        // ⚙️ 설정
+        case 'o': toggleModal("settings"); break;
+
+        // 🔔 알림 (Alert / Notification)
+        // ⚠️ 'A' 키는 캐릭터 왼쪽 이동과 겹치므로 'L' 키를 사용합니다!
+        case 'l': toggleModal("alert"); break;
+      }
+    };
+
+    window.addEventListener('keydown', handleHotkeys);
+    return () => window.removeEventListener('keydown', handleHotkeys);
+  }, [isLoginMode, dialogData, state.activeBuildingPage, state.activeModal, openModal, closeModal]);
+  // ────────────────────────────────────────────────────────────
 
   const d = CONFIG.CAMERA.distance;
   const pA = CONFIG.CAMERA.polarAngle;
@@ -664,19 +787,16 @@ export function IsometricScene() {
   const cy = d * Math.cos(pA);
   const cz = d * Math.sin(pA) * Math.cos(aA);
 
-  // 탭 전환 / 모달 닫힌 후 자동 포커스 복원
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
         setTimeout(() => refocusCanvas(canvasWrapRef.current), 100);
       }
     };
-    // 다른 DOM 요소에 포커스가 갔다가 canvas 영역으로 돌아올 때
     const onFocusIn = (e: FocusEvent) => {
       const wrap = canvasWrapRef.current;
       if (!wrap) return;
       const target = e.target as HTMLElement;
-      // 포커스가 canvas 래퍼 바깥 요소(모달 등)에서 다시 바디/wrap으로 돌아오면 복원
       if (!wrap.contains(target) && target.tagName !== 'BUTTON' && target.tagName !== 'INPUT') {
         setTimeout(() => refocusCanvas(canvasWrapRef.current), 50);
       }
@@ -689,9 +809,7 @@ export function IsometricScene() {
     };
   }, []);
 
-  // 다이얼로그가 닫힐 때 포커스 복원
   const closeDialog = useCallback(() => {
-    // 포인터 이벤트(pointerup)가 현재 렌더트리에서 무사히 끝나기를 기다린 뒤 언마운트
     setTimeout(() => {
       setDialogData(null);
       setTimeout(() => refocusCanvas(canvasWrapRef.current), 100);
@@ -699,8 +817,11 @@ export function IsometricScene() {
   }, []);
 
   const handleWrapperClick = useCallback(() => {
-    refocusCanvas(canvasWrapRef.current);
-  }, []);
+    // 모달이 열려있으면 캔버스 포커스 이동 금지 (input 포커스 유지)
+    if (!dialogData) {
+      refocusCanvas(canvasWrapRef.current);
+    }
+  }, [dialogData]);
 
   return (
     <div className="relative w-full h-screen flex flex-col overflow-hidden font-sans bg-[#0a3d6b]">
@@ -712,9 +833,10 @@ export function IsometricScene() {
       >
         <Canvas
           flat orthographic
-          camera={{ position: [cx, cy, cz], zoom: CONFIG.CAMERA.initialZoom }}
+          camera={{ position: [cx, cy, cz], zoom: isLoginMode ? 40 : CONFIG.CAMERA.initialZoom }}
           shadows
-          gl={{ antialias: true, alpha: true }}
+          gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+          performance={{ min: 0.5 }}
           tabIndex={0}
           onCreated={({ gl }) => {
             gl.domElement.tabIndex = 0;
@@ -723,46 +845,65 @@ export function IsometricScene() {
         >
           <GameScene
             onDialog={setDialogData}
-            isPaused={!!dialogData}
+            isPaused={isGlobalPaused}
             isWorkstationWorking={isWorkstationWorking}
             setIsWorkstationWorking={setIsWorkstationWorking}
-            onEnterBuilding={() => { }}
+            isLoginMode={isLoginMode}
           />
-          {/* 캐릭터 따라가는 카메라 삭제됨 -> 월드 바운드(이동 제한)만 유지 */}
           <WorldBounds />
           <MapControls
-            makeDefault enableRotate={false} enableZoom enablePan
+            makeDefault enabled={!isLoginMode} enableRotate={false} enableZoom enablePan
             minZoom={CONFIG.CAMERA.minZoom} maxZoom={CONFIG.CAMERA.maxZoom}
             maxPolarAngle={pA} minPolarAngle={pA}
             minAzimuthAngle={aA} maxAzimuthAngle={aA}
             mouseButtons={{ LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY }}
           />
         </Canvas>
+        {/* ✨ 불러온 GlobalDialog를 여기에 렌더링합니다! */}
         {dialogData && <GlobalDialog data={dialogData} onClose={closeDialog} />}
-        {/* 카메라 트래킹 모드 삭제됨 (UI 토글도 삭제) */}
-
+        {/* ✨ 조작 가이드 모달은 GameHUD의 ? 버튼으로 일원화했습니다 */}
       </div>
     </div>
   );
 }
 
-// ─── 프리로드 ─────────────────────────────────────────────────────
-[
+// ──────────────────────────────────────────────────────────────
+// 프리로드 목록 (export 해서 로그인/산업선택 화면에서도 호출 가능)
+// 해당 페이지에서 preloadGameModels() 한 번만 호출하면 될
+// ──────────────────────────────────────────────────────────────
+export const PRELOAD_MODEL_URLS: string[] = [
+  // ── 환경/건물 (필수) ──
   M.base, M.bank, M.hr, M.market, M.warehouse,
   M.roadStraight, M.roadCornerCurved,
   M.roadJunction, M.roadTsplit,
-  M.streetlight, M.trafficlightA, M.trafficlightB,
-  M.bush, M.firehydrant, M.boxA, M.boxB,
-  M.carHatchback, M.carPolice, M.carSedan, M.carStationwagon, M.carTaxi,
-  M.minigame,
-  "/models/props/animated_conveyer_belt.glb",
+  // ── 차/소품 ──
+  M.carHatchback, M.carSedan, M.carPolice,
+  M.ocean,
+  // ── 캐릭터 + 애니메이션 ──
   "/models/characters/Barbarian.glb",
   "/models/animations/Rig_Medium_Tools.glb",
   "/models/animations/Rig_Medium_MovementBasic.glb",
   "/models/animations/Rig_Medium_General.glb",
+  // ── 금 제련업 (콘베이어) ──
+  "/models/props/animated_conveyer_belt.glb",
   "/models/props/Gold_Bar.gltf",
-  "/models/props/Gold_Bars.gltf",
   "/models/props/Gold_Bars_Stack_Small.gltf",
   "/models/props/Gold_Bars_Stack_Medium.gltf",
   "/models/props/Gold_Bars_Stack_Large.gltf",
-].forEach(url => useGLTF.preload(url));
+  // ── 금광업 ──
+  "/models/props/rocks_B.gltf",
+  "/models/props/Gold_Nuggets.gltf",
+  "/models/props/Gold_Nugget_Medium.gltf",
+  // ── 제조업 ──
+  "/models/props/machine1.glb",
+  "/models/props/drill.glb",
+  "/models/props/toolbox.glb",
+];
+
+/** 로그인/산업선택 화면에서 미리 호출함으로써 맞 화면 즔싹 워밍 */
+export function preloadGameModels() {
+  PRELOAD_MODEL_URLS.forEach(url => useGLTF.preload(url));
+}
+
+// 메인 진입 시(IsometricScene 렌더링 시점)에도 한번 더 호출 (fallback)
+preloadGameModels();
