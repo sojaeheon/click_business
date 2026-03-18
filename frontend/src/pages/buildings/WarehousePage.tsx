@@ -1,6 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ArrowLeft, Plus, Minus, Package } from "lucide-react";
 import { useGame } from "../../app/store/gameStore";
+import { inventoryApi } from "../../api/services";
+import type { InventorySlot } from "../../api/types";
 
 function ShelfItem({
   name,
@@ -53,11 +55,23 @@ function ShelfItem({
 
 export function WarehousePage() {
   const { state, closeBuildingPage } = useGame();
-  const { warehouseItems } = state;
   const [compactView, setCompactView] = useState(false);
+  const [slots, setSlots] = useState<InventorySlot[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const materials = warehouseItems.filter((i) => i.type === "material");
-  const products = warehouseItems.filter((i) => i.type === "product");
+  useEffect(() => {
+    inventoryApi.getSlots()
+      .then((res) => {
+        setSlots(res.data.data.filter((s) => s.itemId !== null));
+      })
+      .catch((err) => {
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const materials = slots.filter((s) => s.itemType === "MATERIAL");
+  const products  = slots.filter((s) => s.itemType === "PRODUCT");
+  const used = slots.reduce((sum, s) => sum + s.quantity, 0);
 
   return (
     <div className="absolute inset-0 z-40 bg-[#f5f0e8] flex flex-col">
@@ -105,6 +119,11 @@ export function WarehousePage() {
 
       {/* Shelves */}
       <div className="flex-1 p-6 flex flex-col justify-center max-w-4xl mx-auto w-full">
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-[#f5f0e8]/80 z-50">
+          <div className="w-10 h-10 border-4 border-gray-400 border-t-gray-800 rounded-full animate-spin" />
+        </div>
+      )}
         {/* Shelf structure - Modern Glass/wood mix */}
         <div className="relative bg-white/40 backdrop-blur-2xl rounded-3xl p-8 border border-white/50 shadow-2xl">
           <div className="px-4">
@@ -112,12 +131,12 @@ export function WarehousePage() {
             <div className="mb-8">
               <h3 className="text-gray-500 font-bold mb-4 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-yellow-500"></div> 원자재</h3>
               <div className="flex flex-wrap items-end justify-start gap-8">
-                {materials.map((item) => (
+                {materials.map((slot) => (
                   <ShelfItem
-                    key={item.id}
-                    name={item.name}
-                    quantity={item.quantity}
-                    type={item.type}
+                    key={slot.slotIndex}
+                    name={slot.itemName!}
+                    quantity={slot.quantity}
+                    type="material"
                     compact={compactView}
                   />
                 ))}
@@ -128,12 +147,12 @@ export function WarehousePage() {
             <div className="pt-4 border-t border-gray-300/50">
               <h3 className="text-gray-500 font-bold mb-4 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-blue-500"></div> 생산품</h3>
               <div className="flex flex-wrap items-end justify-start gap-8">
-                {products.map((item) => (
+                {products.map((slot) => (
                   <ShelfItem
-                    key={item.id}
-                    name={item.name}
-                    quantity={item.quantity}
-                    type={item.type}
+                    key={slot.slotIndex}
+                    name={slot.itemName!}
+                    quantity={slot.quantity}
+                    type="product"
                     compact={compactView}
                   />
                 ))}
@@ -146,13 +165,13 @@ export function WarehousePage() {
         <div className="mt-6 flex items-center justify-center gap-3">
           <Package className="w-5 h-5 text-gray-500" />
           <span className="text-sm text-gray-600">
-            수용량: {state.warehouseUsed} / {state.warehouseMax}
+            수용량: {used} / {state.warehouseMax}
           </span>
           <div className="w-40 h-3 bg-gray-200 rounded-full overflow-hidden">
             <div
               className="h-full bg-amber-500 rounded-full"
               style={{
-                width: `${(state.warehouseUsed / state.warehouseMax) * 100}%`,
+                width: `${(used / state.warehouseMax) * 100}%`,
               }}
             />
           </div>
