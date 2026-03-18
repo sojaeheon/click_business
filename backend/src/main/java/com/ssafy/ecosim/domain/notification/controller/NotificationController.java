@@ -59,4 +59,19 @@ public class NotificationController {
         notificationService.deleteNotification(id);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
+
+    /**
+     * 테스트용 알림 발송 (프론트 연동 확인용)
+     */
+    @PostMapping("/test")
+    public ResponseEntity<ApiResponse<Void>> sendTestNotification(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        Long userId = Long.parseLong(userDetails.getUsername());
+        notificationService.sendNotification(new com.ssafy.ecosim.domain.notification.dto.NotificationEvent(
+                userId,
+                "실시간 알림 테스트 메시지입니다! (" + java.time.LocalDateTime.now() + ")",
+                com.ssafy.ecosim.domain.notification.entity.NotificationType.SYSTEM
+        ));
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
 }
