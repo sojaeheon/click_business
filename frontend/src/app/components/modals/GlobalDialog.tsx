@@ -352,10 +352,10 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
   useEffect(() => {
     if (data.type !== "building" || !data.action) return;
     let frameId: number;
-    let start = performance.now();
+    const start = performance.now();
     const duration = 2000;
     const animate = (time: number) => {
-      let passed = time - start;
+      const passed = time - start;
       if (passed >= duration) {
         setProgress(100);
         data.action?.();

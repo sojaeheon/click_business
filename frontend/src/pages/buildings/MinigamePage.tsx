@@ -93,6 +93,7 @@ export function MinigamePage() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (gameState === "playing" && e.code === "Space") {
         e.preventDefault(); // 스크롤 방지
+        if (e.repeat) return; // 연속 누름(꾹 누르기) 방어
         if (!isStarted) {
           setIsStarted(true);
         }

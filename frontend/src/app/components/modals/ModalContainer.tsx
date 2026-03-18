@@ -81,7 +81,7 @@ export function ModalContainer() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto p-5">
+        <div className="flex-1 overflow-hidden p-5 flex flex-col min-h-0 relative">
           <ModalTabContent tab={state.activeModal} />
         </div>
       </div>

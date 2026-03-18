@@ -40,7 +40,7 @@ export function GameHUD({ onOpenGuide }: { onOpenGuide?: () => void }) {
           </div>
           {/* 하단 회사 이름 텍스트 */}
           <span className="text-white font-bold text-sm tracking-widest drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] -mt-6">
-            {companyName || "회사명 미설정"}
+            {state.companyName}
           </span>
         </button>
 
