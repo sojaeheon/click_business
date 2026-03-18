@@ -19,6 +19,8 @@ spring:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
   autoconfigure:
     exclude: org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
   security:
@@ -29,6 +31,11 @@ spring:
             client-id: ${GOOGLE_CLIENT_ID:dummy-client-id}
             client-secret: ${GOOGLE_CLIENT_SECRET:dummy-client-secret}
             scope: profile, email
+
+cors:
+# 기본값으로 여러 개를 주고 싶을 때 (쉼표로 구분)
+#  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000,https://my-service.com}
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
 
 jwt:
   secret: ${JWT_SECRET:vmsrehkbuckettestbacktokenKeyforEcoSimulationProject2026SSAFY}
@@ -46,6 +53,9 @@ logging:
   level:
     org.springframework.web: DEBUG
     org.flywaydb: DEBUG
+    org.apache.kafka: WARN
+    org.springframework.kafka: WARN
+    com.ssafy.ecosim.domain.market.kafka: WARN
     # org.springframework.security: DEBUG (필요시 보안 필터 로그도 볼 수 있습니다)
 
 management:

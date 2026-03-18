@@ -25,17 +25,21 @@ public class Company extends BaseEntity {
     @Column(nullable = false, length = 100)
     private String name;
 
+    @Column(name = "industry_id")
+    private Integer industryId;
+
+    public IndustryType getIndustryType() {
+        for (IndustryType type : IndustryType.values()) {
+            if (type.getIndustryId().equals(this.industryId)) return type;
+        }
+        return null;
+    }
+
     @Column(name = "input_item_id")
     private Long inputItemId;
 
     @Column(name = "output_item_id")
     private Long outputItemId;
-
-    @Column(name = "production_requirement", nullable = false)
-    private Integer productionRequirement; // 소모되는 재료량
-
-    @Column(name = "production_yield", nullable = false)
-    private Integer productionYield; // 산출되는 결과물량
 
     // ERD 기준 추가 필드
     @Column(name = "level", nullable = false)
@@ -47,15 +51,29 @@ public class Company extends BaseEntity {
     @Column(name = "total_asset", nullable = false)
     private Long totalAsset;
 
-    public Company(User user, String name, Long inputItemId, Long outputItemId) {
+    public Company(User user, String name, IndustryType industryType) {
         this.user = user;
         this.name = name;
-        this.inputItemId = inputItemId;
-        this.outputItemId = outputItemId;
-        this.productionRequirement = 1;
-        this.productionYield = 1;
+        this.industryId = industryType.getIndustryId();
+        this.inputItemId = industryType.getInputItemId();
+        this.outputItemId = industryType.getOutputItemId();
         this.level = 1;
         this.cash = 1_000_000L;   // 초기 지급 현금 100만원
         this.totalAsset = 1_000_000L;
+    }
+
+    // 매도 체결 수령 시 현금 입금
+    public void receiveCash(long amount) {
+        this.cash += amount;
+        this.totalAsset += amount;
+    }
+
+    // 매수 주문 시 현금 차감 (잔고 검증 후 호출)
+    public void spendCash(long amount) {
+        if (this.cash < amount) {
+            throw new IllegalStateException("잔고가 부족합니다.");
+        }
+        this.cash -= amount;
+        this.totalAsset -= amount;
     }
 }

@@ -31,7 +31,7 @@ export default function App() {
     const initGame = async () => {
       try {
         await fetchCompanyData(1);
-      } catch(error){
+      } catch (error) {
         console.error("Failed to load initial game status", error);
       } finally {
         setIsInitialLoad(false);
@@ -74,7 +74,7 @@ export default function App() {
 
   return (
     <div className="w-screen h-screen overflow-hidden relative bg-gray-100">
-      
+
       {/* 1층: 3D Game Scene Layer */}
       <div className="absolute inset-0">
         <IsometricScene />

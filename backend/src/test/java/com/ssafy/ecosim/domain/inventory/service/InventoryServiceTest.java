@@ -45,7 +45,6 @@ class InventoryServiceTest {
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(inventoryService, "initialSlotCount", 20);
-        ReflectionTestUtils.setField(inventoryService, "maxStackSize", 100L);
         ReflectionTestUtils.setField(inventoryService, "expandSlotAmount", 5);
         ReflectionTestUtils.setField(inventoryService, "maxExpandableLimit", 100);
     }
@@ -77,7 +76,7 @@ class InventoryServiceTest {
         slots.add(new InventorySlot(inventory, 1)); // 빈 슬롯
         ReflectionTestUtils.setField(inventory, "slots", slots);
 
-        Item item = Item.builder().name("철광석").type(ItemType.MATERIAL).build();
+        Item item = Item.builder().name("철광석").type(ItemType.MATERIAL).maxStackSize(100L).build();
 
         when(companyInventoryRepository.findByCompanyId(1L)).thenReturn(Optional.of(inventory));
         when(itemRepository.findById(10L)).thenReturn(Optional.of(item));
@@ -90,6 +89,108 @@ class InventoryServiceTest {
         assertThat(slots.get(0).getQuantity()).isEqualTo(50L);
         assertThat(slots.get(1).getItem()).isNull(); // 두 번째 슬롯은 비어있어야 함
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // decreaseQuantity 테스트
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("특정 슬롯 수량 감소 - 일부 차감 후 남은 수량이 유지된다")
+    void decreaseQuantity_Partial() {
+        // given
+        Company company = mock(Company.class);
+        CompanyInventory inventory = new CompanyInventory(company, 20);
+        List<InventorySlot> slots = new ArrayList<>();
+        InventorySlot slot = new InventorySlot(inventory, 0);
+
+        Item item = Item.builder().name("철광석").type(ItemType.MATERIAL).maxStackSize(100L).build();
+        slot.addItem(item, 80L); // 0번 슬롯에 80개
+        slots.add(slot);
+        ReflectionTestUtils.setField(inventory, "slots", slots);
+
+        when(companyInventoryRepository.findByCompanyId(1L)).thenReturn(Optional.of(inventory));
+
+        // when
+        inventoryService.decreaseQuantity(1L, 0, 30L); // 30개 차감
+
+        // then
+        assertThat(slot.getItem()).isEqualTo(item);
+        assertThat(slot.getQuantity()).isEqualTo(50L); // 80 - 30
+    }
+
+    @Test
+    @DisplayName("특정 슬롯 수량 감소 - 전부 차감 시 슬롯이 비워진다")
+    void decreaseQuantity_All_SlotCleared() {
+        // given
+        Company company = mock(Company.class);
+        CompanyInventory inventory = new CompanyInventory(company, 20);
+        List<InventorySlot> slots = new ArrayList<>();
+        InventorySlot slot = new InventorySlot(inventory, 0);
+
+        Item item = Item.builder().name("철광석").type(ItemType.MATERIAL).maxStackSize(100L).build();
+        slot.addItem(item, 50L);
+        slots.add(slot);
+        ReflectionTestUtils.setField(inventory, "slots", slots);
+
+        when(companyInventoryRepository.findByCompanyId(1L)).thenReturn(Optional.of(inventory));
+
+        // when
+        inventoryService.decreaseQuantity(1L, 0, 50L); // 전량 차감
+
+        // then
+        assertThat(slot.getItem()).isNull();
+        assertThat(slot.getQuantity()).isEqualTo(0L);
+    }
+
+    @Test
+    @DisplayName("특정 슬롯 수량 감소 - 수량 부족 시 예외 발생")
+    void decreaseQuantity_InsufficientQuantity_ThrowsException() {
+        // given
+        Company company = mock(Company.class);
+        CompanyInventory inventory = new CompanyInventory(company, 20);
+        List<InventorySlot> slots = new ArrayList<>();
+        InventorySlot slot = new InventorySlot(inventory, 0);
+
+        Item item = Item.builder().name("철광석").type(ItemType.MATERIAL).maxStackSize(100L).build();
+        slot.addItem(item, 10L);
+        slots.add(slot);
+        ReflectionTestUtils.setField(inventory, "slots", slots);
+
+        when(companyInventoryRepository.findByCompanyId(1L)).thenReturn(Optional.of(inventory));
+
+        // when & then
+        assertThrows(IllegalStateException.class,
+                () -> inventoryService.decreaseQuantity(1L, 0, 99L));
+    }
+
+    @Test
+    @DisplayName("특정 슬롯 수량 감소 - 빈 슬롯 차감 시 예외 발생")
+    void decreaseQuantity_EmptySlot_ThrowsException() {
+        // given
+        Company company = mock(Company.class);
+        CompanyInventory inventory = new CompanyInventory(company, 20);
+        List<InventorySlot> slots = new ArrayList<>();
+        slots.add(new InventorySlot(inventory, 0)); // 빈 슬롯
+        ReflectionTestUtils.setField(inventory, "slots", slots);
+
+        when(companyInventoryRepository.findByCompanyId(1L)).thenReturn(Optional.of(inventory));
+
+        // when & then
+        assertThrows(IllegalArgumentException.class,
+                () -> inventoryService.decreaseQuantity(1L, 0, 10L));
+    }
+
+    @Test
+    @DisplayName("특정 슬롯 수량 감소 - 0 이하 amount 입력 시 예외 발생")
+    void decreaseQuantity_InvalidAmount_ThrowsException() {
+        // when & then
+        assertThrows(IllegalArgumentException.class,
+                () -> inventoryService.decreaseQuantity(1L, 0, 0L));
+        assertThrows(IllegalArgumentException.class,
+                () -> inventoryService.decreaseQuantity(1L, 0, -5L));
+    }
+
+    // ─────────────────────────────────────────────────────────────
 
     @Test
     @DisplayName("아이템 추가 로직 검증 - 최대 스택 초과 시 슬롯 분할")
@@ -104,7 +205,7 @@ class InventoryServiceTest {
         slots.add(slot1);
         ReflectionTestUtils.setField(inventory, "slots", slots);
 
-        Item item = Item.builder().name("철광석").type(ItemType.MATERIAL).build();
+        Item item = Item.builder().name("철광석").type(ItemType.MATERIAL).maxStackSize(100L).build();
         // ID 부여를 위해 Reflection 사용 (Mock 대신 실제 엔티티에 ID 세팅)
         ReflectionTestUtils.setField(item, "id", 10L);
 

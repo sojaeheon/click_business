@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 
 @Getter
-public class SlotSwapRequest {
+public class SlotItemRequest {
     @NotNull(message = "출발 슬롯 번호는 필수입니다.")
     @Min(value = 0, message = "슬롯 번호는 0 이상이어야 합니다.")
     private Integer fromSlot;

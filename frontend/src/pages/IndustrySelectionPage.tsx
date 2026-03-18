@@ -49,80 +49,81 @@ export const IndustrySelectionPage = () => {
     preloadGameModels();
   }, []);
 
-  const handleSelect = (industry: string) => {
+  const handleSelect = (industry: IndustryType) => {
     setSelectedIndustry(industry);
   };
 
   const handleConfirm = async () => {
-    if (companyName.trim() === '') {
-      useAlertStore.getState().openAlert('회사 이름을 입력해주세요.', "경고");
-      return;
-    }
-    if (!selectedIndustry) {
-      useAlertStore.getState().openAlert('산업을 선택해주세요.', "경고");
-      return;
-    }
+    const handleConfirm = async () => {
+      if (companyName.trim() === '') {
+        useAlertStore.getState().openAlert('회사 이름을 입력해주세요.', "경고");
+        return;
+      }
+      if (!selectedIndustry) {
+        useAlertStore.getState().openAlert('산업을 선택해주세요.', "경고");
+        return;
+      }
 
-    setIsSubmitting(true);
-    try {
-      // ✅ 백엔드 API 연동: POST /api/v1/companies
-      await CompanyAPI.create({
-        companyName: companyName.trim(),
-        industryType: selectedIndustry,
-      });
-    } catch (e) {
-      // API 실패 시 목업으로 폴백 (개발 환경)
-      console.warn("회사 생성 API 실패, 목업으로 진행:", e);
-    } finally {
-      // 전역 스토어에 산업 정보 저장 (항상 수행)
-      setCompanyInfo(companyName.trim(), selectedIndustry);
-      setIsSubmitting(false);
-      navigate('/main');
-    }
-  };
+      setIsSubmitting(true);
+      try {
+        // ✅ 백엔드 API 연동: POST /api/v1/companies
+        await CompanyAPI.create({
+          companyName: companyName.trim(),
+          industryType: selectedIndustry,
+        });
+      } catch (e) {
+        // API 실패 시 목업으로 폴백 (개발 환경)
+        console.warn("회사 생성 API 실패, 목업으로 진행:", e);
+      } finally {
+        // 전역 스토어에 산업 정보 저장 (항상 수행)
+        setCompanyInfo(companyName.trim(), selectedIndustry);
+        setIsSubmitting(false);
+        navigate('/main');
+      }
+    };
 
-  return (
-    <div className="industry-container">
-      <div className="industry-content">
-        <div className="industry-cards-wrapper flex gap-8">
-          <IndustryCard title="금광업" iconLabel="금광석" isSelected={selectedIndustry === '금광업'} onSelect={() => handleSelect('금광업')} />
-          <IndustryCard title="금 제련업" iconLabel="금괴" isSelected={selectedIndustry === '금 제련업'} onSelect={() => handleSelect('금 제련업')} />
-          <IndustryCard title="제조업" iconLabel="광산 드릴" isSelected={selectedIndustry === '제조업'} onSelect={() => handleSelect('제조업')} />
-        </div>
-      </div>
-
-      {selectedIndustry && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h3>회사 이름 설정</h3>
-            <p className="modal-desc">운영할 회사의 이름을 입력해주세요.</p>
-            <input
-              type="text"
-              className="modal-input"
-              placeholder="예: SSAFY"
-              value={companyName}
-              onChange={(e) => setCompanyName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleConfirm()}
-            />
-            <p style={{ fontSize: '13px', color: '#6c757d', alignSelf: 'flex-start', margin: '-16px 0 20px 4px' }}>
-              * 한 번 설정한 이름은 이후에 수정할 수 없습니다.
-            </p>
-            <div className="modal-buttons">
-              <button className="modal-cancel-btn" onClick={() => {
-                setSelectedIndustry(null);
-                setCompanyName('');
-              }}>취소</button>
-              <button
-                className="modal-confirm-btn"
-                onClick={handleConfirm}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? '처리 중...' : '확인'}
-              </button>
-            </div>
+    return (
+      <div className="industry-container">
+        <div className="industry-content">
+          <div className="industry-cards-wrapper flex gap-8">
+            <IndustryCard title="금광업" iconLabel="금광석" isSelected={selectedIndustry === '금광업'} onSelect={() => handleSelect('금광업')} />
+            <IndustryCard title="금 제련업" iconLabel="금괴" isSelected={selectedIndustry === '금 제련업'} onSelect={() => handleSelect('금 제련업')} />
+            <IndustryCard title="제조업" iconLabel="광산 드릴" isSelected={selectedIndustry === '제조업'} onSelect={() => handleSelect('제조업')} />
           </div>
         </div>
-      )}
-    </div>
-  );
-};
+
+        {selectedIndustry && (
+          <div className="modal-overlay">
+            <div className="modal-content">
+              <h3>회사 이름 설정</h3>
+              <p className="modal-desc">운영할 회사의 이름을 입력해주세요.</p>
+              <input
+                type="text"
+                className="modal-input"
+                placeholder="예: SSAFY"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleConfirm()}
+              />
+              <p style={{ fontSize: '13px', color: '#6c757d', alignSelf: 'flex-start', margin: '-16px 0 20px 4px' }}>
+                * 한 번 설정한 이름은 이후에 수정할 수 없습니다.
+              </p>
+              <div className="modal-buttons">
+                <button className="modal-cancel-btn" onClick={() => {
+                  setSelectedIndustry(null);
+                  setCompanyName('');
+                }}>취소</button>
+                <button
+                  className="modal-confirm-btn"
+                  onClick={handleConfirm}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? '처리 중...' : '확인'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };

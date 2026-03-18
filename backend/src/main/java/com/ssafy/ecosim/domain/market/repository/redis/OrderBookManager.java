@@ -20,6 +20,7 @@ public class OrderBookManager {
     // Key 규격
     private static final String BUY_KEY_PREFIX = "market:orderbook:%d:buy";
     private static final String SELL_KEY_PREFIX = "market:orderbook:%d:sell";
+    private static final String TICKER_KEY_PREFIX = "market:price:%d";
 
     private String getBuyKey(Integer itemId) {
         return String.format(BUY_KEY_PREFIX, itemId);
@@ -61,6 +62,32 @@ public class OrderBookManager {
      */
     public Set<ZSetOperations.TypedTuple<String>> getTopSells(Integer itemId, int count) {
         return stringRedisTemplate.opsForZSet().rangeWithScores(getSellKey(itemId), 0, count - 1);
+    }
+
+    /**
+     * 현재 시장가(최근 체결가)를 조회합니다.
+     * 매칭 엔진이 체결 시마다 market:price:{item_id} 키에 기록합니다.
+     * 아직 체결 이력이 없으면 null을 반환합니다.
+     */
+    public Long getMarketPrice(Integer itemId) {
+        String key = String.format(TICKER_KEY_PREFIX, itemId);
+        String value = stringRedisTemplate.opsForValue().get(key);
+        if (value == null) return null;
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 최근 체결가를 Redis에 기록합니다 (시장가 갱신).
+     * @param itemId 아이템 ID
+     * @param price 체결 가격
+     */
+    public void setMarketPrice(Integer itemId, Long price) {
+        String key = String.format(TICKER_KEY_PREFIX, itemId);
+        stringRedisTemplate.opsForValue().set(key, String.valueOf(price));
     }
 
     /**

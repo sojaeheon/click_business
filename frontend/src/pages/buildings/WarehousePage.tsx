@@ -34,7 +34,7 @@ export function WarehousePage() {
     }));
 
     let currentSlotIdx = 0;
-    
+
     // Group and populate items uniformly
     const materials = warehouseItems.filter((i) => i.type === "material");
     const products = warehouseItems.filter((i) => i.type === "product");
@@ -45,7 +45,7 @@ export function WarehousePage() {
         const amount = Math.min(remaining, MAX_PER_SLOT);
         if (currentSlotIdx < maxSlots) {
           initialSlots[currentSlotIdx].item = {
-             type: "material", quantity: amount, name: material, id_: item.id
+            type: "material", quantity: amount, name: material, id_: item.id
           };
           currentSlotIdx++;
         }
@@ -59,7 +59,7 @@ export function WarehousePage() {
         const amount = Math.min(remaining, MAX_PER_SLOT);
         if (currentSlotIdx < maxSlots) {
           initialSlots[currentSlotIdx].item = {
-             type: "product", quantity: amount, name: product, id_: item.id
+            type: "product", quantity: amount, name: product, id_: item.id
           };
           currentSlotIdx++;
         }
@@ -114,7 +114,7 @@ export function WarehousePage() {
   const localUnlocked = slots.filter(s => !s.locked).length;
   const localUsed = slots.filter(s => !s.locked && s.item !== null).length;
   const localPercent = localUnlocked > 0 ? Math.min((localUsed / localUnlocked) * 100, 100) : 0;
-  
+
   // 한 줄 3칸. 현재 잠금해제된 개수에 기반해 노출할 슬롯 계산.
   const visibleCount = Math.max(15, Math.ceil(localUnlocked / 3) * 3 + (localUnlocked % 3 === 0 && localUnlocked >= 15 ? 3 : 0));
 
@@ -134,11 +134,11 @@ export function WarehousePage() {
       {/* 우측 상단 인디케이터 */}
       <div className="absolute top-6 right-6 flex gap-4 bg-white/60 backdrop-blur-md rounded-2xl p-4 border border-white/50 shadow-lg z-10">
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full shadow-inner bg-yellow-500"></div> 
+          <div className="w-3 h-3 rounded-full shadow-inner bg-yellow-500"></div>
           <span className="text-gray-700 font-bold tracking-tight">원자재</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full shadow-inner bg-blue-500"></div> 
+          <div className="w-3 h-3 rounded-full shadow-inner bg-blue-500"></div>
           <span className="text-gray-700 font-bold tracking-tight">생산품</span>
         </div>
       </div>
@@ -169,7 +169,7 @@ export function WarehousePage() {
             {slots.slice(0, visibleCount).map((slot, idx) => {
               const isExpandable = slot.locked && warehouseExpandTickets > 0;
               const hasItem = slot.item !== null;
-              
+
               return (
                 <div
                   key={slot.id}
@@ -214,11 +214,11 @@ export function WarehousePage() {
                             : "linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.3) 100%)",
                         }}
                       >
-                         <Package
-                           className={`w-8 h-8 drop-shadow-md ${slot.item!.type === "material" ? "text-yellow-600" : "text-blue-500"}`}
-                         />
+                        <Package
+                          className={`w-8 h-8 drop-shadow-md ${slot.item!.type === "material" ? "text-yellow-600" : "text-blue-500"}`}
+                        />
                       </div>
-                      
+
                       <div className="bg-white/90 backdrop-blur border border-white/50 shadow-sm rounded-xl px-3 py-2 text-center w-[90%] pointer-events-none">
                         <span className="text-sm text-gray-800 font-extrabold block truncate w-full">
                           {slot.item!.name}
@@ -229,9 +229,9 @@ export function WarehousePage() {
                       </div>
                     </div>
                   ) : (
-                     <div className="flex w-full h-full items-center justify-center">
-                       <span className="text-base text-gray-400 font-bold select-none">비어있음</span>
-                     </div>
+                    <div className="flex w-full h-full items-center justify-center">
+                      <span className="text-base text-gray-400 font-bold select-none">비어있음</span>
+                    </div>
                   )}
                 </div>
               );

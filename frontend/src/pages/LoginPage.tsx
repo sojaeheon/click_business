@@ -1,9 +1,13 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+<<<<<<< HEAD
 import { useAlertStore } from "../store/useAlertStore";
 
 // 배경 3D 씬
 import { IsometricScene } from '../app/components/game/IsometricScene';
+=======
+import { authApi } from '../api/services';
+>>>>>>> c63ccd04db8a7402c30b7fc11ba5e8f384883be0
 
 export const LoginPage = () => {
   const navigate = useNavigate();
@@ -15,9 +19,11 @@ export const LoginPage = () => {
     navigate('/industry-selection');
   };
 
-  const handleGuestMode = () => {
+const handleGuestMode = async () => {
+    const { data } = await authApi.createGuest();
+    localStorage.setItem('accessToken', data.data.accessToken);
     navigate('/industry-selection');
-  };
+};
 
   return (
     // 전체 화면을 채우고, 삐져나가는 배경을 숨깁니다 (overflow-hidden)
