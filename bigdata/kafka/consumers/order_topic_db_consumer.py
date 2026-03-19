@@ -7,7 +7,7 @@ from kafka.errors import NoBrokersAvailable
 # -----------------------------
 # Redis 연결
 # -----------------------------
-r = redis.Redis(host='localhost', port=6379, db=0)
+r = redis.Redis(host='redis', port=6379, db=0)
 
 # -----------------------------
 # Kafka 연결
@@ -16,7 +16,7 @@ while True:
     try:
         consumer = KafkaConsumer(
             'market.trade.events',
-            bootstrap_servers='localhost:9092',
+            bootstrap_servers='kafka:29092',
             auto_offset_reset='latest',
             enable_auto_commit=True,
             group_id='trade-consumer',
@@ -31,10 +31,10 @@ while True:
 # -----------------------------
 # 체결 이벤트 처리
 # -----------------------------
-print("✅ Trade 이벤트 수신 대기 중...")
+print("Trade 이벤트 수신 대기 중...")
 for message in consumer:
     data = message.value
-    print(json.dumps(data, indent=4, ensure_ascii=False))
+    print("Trade 이벤트: ", json.dumps(data, indent=4, ensure_ascii=False))
 
     payload = data.get("payload", {})
     trade_id = payload.get("trade_id")

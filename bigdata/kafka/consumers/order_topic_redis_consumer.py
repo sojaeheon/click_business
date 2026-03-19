@@ -9,7 +9,7 @@ from kafka.errors import NoBrokersAvailable
 # Redis 연결
 # -----------------------------
 r = redis.Redis(
-    host='localhost',
+    host='redis',
     port=6379,
     db=0,
     decode_responses=True
@@ -22,13 +22,13 @@ while True:
     try:
         consumer = KafkaConsumer(
             'market.order.events',
-            bootstrap_servers='localhost:9092',
+            bootstrap_servers='kafka:29092',
             auto_offset_reset='latest', # earliest
             enable_auto_commit=True,
             group_id='order-consumer',
             value_deserializer=lambda x: json.loads(x.decode('utf-8'))
         )
-        print("Kafka Consumer 연결 성공")
+        print("Kafka Order Consumer 연결 성공")
         break
     except NoBrokersAvailable:
         print("Kafka 브로커 연결 실패, 5초 후 재시도...")
@@ -152,9 +152,10 @@ def cancel_order(data, payload):
 # -----------------------------
 # Kafka 메시지 처리 루프
 # -----------------------------
+print("Order 이벤트 수신 대기 중...")
 for message in consumer:
     data = message.value
-    print(json.dumps(message.value, indent=4, ensure_ascii=False))
+    print("Order 이벤트: ", json.dumps(message.value, indent=4, ensure_ascii=False))
 
     event_type = data.get("event_type")
     payload = data.get("payload")
