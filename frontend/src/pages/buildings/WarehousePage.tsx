@@ -3,6 +3,7 @@ import { Package, Lock, Trash2, X, AlertTriangle } from "lucide-react";
 import { useGame, useGameStore, MAX_PER_SLOT } from "../../store/gameStore";
 import { BackButton } from "../../app/components/ui/backbutton";
 import { useAlertStore } from "../../store/useAlertStore";
+import { WarehouseAPI } from "../../api/gameApi";
 
 interface SlotData {
   id: number;
@@ -176,8 +177,8 @@ export function WarehousePage() {
   const updateMaterial = useGameStore(s => s.updateMaterial);
   const updateProduct = useGameStore(s => s.updateProduct);
 
-  const totalMaterial = warehouseItems.find(i => i.type === "material")?.quantity || 0;
-  const totalProduct = warehouseItems.find(i => i.type === "product")?.quantity || 0;
+  const totalMaterial = warehouseItems.filter(i => i.type === "material").reduce((sum, i) => sum + i.quantity, 0);
+  const totalProduct = warehouseItems.filter(i => i.type === "product").reduce((sum, i) => sum + i.quantity, 0);
 
   const [slots, setSlots] = useState<SlotData[]>([]);
   const [showDiscard, setShowDiscard] = useState(false);
@@ -261,13 +262,18 @@ export function WarehousePage() {
   };
 
   // 폐기 처리
-  const handleDiscard = (type: "material" | "product", qty: number) => {
-    if (type === "material") updateMaterial(-qty);
-    else updateProduct(-qty);
-    useAlertStore.getState().openAlert(
-      `${type === "material" ? material : product} ${qty.toLocaleString()}개를 폐기했습니다.`,
-      "폐기 완료"
-    );
+  const handleDiscard = async (type: "material" | "product", qty: number) => {
+    try {
+      await WarehouseAPI.discardItems(type, qty);
+      if (type === "material") updateMaterial(-qty);
+      else updateProduct(-qty);
+      useAlertStore.getState().openAlert(
+        `${type === "material" ? material : product} ${qty.toLocaleString()}개를 폐기했습니다.`,
+        "폐기 완료"
+      );
+    } catch {
+      useAlertStore.getState().openAlert("폐기 중 오류가 발생했습니다.", "폐기 실패");
+    }
     setShowDiscard(false);
   };
 

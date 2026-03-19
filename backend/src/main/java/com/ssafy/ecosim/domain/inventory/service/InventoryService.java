@@ -7,6 +7,7 @@ import com.ssafy.ecosim.domain.inventory.entity.InventorySlot;
 import com.ssafy.ecosim.domain.inventory.repository.CompanyInventoryRepository;
 import com.ssafy.ecosim.domain.inventory.repository.InventorySlotRepository;
 import com.ssafy.ecosim.domain.item.entity.Item;
+import com.ssafy.ecosim.domain.item.entity.ItemType;
 import com.ssafy.ecosim.domain.item.repository.ItemRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -258,6 +259,35 @@ public class InventoryService {
             newSlots.add(new InventorySlot(inventory, i));
         }
         inventorySlotRepository.saveAll(newSlots);
+    }
+
+    @Transactional
+    public void discardByItemType(Long companyId, ItemType itemType, Long amount) {
+        if (amount <= 0)
+            throw new IllegalArgumentException("폐기 수량은 1 이상이어야 합니다.");
+        if (itemType != ItemType.MATERIAL && itemType != ItemType.PRODUCT)
+            throw new IllegalArgumentException("폐기 가능한 아이템 종류가 아닙니다: " + itemType);
+
+        CompanyInventory inventory = companyInventoryRepository.findByCompanyId(companyId)
+                .orElseThrow(() -> new IllegalArgumentException("창고를 찾을 수 없습니다."));
+
+        List<InventorySlot> slots = inventory.getSlots().stream()
+                .filter(slot -> slot.getItem() != null && slot.getItem().getType() == itemType)
+                .collect(Collectors.toList());
+
+        long totalAvailable = slots.stream().mapToLong(InventorySlot::getQuantity).sum();
+        if (totalAvailable < amount)
+            throw new IllegalStateException("해당 아이템의 수량이 부족합니다.");
+
+        long remaining = amount;
+        for (InventorySlot slot : slots) {
+            if (remaining <= 0) break;
+            long take = Math.min(slot.getQuantity(), remaining);
+            long left = slot.getQuantity() - take;
+            if (left == 0) slot.clearSlot();
+            else slot.setItemAndQuantity(slot.getItem(), left);
+            remaining -= take;
+        }
     }
 
     private InventorySlot getSlotByIndex(CompanyInventory inventory, int index) {
