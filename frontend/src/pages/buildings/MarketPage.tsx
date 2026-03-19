@@ -27,34 +27,8 @@ function SpinningModel({ url, scale = 1, yOffset = 0 }: { url: string, scale?: n
   );
 }
 
-// 📊 1. 차트 목업 데이터 생성기
-const generateMockChartData = () => {
-  const data = [];
-  let currentPrice = 3000;
-  for (let i = 0; i < 20; i++) {
-    const change = (Math.random() - 0.5) * 100;
-    currentPrice = Math.max(100, currentPrice + change);
-    data.push({ time: `12:${i.toString().padStart(2, '0')}`, price: Math.floor(currentPrice) });
-  }
-  return data;
-};
-
-// 📈 2. 호가창 목업 데이터 생성기 (현재가 기준 위아래 10호가)
-const generateOrderBook = (currentPrice: number) => {
-  const asks = []; // 매도 호가 (위에 위치)
-  const bids = []; // 매수 호가 (아래에 위치)
-  for (let i = 10; i > 0; i--) {
-    asks.push({ price: currentPrice + i * 10, quantity: Math.floor(Math.random() * 300) + 50 });
-  }
-  for (let i = 1; i <= 10; i++) {
-    bids.push({ price: currentPrice - i * 10, quantity: Math.floor(Math.random() * 300) + 50 });
-  }
-  return { asks, bids };
-};
-
 export function MarketPage() {
-  // const { closeBuildingPage } = useGame(); // 커스텀 훅 이름 확인 후 사용
-  const closeBuildingPage = useGameStore(state => state.closeBuildingPage); // Zustand 스탠다드 방식 권장
+  const closeBuildingPage = useGameStore(state => state.closeBuildingPage); 
   const updateMoney = useGameStore(state => state.updateMoney);
   const updateMaterial = useGameStore(state => state.updateMaterial);
   const updateProduct = useGameStore(state => state.updateProduct);
@@ -65,7 +39,6 @@ export function MarketPage() {
 
   let matUrl = "/models/props/drill.glb";
   let prodUrl = "/models/props/rocks_B.gltf";
-  // 마켓 비율/색상 조정
   let matScale = 2;
   let prodScale = 2;
 
@@ -81,69 +54,98 @@ export function MarketPage() {
   }
 
   const [mode, setMode] = useState<MarketMode>(null);
+  const [panelTab, setPanelTab] = useState<"order" | "history">("order");
   const [price, setPrice] = useState<number>(0);
   const [quantity, setQuantity] = useState<number>(0);
   const [showPopup, setShowPopup] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errImg, setErrImg] = useState(false);
 
-  const [chartData, setChartData] = useState<{ time: string, price: number }[]>(generateMockChartData());
-  const [orderBook, setOrderBook] = useState(generateOrderBook(chartData[chartData.length - 1].price));
+  const [chartData, setChartData] = useState<{ time: string, price: number }[]>([]);
+  const [orderBook, setOrderBook] = useState<{ asks: Array<{price: number, quantity: number}>, bids: Array<{price: number, quantity: number}> }>({ asks: [], bids: [] });
+  const [tradeHistory, setTradeHistory] = useState<any[]>([]);
   const [marketTrend, setMarketTrend] = useState<"up" | "down" | "neutral">("neutral");
   const currentPriceRef = React.useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (mode && currentPriceRef.current) {
-      currentPriceRef.current.scrollIntoView({ block: 'center' });
-    }
-  }, [mode]);
+  // 🏷️ 아이템 ID 매핑 헬퍼
+  const getItemId = (m: MarketMode): number => {
+    if (industry === "금광업") return m === "buy" ? 3 : 1;
+    if (industry === "금 제련업" || industry === "제철업") return m === "buy" ? 1 : 2;
+    if (industry === "제조업") return m === "buy" ? 2 : 3;
+    return 1;
+  };
 
-  // ⏱️ 3. 실시간 데이터 업데이트 (차트 & 호가창 동시 갱신)
+  const itemId = mode ? getItemId(mode) : 1;
+
+  // ⏱️ 3. 실시간 데이터 업데이트 (API 연동)
   useEffect(() => {
     if (!mode) return;
 
-    const interval = setInterval(() => {
-      setChartData(prev => {
-        const lastPrice = prev[prev.length - 1].price;
-        const change = (Math.random() - 0.5) * 300;
-        const newPrice = Math.max(100, Math.floor(lastPrice + change));
+    const fetchData = async () => {
+      try {
+        // [1] 오더북/호가창 조회
+        const res = await MarketAPI.getOrderbook(itemId);
+        const data = res.data as any; // ✅ gameApi.ts에서 이미 감싸 반환된 핵심 오더북 객체
 
-        if (change > 100) setMarketTrend("up");
-        else if (change < -100) setMarketTrend("down");
-        else setMarketTrend("neutral");
+        if (data && (data.sellOrders || data.buyOrders)) {
+          const asks = (data.sellOrders || []).map((o: any) => ({ ...o, quantity: o.remainingQuantity || o.totalQuantity || 0 }));
+          const bids = (data.buyOrders || []).map((o: any) => ({ ...o, quantity: o.remainingQuantity || o.totalQuantity || 0 }));
+          setOrderBook({ asks, bids });
 
-        // 호가창도 새 가격에 맞춰 갱신!
-        setOrderBook(generateOrderBook(newPrice));
+          const latestPrice = data.currentPrice;
+          if (latestPrice) {
+            setChartData(prev => {
+              const lastPrice = prev.length > 0 ? prev[prev.length - 1].price : latestPrice;
+              if (latestPrice > lastPrice) setMarketTrend("up");
+              else if (latestPrice < lastPrice) setMarketTrend("down");
+              else setMarketTrend("neutral");
 
-        const newData = [...prev.slice(1), {
-          time: new Date().toLocaleTimeString('en-US', { hour12: false, minute: '2-digit', second: '2-digit' }),
-          price: newPrice
-        }];
-        return newData;
-      });
+              const newEntry = {
+                time: new Date().toLocaleTimeString('en-US', { hour12: false, minute: '2-digit', second: '2-digit' }),
+                price: latestPrice
+              };
+              return prev.length > 0 ? [...prev.slice(1), newEntry] : [newEntry];
+            });
+            setTimeout(() => setMarketTrend("neutral"), 800);
+          }
+        } else {
+          setOrderBook({ asks: [], bids: [] });
+        }
 
-      setTimeout(() => setMarketTrend("neutral"), 800);
-    }, 2500);
+        // [2] 체결 내역 조회 (탭이 history 일 때만)
+        if (panelTab === "history") {
+          const tradeRes = await MarketAPI.getTrades(itemId);
+          const tradeData = tradeRes.data; // ApiResponse 객체
+
+          if (tradeData && tradeData.status === "SUCCESS" && Array.isArray(tradeData.data)) {
+            setTradeHistory(tradeData.data);
+          } else {
+            setTradeHistory([]);
+          }
+        }
+
+      } catch (err) {
+        console.warn("마켓 데이터 조회 실패:", err);
+      }
+    };
+
+    fetchData(); 
+    const interval = setInterval(fetchData, 3000); 
 
     return () => clearInterval(interval);
-  }, [mode]);
+  }, [mode, itemId, panelTab]);
 
   const totalAmount = price * quantity;
 
   const handleConfirm = async () => {
     if (quantity <= 0 || price <= 0 || !mode) return;
 
+    // 지갑 및 창고 체크
     if (mode === "buy") {
       const isPaid = updateMoney(-totalAmount);
       if (!isPaid) {
         useAlertStore.getState().openAlert("잔액이 부족합니다.", "안내");
         return;
-      }
-      const added = updateMaterial(quantity);
-      if (added < quantity) {
-        useAlertStore.getState().openAlert(`창고 공간이 부족하여 ${added}개만 담았습니다. (나머지 금액 환불 처리됨)`, "창고 가득 참");
-        // 환불 로직
-        updateMoney((quantity - added) * price);
       }
     } else if (mode === "sell") {
       const prodList = warehouseItems.filter(i => i.type === "product");
@@ -152,44 +154,64 @@ export function MarketPage() {
         useAlertStore.getState().openAlert("창고에 판매할 생산품이 부족합니다.", "판매 불가");
         return;
       }
-      updateProduct(-quantity);
-      updateMoney(totalAmount);
     }
 
     setIsProcessing(true);
     try {
-      // (목업 API 호출 주석처리 혹은 그대로 둔 상태로 프론트 제어)
-      // await MarketAPI.createOrder({
-      //   companyId: 1, itemId: 1, type: mode === "buy" ? "BUY" : "SELL", price: price, qty: quantity
-      // });
+      // ✅ 실제 API 호출
+      await MarketAPI.createOrder({
+        itemId: itemId,
+        type: mode === "buy" ? "BUY" : "SELL",
+        price: price,
+        qty: quantity
+      });
+
+      // 스토어 업데이트
+      if (mode === "buy") {
+        const added = updateMaterial(quantity);
+        if (added < quantity) {
+          useAlertStore.getState().openAlert(`창고 공간이 부족하여 ${added}개만 담았습니다. (차액 환급 필요 시 확인 요망)`, "창고 가득 참");
+          updateMoney((quantity - added) * price); // 환불
+        }
+      } else {
+        updateProduct(-quantity);
+        updateMoney(totalAmount);
+      }
+
       setShowPopup(true);
       useGameStore.getState().addAlert({
         message: mode === "buy" ? "구매 주문 완료" : "판매 주문 완료",
         detail: `${mode === "buy" ? material : product} ${quantity}개 / 총 ₩${totalAmount.toLocaleString()}`
       });
+
       setTimeout(() => {
         setShowPopup(false);
         setPrice(0);
         setQuantity(0);
         setMode(null);
       }, 2000);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      useAlertStore.getState().openAlert("주문 처리 중 오류가 발생했습니다.", "주문 오류");
+      // 백엔드 오류 메시지 추출 또는 에러 자체 메시지 연결
+      const errorDetail = e.response?.data?.message || e.message || "서버 통신 중 알 수 없는 오류가 발생했습니다.";
+      const errorMsg = `사유: ${errorDetail}`;
+      useAlertStore.getState().openAlert(errorMsg, "주문 오류");
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const currentMarketPrice = chartData[chartData.length - 1].price;
-  const startPrice = chartData[0].price;
+
+  const currentMarketPrice = chartData.length > 0 ? chartData[chartData.length - 1].price : 0;
+  const startPrice = chartData.length > 0 ? chartData[0].price : 0;
   const diff = currentMarketPrice - startPrice;
   const isUpTrend = diff >= 0;
   const diffSign = diff > 0 ? "+" : diff < 0 ? "-" : "";
-  const pctStr = Math.abs((diff / startPrice) * 100).toFixed(1);
+  const pctStr = startPrice > 0 ? Math.abs((diff / startPrice) * 100).toFixed(1) : "0.0";
   const diffStr = `${diffSign}${Math.abs(diff).toLocaleString()}원 (${diffSign}${pctStr}%)`;
 
   const getPriceColor = (p: number) => {
+    if (startPrice <= 0) return "text-slate-800";
     if (p > startPrice) return "text-rose-500";
     if (p < startPrice) return "text-blue-500";
     return "text-slate-800";
@@ -245,7 +267,7 @@ export function MarketPage() {
           </div>
         </div>
       ) : (
-        // --- DEPTH 2: 차트 + 호가창 + 주문 폼 ---
+        // --- DEPTH 2: 차트 + 호가창 + (주문/체결 동적 패널) ---
         <div className="flex-1 flex flex-col justify-center items-center p-6 max-w-[1400px] mx-auto w-full gap-6 relative z-10 pt-16">
           <div className="flex w-full gap-4 items-stretch h-[calc(100vh-180px)] min-h-[500px]">
 
@@ -297,7 +319,7 @@ export function MarketPage() {
               <div className="flex-1 flex flex-col text-sm font-bold overflow-y-auto overflow-x-hidden scroll-smooth [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
                 {/* 매도 (Asks) 영역 */}
                 <div className="flex flex-col shrink-0">
-                  {orderBook.asks.map((ask, idx) => (
+                  {[...orderBook.asks].reverse().map((ask, idx) => (
                     <div
                       key={`ask-${idx}`}
                       className="grid grid-cols-[1fr_110px_1fr] items-center cursor-pointer hover:bg-slate-50 transition-colors h-[48px]"
@@ -310,7 +332,7 @@ export function MarketPage() {
                       </div>
                       {/* 가격 (Center) */}
                       <div className="h-full flex items-center justify-center">
-                        <span className={`font-black text-[22px] ${getPriceColor(ask.price)}`}>
+                        <span className="font-black text-[22px] text-blue-500">
                           {ask.price.toLocaleString()}
                         </span>
                       </div>
@@ -349,7 +371,7 @@ export function MarketPage() {
                       <div className="h-full" />
                       {/* 가격 (Center) */}
                       <div className="h-full flex items-center justify-center">
-                        <span className={`font-black text-[22px] ${getPriceColor(bid.price)}`}>
+                        <span className="font-black text-[22px] text-rose-500">
                           {bid.price.toLocaleString()}
                         </span>
                       </div>
@@ -364,90 +386,143 @@ export function MarketPage() {
               </div>
             </div>
 
-            {/* 📝 3. 주문 폼 영역 (w-1/4) */}
+            {/* 📝 3. 주문 폼 & 체결 스위칭 판넬 영역 (w-1/4) */}
             <div className="w-1/4 bg-white border-4 border-slate-300 rounded-3xl p-6 flex flex-col justify-between shadow-xl">
-              <div className="flex flex-col gap-6">
-                <h2 className="text-xl font-black text-slate-800 border-b-2 border-slate-100 pb-3 flex items-center justify-between">
-                  <span>{mode === "buy" ? "구매 주문" : "판매 주문"}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-slate-500 mr-2">{mode === "buy" ? material : product}</span>
-                    <span className={`text-sm px-3 py-1 rounded-full ${mode === "buy" ? "bg-rose-100 text-rose-600" : "bg-blue-100 text-blue-600"}`}>{mode === "buy" ? "BUY" : "SELL"}</span>
-                  </div>
-                </h2>
-
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-bold text-slate-500 uppercase">주문 단가 (호가창 클릭)</label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      value={price || ""}
-                      onChange={(e) => setPrice(Number(e.target.value))}
-                      placeholder="가격 입력"
-                      className={`w-full bg-slate-50 border-2 rounded-xl pl-10 pr-4 py-3 text-right text-xl font-black focus:outline-none transition-colors border-slate-200 focus:border-slate-400 text-slate-800`}
-                    />
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg">₩</span>
-                  </div>
+              <div className="flex flex-col gap-6 h-full">
+                {/* 패널용 이너 탭 인덱스 헤더 */}
+                <div className="flex border-b-2 border-slate-100 pb-3 gap-2">
+                  <button 
+                    onClick={() => setPanelTab("order")}
+                    className={`flex-1 text-center py-1.5 rounded-xl font-black text-[15px] transition-all ${panelTab === "order" ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-400 hover:bg-slate-100"}`}
+                  >
+                    주문 신청
+                  </button>
+                  <button 
+                    onClick={() => setPanelTab("history")}
+                    className={`flex-1 text-center py-1.5 rounded-xl font-black text-[15px] transition-all ${panelTab === "history" ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-400 hover:bg-slate-100"}`}
+                  >
+                    체결 내역
+                  </button>
                 </div>
 
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-bold text-slate-500 uppercase">주문 수량</label>
-                  <input
-                    type="number"
-                    value={quantity || ""}
-                    onChange={(e) => setQuantity(Number(e.target.value))}
-                    placeholder="수량 입력"
-                    className={`w-full bg-slate-50 border-2 rounded-xl px-4 py-3 text-right text-xl font-black text-slate-800 focus:outline-none transition-colors ${
-                      mode === 'sell' && quantity > warehouseItems.filter(i => i.type === 'product').reduce((a, i) => a + i.quantity, 0)
-                        ? 'border-rose-400 focus:border-rose-500'
-                        : 'border-slate-200 focus:border-slate-400'
-                    }`}
-                  />
-                  {/* 판매 모드: 보유량 표시 & 초과 경고 */}
-                  {mode === 'sell' && (() => {
-                    const owned = warehouseItems.filter(i => i.type === 'product').reduce((a, i) => a + i.quantity, 0);
-                    const isOver = quantity > owned;
-                    return (
-                      <div className={`text-xs font-bold mt-0.5 text-right transition-colors ${
-                        isOver ? 'text-rose-500' : 'text-slate-400'
-                      }`}>
-                        {isOver
-                          ? `판매 가능 수량 초과! 보유: ${owned.toLocaleString()}개`
-                          : `보유 중: ${owned.toLocaleString()}개`
-                        }
+                {panelTab === "order" ? (
+                  /* --- 주문 신청 탭 --- */
+                  <div className="flex flex-col gap-4 flex-1">
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-xl font-black text-slate-800">{mode === "buy" ? "구매 주문" : "판매 주문"}</h2>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-500">{mode === "buy" ? material : product}</span>
+                        <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${mode === "buy" ? "bg-rose-100 text-rose-600" : "bg-blue-100 text-blue-600"}`}>{mode === "buy" ? "BUY" : "SELL"}</span>
                       </div>
-                    );
-                  })()}
-                </div>
+                    </div>
 
-                <div className="h-[2px] bg-slate-100 w-full" />
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-bold text-slate-500 uppercase">단가 설정 (호가창 클릭)</label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          value={price || ""}
+                          onChange={(e) => setPrice(Number(e.target.value))}
+                          placeholder="가격 입력"
+                          className="w-full bg-slate-50 border-2 rounded-xl pl-10 pr-4 py-3 text-right text-xl font-black focus:outline-none transition-colors border-slate-200 focus:border-slate-400 text-slate-800"
+                        />
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg">₩</span>
+                      </div>
+                    </div>
 
-                {/* Total Amount */}
-                <div className={`flex flex-col gap-1 rounded-2xl p-4 border-2 bg-slate-50 border-slate-200`}>
-                  <span className={`font-bold text-xs uppercase tracking-widest text-slate-500`}>총 주문 금액</span>
-                  <div className="text-right flex items-end justify-end gap-1">
-                    <span className={`text-xl font-bold pb-[4px] text-slate-800`}>₩</span>
-                    <span className={`text-3xl font-black leading-none tracking-tight text-slate-800`}>
-                      {totalAmount.toLocaleString()}
-                    </span>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-bold text-slate-500 uppercase">주문 수량</label>
+                      <input
+                        type="number"
+                        value={quantity || ""}
+                        onChange={(e) => setQuantity(Number(e.target.value))}
+                        placeholder="수량 입력"
+                        className={`w-full bg-slate-50 border-2 rounded-xl px-4 py-3 text-right text-xl font-black focus:outline-none transition-colors ${
+                          mode === 'sell' && quantity > warehouseItems.filter(i => i.type === 'product').reduce((a, i) => a + i.quantity, 0)
+                            ? 'border-rose-400 focus:border-rose-500' : 'border-slate-200 focus:border-slate-400'
+                        }`}
+                      />
+                      {mode === 'sell' && (() => {
+                        const owned = warehouseItems.filter(i => i.type === 'product').reduce((a, i) => a + i.quantity, 0);
+                        return <div className={`text-xs font-bold text-right ${quantity > owned ? 'text-rose-500' : 'text-slate-400'}`}>보유 중: {owned.toLocaleString()}개</div>;
+                      })()}
+                    </div>
+
+                    <div className="mt-auto flex flex-col gap-3">
+                      <div className="h-[2px] bg-slate-100 w-full" />
+                      <div className="flex flex-col gap-1 rounded-2xl p-4 border-2 bg-slate-50 border-slate-200">
+                        <span className="font-bold text-xs uppercase tracking-widest text-slate-500">총 주문 금액</span>
+                        <div className="text-right flex items-end justify-end gap-1">
+                          <span className="text-xl font-bold pb-[4px] text-slate-800">₩</span>
+                          <span className="text-3xl font-black leading-none tracking-tight text-slate-800">{totalAmount.toLocaleString()}</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleConfirm}
+                        disabled={price <= 0 || quantity <= 0 || isProcessing}
+                        className={`w-full py-4 rounded-3x font-black text-lg transition-all transform active:scale-95 flex items-center justify-center gap-2 shadow-lg cursor-pointer ${
+                          price > 0 && quantity > 0 && !isProcessing
+                            ? mode === "buy" ? "bg-rose-500 hover:bg-rose-600 text-white shadow-rose-200" : "bg-blue-500 hover:bg-blue-600 text-white shadow-blue-200"
+                            : "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
+                        }`}
+                      >
+                        <ShoppingCart className="w-5 h-5" />
+                        {isProcessing ? "처리중..." : "주문 접수"}
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  /* --- 체결 내역 탭 --- */
+                  <div className="flex flex-col flex-1 overflow-hidden">
+                    <h3 className="text-lg font-black text-slate-800 mb-3 flex items-center gap-1">
+                      <ListOrdered className="w-5 h-5" /> 실시간 체결 목록
+                    </h3>
+                    <div className="flex-1 overflow-y-auto flex flex-col gap-2 [&::-webkit-scrollbar]:hidden">
+                      {tradeHistory.length > 0 ? (
+                        tradeHistory.map((trade: any, idx: number) => (
+                          <div key={idx} className="p-3 border rounded-xl hover:bg-slate-50 transition-colors cursor-pointer border-slate-200">
+                            <div className="flex justify-between items-center">
+                              <span className={`font-black text-[15px] ${trade.orderType === "BUY" ? "text-rose-500" : "text-blue-500"}`}>
+                                {trade.orderType === "BUY" ? "매수" : "매도"} ₩{trade.price.toLocaleString()}
+                              </span>
+                              <span className="text-[11px] font-bold text-slate-400">
+                                {trade.createdAt ? new Date(trade.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : "방금 전"}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center mt-1">
+                              <span className="text-slate-600 font-bold text-sm">수량: {trade.executionQuantity?.toLocaleString() || 0}개</span>
+                              {!trade.isCollected && (
+                                <button 
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    try {
+                                      await MarketAPI.collectTrade(trade.tradeHistoryId);
+                                      useGameStore.getState().addAlert({ message: "체결 결과 수령 완료", detail: `${trade.executionQuantity}개가 정산되었습니다.` });
+                                      // 여기에 store 동기화 로직을 보강하면 완벽합니다 (갱신)
+                                    } catch (err) {
+                                      useAlertStore.getState().openAlert("수령에 실패했습니다.", "통신 오류");
+                                    }
+                                  }}
+                                  className="px-2 py-0.5 bg-yellow-500 text-white text-[11px] font-black rounded-lg hover:bg-yellow-600 transition-colors"
+                                >
+                                  수령
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="flex-1 flex flex-col items-center justify-center text-slate-300 gap-2">
+                          <Activity className="w-10 h-10" />
+                          <span className="text-sm font-bold">진행된 체결 내역이 없습니다.</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
-
-              {/* Action Button */}
-              <button
-                onClick={handleConfirm}
-                disabled={price <= 0 || quantity <= 0 || isProcessing}
-                className={`w-full py-4 rounded-2xl font-black text-lg transition-all transform active:scale-95 flex items-center justify-center gap-2 shadow-lg mt-4 cursor-pointer ${price > 0 && quantity > 0 && !isProcessing
-                  ? mode === "buy"
-                    ? "bg-rose-500 hover:bg-rose-600 text-white shadow-rose-200"
-                    : "bg-blue-500 hover:bg-blue-600 text-white shadow-blue-200"
-                  : "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
-                  }`}
-              >
-                <ShoppingCart className="w-5 h-5" />
-                {isProcessing ? "처리중..." : "주문 접수"}
-              </button>
             </div>
+
           </div>
         </div>
       )}
