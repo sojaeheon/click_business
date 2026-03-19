@@ -5,6 +5,21 @@ import { WORKER_DEFINITIONS } from '../constants/workers';
 const mockDelay = (ms = 500) => new Promise(resolve => setTimeout(resolve, ms));
 const isGuestMode = () => localStorage.getItem('isGuest') === 'true';
 
+export const AuthAPI = {
+  getLoginUrl: () => {
+    const baseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+    return baseUrl.replace('/api/v1', '') + '/oauth2/authorization/google';
+  },
+  callback: (code: string) => apiClient.get('/auth/callback', { params: { code } }),
+  refresh: () => apiClient.post('/auth/refresh'),
+  createGuest: () => apiClient.post('/users/guest'),
+  logout: () => apiClient.post('/auth/logout'),
+};
+
+export const UserAPI = {
+  updateNickname: (userId: number, nickname: string) => apiClient.patch(`/users/${userId}`, { nickname }),
+};
+
 export const CompanyAPI = {
   getStatus: async (companyId: number) => {
     // ✅ 실제 연동 + 아직 백엔드에 없는 데이터(재화 등)는 목업 데이터와 병합
@@ -109,8 +124,8 @@ export const WorkstationAPI = {
     const reserveQty = Math.ceil(ratio * reqMat); // 재료 (API reserve용)
 
     try {
-      // ✅ 실제 API: reserve로 재료 예약 → toggle로 가동 시작
-      await apiClient.post(`/workstations/1/reserve`, { quantity: reserveQty });
+      // ✅ 실제 연동 /api/v1/workstations/{workstation_id}/reserve (예약 및 가동)
+      await apiClient.post(`/workstations/1/reserve`, { quantity: data.quantity });
       await apiClient.post(`/workstations/1/toggle`);
       return { data: { success: true, message: "작업이 시작되었습니다." } };
     } catch (err) {
@@ -253,7 +268,7 @@ export const MinigameAPI = {
 export const RankingAPI = {
   getTopRanks: async () => {
     try {
-      const res = await apiClient.get('/ranking/top');
+      const res = await apiClient.get('/ranking/preview');
       return { data: res.data.data };
     } catch (err) {
       console.warn("API 연동 실패! RankingAPI.getTopRanks 목업 데이터 사용", err);
@@ -274,7 +289,7 @@ export const RankingAPI = {
 export const WarehouseAPI = {
   getWarehouseItems: async (companyId: number) => {
     try {
-      const res = await apiClient.get('/inventory');
+      const res = await apiClient.get('/storage/warehouses');
       return {
         data: res.data.data
           .filter((slot: any) => slot.itemId != null)
@@ -295,14 +310,36 @@ export const WarehouseAPI = {
         ]
       };
     }
+  },
+  unlockSlot: async (data: { companyId: number; maxSlot: number }) => {
+    try {
+      // ✅ 명세: 창고 슬롯 확장 (POST /api/v1/storage/warehouses, payload: max_slot)
+      await apiClient.post('/storage/warehouses', { company_id: data.companyId, max_slot: data.maxSlot });
+      return { data: { success: true } };
+    } catch (err) {
+      console.warn("API 연동 실패! WarehouseAPI.unlockSlot 목업 데이터 사용", err);
+      await mockDelay();
+      return { data: { success: true } };
+    }
+  },
+  moveSlot: async (data: { companyId: number, fromIdx: number, toIdx: number }) => {
+    try {
+      // ✅ 명세: warehouse_id, from_idx, to_idx
+      await apiClient.patch(`/storage/warehouses/slots`, { warehouse_id: data.companyId, from_idx: data.fromIdx, to_idx: data.toIdx });
+      return { data: { success: true } };
+    } catch (err) {
+      console.warn("API 연동 실패! WarehouseAPI.moveSlot 목업 데이터 사용", err);
+      await mockDelay();
+      return { data: { success: true } };
+    }
   }
 };
 
 export const InventoryAPI = {
   getInventory: async (companyId: number) => {
-    // ✅ 실제 API 연동: GET /api/v1/inventory
+    // ✅ 실제 API 연동: GET /api/v1/inventory/
     try {
-      const res = await apiClient.get('/inventory'); // 백엔드 경로 수정
+      const res = await apiClient.get('/inventory/'); // 백엔드 경로 수정
       return {
         data: res.data.data
           .filter((slot: any) => slot.itemId != null) // 실제 아이템이 들어있는 슬롯만 프론트엔드 인벤토리에 담기
@@ -330,7 +367,7 @@ export const InventoryAPI = {
           quantity: i < 3 ? 2 : 1,
           icon: w.icon,
           modelPath: w.modelPath,
-          workerType: w.type,
+          workerType: (w as any).type,
           type: `worker_${w.displayName?.replace(/ /g, "_")}` // required for gameStore mapping!
         }))
       };
@@ -347,4 +384,26 @@ export const InventoryAPI = {
       return { data: { success: true } };
     }
   },
+  moveSlot: async (data: { fromSlot: number; toSlot: number }) => {
+    try {
+      // ✅ 명세: { "fromSlot": 0, "toSlot": 5 } -> 인벤토리 슬롯 아이템 교환
+      await apiClient.post('/inventory/swap', data);
+      return { data: { success: true } };
+    } catch (err) {
+      console.warn("API 연동 실패! InventoryAPI.moveSlot 목업 데이터 사용", err);
+      await mockDelay();
+      return { data: { success: true } };
+    }
+  },
+  addTestItem: async (data: { itemId: number, amount: number }) => {
+    try {
+      // ✅ 명세: 테스트용 아이템 추가 기능 POST /api/v1/inventory/add (Dev)
+      await apiClient.post('/inventory/add', data);
+      return { data: { success: true } };
+    } catch (err) {
+      console.warn("API 연동 실패! InventoryAPI.addTestItem 목업 데이터 사용", err);
+      await mockDelay();
+      return { data: { success: true } };
+    }
+  }
 };

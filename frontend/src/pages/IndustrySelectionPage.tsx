@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from "../store/gameStore";
 import { useAlertStore } from "../store/useAlertStore";
-import { preloadGameModels } from "../app/components/game/IsometricScene";
+import { preloadGameModels } from "../app/components/game/preload";
 import { CompanyAPI } from "../api/gameApi";
 
 const IndustryCard = ({ title, iconLabel, onSelect, isSelected }: {

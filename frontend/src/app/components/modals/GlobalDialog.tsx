@@ -5,6 +5,7 @@ import { useGame } from "../../../store/gameStore";
 import { useAlertStore } from "../../../store/useAlertStore";
 import { getWorkerIcon, WorkerCard } from "../ui/WorkerCard";
 import { useGameStore } from "../../../store/gameStore";
+import { getWorkerDefByLevel, IndustryKey } from "../../../constants/workers";
 
 // 다른 곳에서도 쓸 수 있게 export 해줍니다.
 export interface ConfirmData {
@@ -12,7 +13,7 @@ export interface ConfirmData {
   label: string;
   action?: () => void;
   isWorking?: boolean;
-  onStart?: (quantity: number) => void;
+  onStart?: (quantity: number, workerLevel: number) => void;
   onStop?: () => void;
 }
 
@@ -24,10 +25,13 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
   const [isCollecting, setIsCollecting] = useState(false);
   const [particles, setParticles] = useState<{ id: number, x: number, y: number, tx: number, ty: number, delay: number }[]>([]);
 
-  // 장착 일꾼 데이터
-  const [equippedWorker, setEquippedWorker] = useState<{ id: number, name: string, level: number } | null>(null);
-
+  // 장착 일꾼 데이터 전역 연동
+  const { equippedWorkerId, setEquippedWorkerId, hasNewWorker, setHasNewWorker } = useGameStore();
   const slots = useGameStore(s => s.inventoryItems);
+  
+  const equippedItem = slots.find(i => i.id === equippedWorkerId);
+  const equippedWorker = equippedItem ? { id: equippedItem.id, name: equippedItem.name, level: equippedItem.level || 1 } : null;
+
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
 
   useEffect(() => {
@@ -44,16 +48,34 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
     return () => window.removeEventListener("keydown", handleKey);
   }, [onClose, isCollecting, data]);
 
+  const { resProd, batchSize } = data.type === "workstation" ? state.getIndustryItemNames() : { resProd: 1, batchSize: 10 };
+
+  // 모달이 처음 열릴 때 qty를 resProd 값으로 초기화
+  useEffect(() => {
+    if (data.type === "workstation" && !data.isWorking && qty === 1) { // 아직 초기값 1일 때만
+      setQty(resProd);
+    }
+  }, [data.type, data.isWorking, resProd]);
+
   if (data.type === "workstation") {
-    const { material, product, reqMat, resProd } = state.getIndustryItemNames();
+    const { material, product, reqMat } = state.getIndustryItemNames();
     const warehouseStock = state.warehouseItems.find(i => i.type === "material")?.quantity || 0;
-    
+
     // qty = 유저가 자유롭게 입력한 생산 개수
     // 시간/재료는 개수에 비례 계산 (1분에 resProd개 생산 기준)
     const ratio = qty / resProd;                          // qty개 생산에 필요한 시간 비율
     const totalMaterial = Math.ceil(ratio * reqMat);       // 소모 재료 (올림)
     const totalProduced = qty;                             // 생산 개수 = 유저 입력 그대로
-    const totalSecs = Math.ceil(ratio * 60);               // 총 소요 시간 (초, 올림)
+
+    // 💡 캐릭터 배율 적용
+    const industryName = state.industry as IndustryKey;
+    let speedMult = 1.0;
+    if (equippedWorker) {
+      const def = getWorkerDefByLevel(equippedWorker.level);
+      speedMult = def.speedMultiplier[industryName] || 1.0;
+    }
+    const totalSecs = Math.ceil((ratio * 60) / speedMult); // 총 소요 시간 (초, 올림)
+
     const mins = Math.floor(totalSecs / 60);
     const secs = totalSecs % 60;
     const timeLabel = mins > 0
@@ -115,7 +137,10 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
           <div className="flex items-center gap-5 border-b-2 border-slate-100 pb-5">
             <button
               onClick={() => {
-                if (!data.isWorking) setIsInventoryOpen(true);
+                if (!data.isWorking) {
+                  setIsInventoryOpen(true);
+                  if (hasNewWorker) setHasNewWorker(false);
+                }
               }}
               className={`relative w-[88px] h-[88px] flex flex-col items-center justify-center rounded-2xl shadow-inner border-[3px] transition-all overflow-hidden group flex-shrink-0 ${equippedWorker
                   ? "bg-gradient-to-br from-blue-100 to-indigo-50 border-blue-300"
@@ -145,6 +170,12 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                     {equippedWorker ? "변경" : "배치"}
                   </span>
                 </div>
+              )}
+              {/* ✨ NEW 뱃지 표시 */}
+              {hasNewWorker && !data.isWorking && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full shadow-md animate-bounce pointer-events-none">
+                  NEW!
+                </span>
               )}
             </button>
 
@@ -202,19 +233,21 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                   onClick={(e) => { e.stopPropagation(); setQty(q => q + 1); }}
                 >+</button>
               </div>
-              {/* 빠른 설정 버튼 */}
-              <div className="flex gap-2 justify-center relative z-10">
-                {[resProd, resProd * 2, resProd * 5, resProd * 10].map(n => (
+              {/* 단위별 증감 설정 버튼 */}
+              <div className="flex gap-2 justify-center relative z-10 w-full px-2">
+                {[
+                  { label: `- ${batchSize}`, val: -batchSize },
+                  { label: `+ ${batchSize}`, val: batchSize }
+                ].map((btn, i) => (
                   <button
-                    key={n}
-                    onClick={(e) => { e.stopPropagation(); setQty(n); }}
-                    className={`px-3 py-1 rounded-lg text-xs font-black border-2 border-b-2 transition-all cursor-pointer select-none
-                      ${qty === n
-                        ? 'bg-indigo-500 text-white border-indigo-600 shadow-md'
-                        : 'bg-white text-slate-500 border-slate-200 border-b-slate-300 hover:bg-indigo-50 hover:text-indigo-500 hover:border-indigo-200'
-                      }`}
+                    key={i}
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      setQty(q => Math.max(1, q + btn.val)); 
+                    }}
+                    className="flex-1 px-1 py-2 rounded-lg text-xs font-black border-2 border-b-4 transition-all cursor-pointer select-none bg-indigo-50 text-indigo-500 border-indigo-200 border-b-indigo-300 hover:bg-indigo-100 active:translate-y-1 active:border-b-2"
                   >
-                    {n}개
+                    {btn.label}개
                   </button>
                 ))}
               </div>
@@ -271,7 +304,7 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
               <button
                 className={`flex-1 py-4 rounded-xl font-black text-lg transition-all shadow-lg ${(hasEnough && equippedWorker) ? 'bg-indigo-500 hover:bg-indigo-600 active:scale-95 text-white shadow-indigo-200 cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'}`}
                 disabled={!hasEnough || !equippedWorker}
-                onClick={() => { if (hasEnough && equippedWorker) { data.onStart?.(qty); onClose(); } }}
+                onClick={() => { if (hasEnough && equippedWorker) { data.onStart?.(qty, equippedWorker.level); onClose(); } }}
               >
                 {!equippedWorker ? "일꾼을 배치해주세요" : (!hasEnough ? "재료 부족" : "작업 시작 ▶")}
               </button>
@@ -302,7 +335,7 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                       item={item}
                       isSmall={false}
                       onClick={() => {
-                        setEquippedWorker({ id: parseInt(item.id.replace(/\D/g, "") || "0"), name: item.name || '', level: item.level || 1 });
+                        setEquippedWorkerId(item.id);
                         setIsInventoryOpen(false);
                       }}
                     />

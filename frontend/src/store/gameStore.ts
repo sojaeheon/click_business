@@ -19,17 +19,18 @@ export interface WarehouseItem {
   id: string;
   type: "material" | "product";
   quantity: number;
+  name?: string;
 }
 
 // ─── 인벤토리 아이템 종류 ────────────────────────────────────────────────
-// 캐릭터(일꾼) 6종 + 창고 슬롯 확장권 + 인벤토리 슬롯 확장권
+// 캐릭터(일꾼) Lv1~6 + 창고 슬롯 확장권 + 인벤토리 슬롯 확장권
 export type InventoryItemType =
-  | "worker_수습_광부"
-  | "worker_숙련_광부"
-  | "worker_초보_제련공"
-  | "worker_숙련_제련공"
-  | "worker_견습_대장장이"
-  | "worker_숙련_대장장이"
+  | "worker_lv1"
+  | "worker_lv2"
+  | "worker_lv3"
+  | "worker_lv4"
+  | "worker_lv5"
+  | "worker_lv6"
   | "ticket_warehouse"
   | "ticket_inventory";
 
@@ -40,20 +41,40 @@ export interface InventoryItem {
   icon: string;
   quantity: number;
   level?: number;
-  workerType?: "miner" | "smelter" | "manufacturer";
 }
 
-/** 미니게임 보상 랜덤 풀 (8종) */
-export const REWARD_ITEM_POOL: Omit<InventoryItem, "id">[] = [
-  { type: "worker_수습_광부", name: "수습 광부", icon: "⛏️", quantity: 1, level: 1, workerType: "miner" },
-  { type: "worker_숙련_광부", name: "숙련 광부", icon: "⛏️", quantity: 1, level: 2, workerType: "miner" },
-  { type: "worker_초보_제련공", name: "초보 제련공", icon: "🔥", quantity: 1, level: 1, workerType: "smelter" },
-  { type: "worker_숙련_제련공", name: "숙련 제련공", icon: "🔥", quantity: 1, level: 2, workerType: "smelter" },
-  { type: "worker_견습_대장장이", name: "견습 대장장이", icon: "🔨", quantity: 1, level: 1, workerType: "manufacturer" },
-  { type: "worker_숙련_대장장이", name: "숙련 대장장이", icon: "🔨", quantity: 1, level: 2, workerType: "manufacturer" },
-  { type: "ticket_warehouse", name: "창고 확장권", icon: "📦", quantity: 1 },
-  { type: "ticket_inventory", name: "인벤토리 확장권", icon: "🎒", quantity: 1 },
+// ─── 미니게임 보상 가중치 풀 ──────────────────────────────────────────────
+// ⚠️ 백엔드 /v1/minigame/reward-pool API 결과로 대체 예정
+// 없으면 아래 프론트 기본값 사용 (weight sum = 100)
+type RewardEntry = { item: Omit<InventoryItem, "id">; weight: number };
+
+export const REWARD_WEIGHT_POOL: RewardEntry[] = [
+  { item: { type: "worker_lv1", name: "초보 일꾼",   icon: "⛏️", quantity: 1, level: 1 }, weight: 59.5 },
+  { item: { type: "ticket_inventory", name: "인벤토리 확장권", icon: "🎒", quantity: 1 }, weight: 10.5 },
+  { item: { type: "ticket_warehouse", name: "창고 확장권",    icon: "📦", quantity: 1 }, weight: 10.5 },
+  { item: { type: "worker_lv2", name: "견습 일꾼",   icon: "🔥", quantity: 1, level: 2 }, weight: 10.0 },
+  { item: { type: "worker_lv3", name: "숙련 일꾼",   icon: "🔨", quantity: 1, level: 3 }, weight:  5.0 },
+  { item: { type: "worker_lv4", name: "마스터 일꾼", icon: "🏹", quantity: 1, level: 4 }, weight:  3.0 },
+  { item: { type: "worker_lv5", name: "에픽 일꾼",   icon: "🗡️", quantity: 1, level: 5 }, weight:  1.0 },
+  { item: { type: "worker_lv6", name: "레전드 일꾼", icon: "👑", quantity: 1, level: 6 }, weight:  0.5 },
 ];
+
+/**
+ * 미니게임 보상 1개를 가중치 확률로 랜덤 픽.
+ * ⚠️ 서버에서 결과를 내려주면 API response로 대체하세요.
+ */
+export function pickReward(pool = REWARD_WEIGHT_POOL): Omit<InventoryItem, "id"> {
+  const totalWeight = pool.reduce((s, e) => s + e.weight, 0);
+  let rand = Math.random() * totalWeight;
+  for (const entry of pool) {
+    rand -= entry.weight;
+    if (rand <= 0) return entry.item;
+  }
+  return pool[0].item;
+}
+
+// 하위 호환성 (기존 코드가 import하는 REWARD_ITEM_POOL)
+export const REWARD_ITEM_POOL: Omit<InventoryItem, "id">[] = REWARD_WEIGHT_POOL.map(e => e.item);
 
 export interface HRData { currentLevel: number; expectedLevel: number; successRate: number; materialCurrent: number; materialMax: number; }
 
@@ -86,6 +107,24 @@ export interface GameState {
   hrData: HRData;
   isLoading: boolean;
 
+  // 장착 일꾼 ID & 새로운 일꾼 알람
+  equippedWorkerId: string | null;
+  hasNewWorker: boolean;
+  setEquippedWorkerId: (id: string | null) => void;
+  setHasNewWorker: (v: boolean) => void;
+
+  // 작업장 로컬 상태 캐시 (백엔드 연동 전 임시)
+  workstationState: {
+    isStarting?: boolean;
+    isWorking: boolean;
+    startTime: number;
+    totalMs: number;
+    requestedQty: number;
+    storedCount: number; // 미수령 상태로 남아있는 양
+    producedCount: number; // 금번 작업에서 총 생산된 양 (UI 애니메이션 타겟)
+  };
+  setWorkstationState: (updater: Partial<GameState["workstationState"]>) => void;
+
   openModal: (tab: ModalTab) => void;
   closeModal: () => void;
   switchTab: (tab: ModalTab) => void;
@@ -112,7 +151,7 @@ export interface GameState {
   updateDebt: (amount: number) => void; // 양수 = 부칄 증가, 음수 = 부칄 감소
 
   getWarehouseUsage: () => { usedSlots: number; percent: number };
-  getIndustryItemNames: () => { material: string; product: string; reqMat: number; resProd: number };
+  getIndustryItemNames: (indOverride?: string) => { material: string; product: string; reqMat: number; resProd: number; batchSize: number };
 
   fetchCompanyData: (companyId: number) => Promise<void>;
 }
@@ -124,7 +163,7 @@ export const useGameStore = create<GameState>()(
   persist(
     (set, get) => ({
       companyName: "",
-      industry: "금 제련업",
+      industry: "금광업",
       money: 5000000,
       currency: "₩",
       capital: 5000000,
@@ -140,12 +179,31 @@ export const useGameStore = create<GameState>()(
       warehouseItems: [],
       hrData: { currentLevel: 1, expectedLevel: 2, successRate: 70, materialCurrent: 1, materialMax: 2 },
       isLoading: false,
-      // 인베토리 아이템 (기본 캐릭터 지급 1개)
+      // 인벤토리 아이템 (기본 캐릭터 지급 1개)
       inventoryItems: [
-        { id: "inv_default_1", type: "worker_수습_광부", name: "수습 광부", icon: "⛏️", quantity: 1, level: 1, workerType: "miner" },
+        { id: "inv_default_1", type: "worker_lv1", name: "초보 일꾼", icon: "⛏️", quantity: 1, level: 1 },
       ],
       warehouseExpandTickets: 0,
       inventoryExpandTickets: 0,
+      
+      equippedWorkerId: "inv_default_1",
+      hasNewWorker: false,
+      setEquippedWorkerId: (id) => set({ equippedWorkerId: id }),
+      setHasNewWorker: (v) => set({ hasNewWorker: v }),
+
+      workstationState: {
+        isStarting: false,
+        isWorking: false,
+        startTime: 0,
+        totalMs: 0,
+        requestedQty: 0,
+        storedCount: 0,
+        producedCount: 0,
+      },
+      setWorkstationState: (updater) => set(s => ({
+        workstationState: { ...s.workstationState, ...updater }
+      })),
+
 
       openModal: (tab) => set({ activeModal: tab }),
       closeModal: () => set({ activeModal: null }),
@@ -180,7 +238,8 @@ export const useGameStore = create<GameState>()(
           return { inventoryExpandTickets: state.inventoryExpandTickets + item.quantity };
         }
         return {
-          inventoryItems: [...state.inventoryItems, { ...item, id: "inv_" + Date.now() + "_" + Math.random().toString(36).slice(2) }]
+          inventoryItems: [...state.inventoryItems, { ...item, id: "inv_" + Date.now() + "_" + Math.random().toString(36).slice(2) }],
+          hasNewWorker: true,
         };
       }),
       removeInventoryItem: (id) => set(state => ({
@@ -224,12 +283,12 @@ export const useGameStore = create<GameState>()(
         return { usedSlots, percent };
       },
 
-      getIndustryItemNames: () => {
-        const ind = get().industry;
-        if (ind === "금광업") return { material: "광산 드릴", product: "금광석", reqMat: 2, resProd: 40 };
-        if (ind === "금 제련업" || ind === "제철업") return { material: "금광석", product: "금괴", reqMat: 12, resProd: 6 };
-        if (ind === "제조업") return { material: "금괴", product: "광산 드릴", reqMat: 20, resProd: 2 };
-        return { material: "재료", product: "생산품", reqMat: 1, resProd: 1 };
+      getIndustryItemNames: (indOverride?: string) => {
+        const ind = indOverride || get().industry;
+        if (ind === "금광업") return { material: "광산 드릴", product: "금광석", reqMat: 2, resProd: 40, batchSize: 20 };
+        if (ind === "금 제련업" || ind === "제철업") return { material: "금광석", product: "금괴", reqMat: 12, resProd: 6, batchSize: 10 };
+        if (ind === "제조업") return { material: "금괴", product: "광산 드릴", reqMat: 20, resProd: 2, batchSize: 5 };
+        return { material: "재료", product: "생산품", reqMat: 1, resProd: 1, batchSize: 10 };
       },
 
       updateMoney: (amount) => {
@@ -265,9 +324,9 @@ export const useGameStore = create<GameState>()(
           }
 
           if (matIdx >= 0) {
-            newItems[matIdx] = { ...newItems[matIdx], quantity: currentQty + actualAdded };
+            newItems[matIdx] = { ...newItems[matIdx], quantity: currentQty + actualAdded, name: get().getIndustryItemNames().material };
           } else if (actualAdded > 0) {
-            newItems.push({ id: "m1", type: "material", quantity: actualAdded });
+            newItems.push({ id: "m1", type: "material", quantity: actualAdded, name: get().getIndustryItemNames().material });
           }
           return { warehouseItems: newItems };
         });
@@ -301,9 +360,9 @@ export const useGameStore = create<GameState>()(
           }
 
           if (pIdx >= 0) {
-            newItems[pIdx] = { ...newItems[pIdx], quantity: currentQty + actualAdded };
+            newItems[pIdx] = { ...newItems[pIdx], quantity: currentQty + actualAdded, name: get().getIndustryItemNames().product };
           } else if (actualAdded > 0) {
-            newItems.push({ id: "p1", type: "product", quantity: actualAdded });
+            newItems.push({ id: "p1", type: "product", quantity: actualAdded, name: get().getIndustryItemNames().product });
           }
           return { warehouseItems: newItems };
         });
@@ -341,24 +400,31 @@ export const useGameStore = create<GameState>()(
           if (workers.length === 0) {
             workers.push({
               id: "inv_default_1",
-              type: "worker_수습_광부",
-              name: "수습 광부",
+              type: "worker_lv1",
+              name: "초보 일꾼",
               icon: "⛏️",
               quantity: 1,
               level: 1,
-              workerType: "miner"
             });
           }
+
+          const finalIndustry = realData?.industry_type ?? get().industry;
+          const { material, product } = get().getIndustryItemNames(finalIndustry);
+
+          const fixedWarehouseItems = (warehouseRes.data as WarehouseItem[]).map(item => ({
+            ...item,
+            name: item.type === "material" ? material : item.type === "product" ? product : item.name
+          }));
 
           set({
             money: realData?.cash ?? get().money,
             capital: realData?.total_asset ?? get().capital,
             companyName: realData?.name ?? get().companyName,
-            industry: realData?.industry_type ?? get().industry,
+            industry: finalIndustry,
             // 과거 캐시에 의해 프론트엔드 슬롯이 각각 10, 50으로 고정된 유저들을 위한 강제 보정 로직
             warehouseMaxSlots: realData?.slots?.warehouse_slots ?? (get().warehouseMaxSlots === 10 ? 6 : get().warehouseMaxSlots),
             inventoryMax: realData?.slots?.inventory_slots ?? (get().inventoryMax === 50 ? 4 : get().inventoryMax),
-            warehouseItems: warehouseRes.data as WarehouseItem[],
+            warehouseItems: fixedWarehouseItems,
             inventoryItems: workers,
             warehouseExpandTickets: wTickets,
             inventoryExpandTickets: iTickets,
@@ -378,7 +444,27 @@ export const useGameStore = create<GameState>()(
         }
       }
     }),
-    { name: "game-storage" }
+    { 
+      name: "game-storage",
+      partialize: (state) => ({
+        companyName: state.companyName,
+        industry: state.industry,
+        money: state.money,
+        currency: state.currency,
+        capital: state.capital,
+        debt: state.debt,
+        warehouseMaxSlots: state.warehouseMaxSlots,
+        inventoryMax: state.inventoryMax,
+        bankData: state.bankData,
+        warehouseItems: state.warehouseItems,
+        inventoryItems: state.inventoryItems,
+        warehouseExpandTickets: state.warehouseExpandTickets,
+        inventoryExpandTickets: state.inventoryExpandTickets,
+        equippedWorkerId: state.equippedWorkerId,
+        hasNewWorker: state.hasNewWorker,
+        hrData: state.hrData,
+      }),
+    }
   )
 );
 
