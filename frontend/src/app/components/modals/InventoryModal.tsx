@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Lock, ShoppingBag, HelpCircle, X, Trash2 } from "lucide-react";
 import { useGameStore } from "../../../store/gameStore";
 import { useAlertStore } from "../../../store/useAlertStore";
@@ -11,17 +11,19 @@ export function InventoryModal() {
   const [showHelp, setShowHelp] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<InventoryItem | null>(null);
 
-  const [unlockedSlotsCount, setUnlockedSlotsCount] = useState(4);
-  const [localItems, setLocalItems] = useState(() => {
-    const items = [...inventoryItems];
-    return items;
-  });
+  // localItems: inventoryItems와 동기화 (모달 열릴 때 최신 상태 반영)
+  const [localItems, setLocalItems] = useState(() => [...inventoryItems]);
+
+  // inventoryItems(Zustand) 변경 시 localItems 자동 동기화
+  useEffect(() => {
+    setLocalItems([...inventoryItems]);
+  }, [inventoryItems]);
 
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
-    const isLocked = index >= unlockedSlotsCount;
+    const isLocked = index >= inventoryMax;  // ← inventoryMax 사용
     const item = localItems[index];
     if (isLocked || !item) {
       e.preventDefault();
@@ -37,7 +39,7 @@ export function InventoryModal() {
   const handleDrop = (e: React.DragEvent, targetIndex: number) => {
     e.preventDefault();
     if (draggingIndex === null || draggingIndex === targetIndex) return;
-    const isLocked = targetIndex >= unlockedSlotsCount;
+    const isLocked = targetIndex >= inventoryMax;  // ← inventoryMax 사용
     if (isLocked) return;
 
     const newItems = [...localItems];
@@ -56,8 +58,9 @@ export function InventoryModal() {
       return;
     }
     const success = useInventoryTicket();
+    // useInventoryTicket()이 gameStore의 inventoryMax를 +1 하므로
+    // 로컬 state 별도 관리 불필요 — 자동으로 반영됨
     if (success) {
-      setUnlockedSlotsCount((prev) => prev + 1);
       useAlertStore.getState().openAlert("인벤토리 슬롯이 확장되었습니다.", "안내");
     }
   };
@@ -72,16 +75,13 @@ export function InventoryModal() {
     }
   };
 
-  // 슬롯 그리드 렌더링 계산
+  // 슬롯 그리드 렌더링 계산 (잠긴 슬롯은 최소 3칸 추가로 표시)
   const slotsToDisplay = useMemo(() => {
-    let lockedSlotsCount = 0;
-    while (lockedSlotsCount <= 2) {
-      lockedSlotsCount += 3;
-    }
-    const totalCount = unlockedSlotsCount + lockedSlotsCount;
+    const lockedSlotsCount = 3; // 항상 잠긴 슬롯 3칸 미리 보여줌
+    const totalCount = inventoryMax + lockedSlotsCount;
     const paddedCount = Math.ceil(totalCount / 3) * 3;
     return new Array(paddedCount).fill(null);
-  }, [unlockedSlotsCount]);
+  }, [inventoryMax]);  // ← inventoryMax 의존
 
   return (
     <div className="relative h-full flex flex-col">
@@ -91,7 +91,7 @@ export function InventoryModal() {
           <ShoppingBag className="w-5 h-5 text-gray-700" />
           <h2 className="text-xl text-gray-800 tracking-tight font-black">인벤토리</h2>
           <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full ml-2">
-            사용중 {inventoryItems.length} / 최대 {unlockedSlotsCount}
+            사용중 {inventoryItems.length} / 최대 {inventoryMax}
           </span>
         </div>
         <button
@@ -107,8 +107,8 @@ export function InventoryModal() {
 
           <div className="flex items-center justify-between mb-3 mt-1 px-2">
             <h3 className="text-sm font-bold text-gray-500">보유 아이템 목록</h3>
-            <div className="text-xs font-bold text-gray-400 flex gap-1 items-center">
-              확장권 <span className="text-indigo-600 font-black">{inventoryExpandTickets}</span>개 보유
+            <div className="text-xs font-bold text-gray-400">
+              {/* 확장권은 인벤토리 슬롯 아이템으로 직접 표시됩니다 */}
             </div>
           </div>
 
@@ -122,8 +122,8 @@ export function InventoryModal() {
 
             <div className="grid grid-cols-3 gap-5 pb-4">
               {slotsToDisplay.map((_, idx) => {
-                const isLocked = idx >= unlockedSlotsCount;
-                const isExpandable = isLocked && idx === unlockedSlotsCount;
+                const isLocked = idx >= inventoryMax;
+                const isExpandable = isLocked && idx === inventoryMax;
                 const item = localItems[idx];
                 const isSelected = item && selectedSlot === item.id;
                 const hasTickets = inventoryExpandTickets > 0;

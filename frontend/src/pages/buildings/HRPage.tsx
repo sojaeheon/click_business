@@ -59,7 +59,8 @@ export function HRPage() {
     return slots.filter(s => s.name === w.name && (s.level || 1) === (w.level || 1)).reduce((a, s) => a + (s.quantity || 1), 0);
   }, [slots]);
 
-  const eligible = useMemo(() => {
+  // 전체 워커를 균일+식별 키로 그룹화  (eligible 필터 없이 전체 표시)
+  const allWorkerGroups = useMemo(() => {
     const ws = slots.filter(i => i.type?.startsWith("worker_"));
     const m = new Map<string, { item: any; total: number }>();
     ws.forEach(s => {
@@ -67,7 +68,8 @@ export function HRPage() {
       const e = m.get(k);
       if (e) e.total += (s.quantity || 1); else m.set(k, { item: s, total: s.quantity || 1 });
     });
-    return [...m.values()].filter(e => e.total >= 2);
+    // 레벨 오름차순으로 정렬
+    return [...m.values()].sort((a, b) => (a.item.level ?? 1) - (b.item.level ?? 1));
   }, [slots]);
 
   // ── 강화 실행 ──
@@ -83,12 +85,12 @@ export function HRPage() {
 
     // 1) 차징 (에너지 모으는 연출)
     setPhase("charging");
-    await new Promise(r => setTimeout(r, 1200));
+    await new Promise(r => setTimeout(r, 600));
 
     // 2) 타격 (화면 흔들림)
     setPhase("striking");
     setShakeClass("animate-shake");
-    await new Promise(r => setTimeout(r, 600));
+    await new Promise(r => setTimeout(r, 300));
     setShakeClass("");
 
     // 3) 결과 판정
@@ -104,10 +106,28 @@ export function HRPage() {
     // 4) 결과 표시
     setLastResult(res);
     setPhase("result");
-    if (res.result !== "stay") setSelected((p: any) => p ? { ...p, level: res.newLevel } : null);
-    if (res.result === "reset") setTimeout(() => setSelected(null), 2000);
 
-    setTimeout(() => { setPhase("idle"); setLastResult(null); setBusy(false); }, 2800);
+    // ★ Zustand 스토어에 결과 반영
+    // stay 포함 모든 결과에서 호출 → 재료 2개 소모 후 결과 레벨 1개 반환
+    if (selected) {
+      const upgradeWorkerLevel = useGameStore.getState().upgradeWorkerLevel;
+      if (upgradeWorkerLevel) {
+        upgradeWorkerLevel(selected.name, lv, res.result === "reset" ? 0 : res.newLevel);
+      }
+    }
+
+    // selected 동기화: upgradeWorkerLevel이 새 아이템을 getWorkerDefByLevel(newLevel).displayName으로 생성하므로
+    // selected의 name과 level을 모두 새 값으로 맞춰줘야 countOf()가 0이 안 됨
+    if (res.result === "success" || res.result === "down") {
+      const newDef = getWorkerDefByLevel(res.newLevel);
+      setSelected((p: any) => p ? { ...p, level: res.newLevel, name: newDef.displayName } : null);
+    } else if (res.result === "stay") {
+      // stay: 같은 레벨 1개가 남아있으므로 selected 유지 (name·level 변화 없음)
+    } else if (res.result === "reset") {
+      setTimeout(() => setSelected(null), 1500);
+    }
+
+    setTimeout(() => { setPhase("idle"); setLastResult(null); setBusy(false); }, 1800);
   };
 
   const def = selected ? getWorkerDefByLevel(lv) : null;
@@ -233,22 +253,29 @@ export function HRPage() {
           )}
 
           {/* ── 강화 버튼 (앤빌 스타일) ── */}
-          {selected && !isMax && (
-            <button
-              onClick={handleUpgrade}
-              disabled={busy}
-              className={`relative group px-12 py-5 rounded-2xl font-black text-xl transition-all cursor-pointer select-none
-                ${busy
-                  ? "bg-gray-700 text-gray-500 cursor-wait"
-                  : "bg-gradient-to-b from-amber-500 to-amber-700 text-white hover:from-amber-400 hover:to-amber-600 active:scale-95 shadow-[0_8px_0_rgb(146,64,14)] hover:shadow-[0_6px_0_rgb(146,64,14)]"
-                }`}
-            >
-              <div className="flex items-center gap-3">
-                <Sparkles className={`w-6 h-6 ${busy ? "" : "group-hover:animate-spin"}`} />
-                {busy ? "강화 중..." : "⚒️ 강화 시도"}
-              </div>
-            </button>
-          )}
+          {selected && !isMax && (() => {
+            const cnt = countOf(selected);
+            const canUpgrade = cnt >= 2;
+            const isDisabled = busy || !canUpgrade;
+            return (
+              <button
+                onClick={handleUpgrade}
+                disabled={isDisabled}
+                className={`relative group px-12 py-5 rounded-2xl font-black text-xl transition-all select-none
+                  ${busy
+                    ? "bg-gray-700 text-gray-500 cursor-wait"
+                    : !canUpgrade
+                      ? "bg-gray-800 text-gray-600 cursor-not-allowed opacity-60"
+                      : "bg-gradient-to-b from-amber-500 to-amber-700 text-white hover:from-amber-400 hover:to-amber-600 active:scale-95 cursor-pointer shadow-[0_8px_0_rgb(146,64,14)] hover:shadow-[0_6px_0_rgb(146,64,14)]"
+                  }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Sparkles className={`w-6 h-6 ${(!busy && canUpgrade) ? "group-hover:animate-spin" : ""}`} />
+                  {busy ? "강화 중..." : !canUpgrade ? `⚒️ 재료 부족 (${cnt}/2)` : "⚒️ 강화 시도"}
+                </div>
+              </button>
+            );
+          })()}
 
           {selected && isMax && (
             <div className="px-8 py-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 font-black text-lg flex items-center gap-2">
@@ -263,13 +290,13 @@ export function HRPage() {
          ════════════════════════════════════════════════ */}
       {phase === "result" && lastResult && (() => {
         const c = {
-          success: { text: "LEVEL UP!", emoji: "🎉", color: "#f59e0b", bg: "rgba(245,158,11,.1)" },
-          stay: { text: "변화 없음", emoji: "💨", color: "#94a3b8", bg: "rgba(148,163,184,.05)" },
-          down: { text: "레벨 하락", emoji: "📉", color: "#ef4444", bg: "rgba(239,68,68,.08)" },
-          reset: { text: "파괴!", emoji: "💥", color: "#dc2626", bg: "rgba(220,38,38,.12)" },
+          success: { text: "LEVEL UP!", emoji: "🎉", color: "#f59e0b", bg: "rgba(0,0,0,0.85)" },
+          stay: { text: "변화 없음", emoji: "🤔", color: "#94a3b8", bg: "rgba(0,0,0,0.85)" },
+          down: { text: "레벨 하락", emoji: "📉", color: "#ef4444", bg: "rgba(0,0,0,0.85)" },
+          reset: { text: "파괴!", emoji: "💥", color: "#dc2626", bg: "rgba(0,0,0,0.85)" },
         }[lastResult.result];
         return (
-          <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
+          <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none backdrop-blur-md">
             <div className="absolute inset-0" style={{ background: c.bg }} />
             {lastResult.result === "success" && Array.from({ length: 25 }).map((_, i) => (
               <div key={i} className="absolute text-2xl" style={{ left: `${Math.random() * 100}%`, top: "-5%", animation: `confetti ${1.5 + Math.random() * 1.5}s ease-out forwards`, animationDelay: `${Math.random() * .3}s` }}>
@@ -303,38 +330,61 @@ export function HRPage() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
-              {eligible.length === 0 ? (
+              {allWorkerGroups.length === 0 ? (
                 <div className="flex flex-col items-center mt-20 gap-5">
                   <span className="text-6xl opacity-15">🔒</span>
-                  <p className="text-white/30 font-bold text-sm text-center">강화 가능한 캐릭터가 없습니다</p>
-                  <p className="text-white/15 text-xs text-center leading-relaxed">같은 레벨 캐릭터 2개 이상 필요</p>
+                  <p className="text-white/30 font-bold text-sm text-center">보유 캐릭터가 없습니다</p>
+                  <p className="text-white/15 text-xs text-center leading-relaxed">미니게임에서 캐릭터를 획득하세요</p>
                 </div>
-              ) : eligible.map(({ item, total }) => {
+              ) : allWorkerGroups.map(({ item, total }) => {
                 const d = getWorkerDefByLevel(item.level ?? 1);
                 const itemLv = item.level ?? 1;
                 const sel = selected?.name === item.name && selected?.level === item.level;
                 const c = LEVEL_COLORS[itemLv] ?? "#6b7280";
+                const canUpgrade = total >= 2;
                 return (
-                  <button
+                  <div
                     key={`${item.name}_${itemLv}`}
-                    onClick={() => { setSelected(item); setPanelOpen(false); }}
-                    className="w-full flex items-center gap-4 p-4 rounded-xl cursor-pointer text-left transition-all"
-                    style={{
-                      background: sel ? `${c}15` : "rgba(255,255,255,.03)",
-                      border: `1px solid ${sel ? `${c}40` : "rgba(255,255,255,.05)"}`,
-                    }}
+                    className="relative"
                   >
-                    <div className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl" style={{ background: `${c}15`, border: `2px solid ${c}30` }}>
-                      {d.icon}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-black text-white/90 truncate">{d.displayName}</p>
-                      <p className="text-xs font-bold" style={{ color: `${c}99` }}>Lv.{itemLv} — {WORKER_LEVEL_NAMES[itemLv]}</p>
-                    </div>
-                    <div className="flex flex-col items-end">
-                      <span className="text-sm font-black text-emerald-400">x{total}</span>
-                    </div>
-                  </button>
+                    <button
+                      onClick={() => {
+                        if (!canUpgrade) return;
+                        setSelected(item);
+                        setPanelOpen(false);
+                      }}
+                      disabled={!canUpgrade}
+                      className={`w-full flex items-center gap-4 p-4 rounded-xl text-left transition-all ${canUpgrade ? "cursor-pointer" : "cursor-not-allowed"
+                        }`}
+                      style={{
+                        background: sel ? `${c}15` : "rgba(255,255,255,.03)",
+                        border: `1px solid ${sel ? `${c}40` : "rgba(255,255,255,.05)"}`,
+                      }}
+                    >
+                      <div className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl" style={{ background: `${c}15`, border: `2px solid ${c}30` }}>
+                        {d.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`font-black truncate ${canUpgrade ? "text-white/90" : "text-white/30"}`}>{d.displayName}</p>
+                        <p className="text-xs font-bold" style={{ color: canUpgrade ? `${c}99` : "rgba(255,255,255,0.15)" }}>Lv.{itemLv} — {WORKER_LEVEL_NAMES[itemLv]}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <span className={`text-sm font-black ${canUpgrade ? "text-emerald-400" : "text-white/25"}`}>x{total}</span>
+                        {!canUpgrade && (
+                          <span className="text-[10px] font-bold text-rose-400/70">2개 필요</span>
+                        )}
+                      </div>
+                    </button>
+
+                    {/* 2개 미만 마스킹 오버레이 */}
+                    {!canUpgrade && (
+                      <div className="absolute inset-0 rounded-xl pointer-events-none" style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(1px)" }}>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <span className="text-xs font-black text-white/40 bg-black/50 px-3 py-1 rounded-full">🔒 {2 - total}개 부족</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>

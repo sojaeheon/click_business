@@ -413,18 +413,19 @@ export const InventoryAPI = {
       console.warn("API 연동 실패! InventoryAPI.getInventory 목업 데이터 사용", err);
       await mockDelay();
       return {
+        // 🔑 Mock 데이터: 개발/백엔드 미연동 시 사용
+        // level은 반드시 w.level (실제 레벨) 사용. 1로 하드코딩하면 강화 뒤에도 이름이 틀림
+        // type은 반드시 `worker_lv{n}` 형식 — gameStore & 인벤토리 모달이 이 형식으로 레벨을 파악함
         data: isGuestMode() ? [
-          { id: "inv_default_1", type: "worker_수습_광부", itemName: "수습 광부", itemType: "EQUIPMENT", quantity: 1, level: 1, slotIndex: 1 }
-        ] : WORKER_DEFINITIONS.map((w, i) => ({
-          id: i + 1,
-          name: w.displayName,
-          level: 1,
-          locked: i >= 4,
-          quantity: i < 3 ? 2 : 1,
+          { id: "inv_default_1", type: "worker_lv1", name: "초보 일꾼", quantity: 2, level: 1, icon: "⛏️" }
+        ] : WORKER_DEFINITIONS.slice(0, 2).map((w) => ({
+          id: `inv_mock_lv${w.level}`,
+          name: w.displayName,       // "초보 일꾼", "견습 일꾼" 등 정확한 이름
+          level: w.level,            // ← 핵심! 1로 하드코딩 금지
+          quantity: 2,               // 강화 테스트용으로 모두 2개
           icon: w.icon,
           modelPath: w.modelPath,
-          workerType: (w as any).type,
-          type: `worker_${w.displayName?.replace(/ /g, "_")}` // required for gameStore mapping!
+          type: `worker_lv${w.level}` as const,  // ← "worker_lv1", "worker_lv2" 형식
         }))
       };
     }
