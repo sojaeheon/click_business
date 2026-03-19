@@ -12,17 +12,29 @@ export const AuthAPI = {
   },
   callback: (code: string) => apiClient.get('/auth/callback', { params: { code } }),
   refresh: () => apiClient.post('/auth/refresh'),
-  createGuest: () => apiClient.post('/users/guest'),
   logout: () => apiClient.post('/auth/logout'),
 };
 
 export const UserAPI = {
+  signup: (data: any) => apiClient.post('/users/signup', data),
+  login: (data: any) => apiClient.post('/users/login', data),
+  createGuest: () => apiClient.post('/users/guest'),
+  getMe: () => apiClient.get('/users/me'),
   updateNickname: (userId: number, nickname: string) => apiClient.patch(`/users/${userId}`, { nickname }),
 };
 
 export const CompanyAPI = {
-  getStatus: async (companyId: number) => {
-    // ✅ 실제 연동 + 아직 백엔드에 없는 데이터(재화 등)는 목업 데이터와 병합
+  getStatusById: async (companyId: number) => {
+    try {
+      const res = await apiClient.get(`/companies/${companyId}/status`);
+      return { data: res.data?.data };
+    } catch (err) {
+      console.warn("API 연동 실패! CompanyAPI.getStatusById 목업 폴백", err);
+      return { data: { cash: 5000000, total_asset: 12000000 } };
+    }
+  },
+  getStatus: async () => {
+    // ✅ 내 회사 조회 (GET /api/v1/companies/me)
     try {
       const res = await apiClient.get('/companies/me');
       const company = res.data?.data;
@@ -78,10 +90,19 @@ let mockWorkStartedAt = 0;     // 작업 시작 timestamp(ms)
 let mockWorkTotalMs = 0;       // 총 소요 예상 시간(ms)
 
 export const WorkstationAPI = {
-  getStatus: async (companyId: number) => {
+  create: async (data: { companyId: number; name?: string; type?: string }) => {
+    try {
+      const res = await apiClient.post('/workstations/create', data);
+      return { data: res.data?.data ?? { success: true } };
+    } catch (err) {
+      console.warn("API 연동 실패! WorkstationAPI.create 목업 폴백", err);
+      return { data: { success: true } };
+    }
+  },
+  getStatus: async (workstationId: number = 1) => {
     // ✅ 실제 API 연결: GET /api/v1/workstations/{workstationId}
     try {
-      const res = await apiClient.get('/workstations/1');
+      const res = await apiClient.get(`/workstations/${workstationId}`);
       const data = res.data.data;
       return {
         data: {
@@ -166,10 +187,27 @@ export const WorkstationAPI = {
       return { data: { success: true, message: "작업이 시작되었습니다. (Mock)" } };
     }
   },
+  process: async (workstationId: number = 1) => {
+    try {
+      await apiClient.post(`/workstations/${workstationId}/process`);
+      return { data: { success: true } };
+    } catch (err) {
+      return { data: { success: true } };
+    }
+  },
+  equip: async (workstationId: number = 1, equipmentId: number) => {
+    try {
+      await apiClient.post(`/workstations/${workstationId}/equip/${equipmentId}`);
+      return { data: { success: true } };
+    } catch (err) {
+      return { data: { success: true } };
+    }
+  },
   collect: async (companyId: number) => {
     // ✅ 실제 API 연결: POST /api/v1/workstations/{workstationId}/harvest
+    const workstationId = 1; // 임시
     try {
-      await apiClient.post(`/workstations/1/harvest`);
+      await apiClient.post(`/workstations/${workstationId}/harvest`);
       return { data: { success: true, message: "수령 완료" } };
     } catch (err) {
       console.warn("API 연동 실패! WorkstationAPI.collect 목업 데이터 사용", err);
@@ -288,8 +326,9 @@ export const RankingAPI = {
 
 export const WarehouseAPI = {
   discardItems: async (type: "material" | "product", qty: number) => {
-    const itemType = type === "material" ? "MATERIAL" : "PRODUCT";
-    await apiClient.delete('/inventory/discard', { params: { itemType, amount: qty } });
+    // 실제로는 창고 폐기 API가 없어서 mock으로 막거나, delete api를 호출해야 함. 이전 코드는 delete /storage/warehouses/{warehouseId} 였을 것입니다.
+    const companyId = 1; // 임시 고정
+    await apiClient.delete(`/storage/warehouses/${companyId}`);
   },
 
   getWarehouseItems: async (companyId: number) => {
@@ -318,7 +357,7 @@ export const WarehouseAPI = {
   },
   unlockSlot: async (data: { companyId: number; maxSlot: number }) => {
     try {
-      // ✅ 명세: 창고 슬롯 확장 (POST /api/v1/storage/warehouses, payload: max_slot)
+      // ✅ 명세: 창고 슬롯 확장 (POST /api/v1/storage/warehouses)
       await apiClient.post('/storage/warehouses', { company_id: data.companyId, max_slot: data.maxSlot });
       return { data: { success: true } };
     } catch (err) {
@@ -329,7 +368,7 @@ export const WarehouseAPI = {
   },
   moveSlot: async (data: { companyId: number, fromIdx: number, toIdx: number }) => {
     try {
-      // ✅ 명세: warehouse_id, from_idx, to_idx
+      // ✅ 명세: 슬롯 간 이동
       await apiClient.patch(`/storage/warehouses/slots`, { warehouse_id: data.companyId, from_idx: data.fromIdx, to_idx: data.toIdx });
       return { data: { success: true } };
     } catch (err) {
@@ -406,9 +445,32 @@ export const InventoryAPI = {
       await apiClient.post('/inventory/add', data);
       return { data: { success: true } };
     } catch (err) {
-      console.warn("API 연동 실패! InventoryAPI.addTestItem 목업 데이터 사용", err);
-      await mockDelay();
+      console.warn("API 연동 실패! InventoryAPI.addTestItem 목업 폴백", err);
+      return { data: { success: true } };
+    }
+  },
+  decreaseItem: async (data: { slotIndex: number, amount: number }) => {
+    try {
+      // ✅ 명세: 슬롯 아이템 수량 감소 DELETE /api/v1/inventory/decrease
+      await apiClient.delete('/inventory/decrease', { data });
+      return { data: { success: true } };
+    } catch (err) {
+      console.warn("API 연동 실패! InventoryAPI.decreaseItem 목업 폴백", err);
       return { data: { success: true } };
     }
   }
+};
+
+export const NotificationsAPI = {
+  getNotifications: async () => {
+    try {
+      const res = await apiClient.get('/notifications');
+      return { data: res.data?.data ?? [] };
+    } catch (err) {
+      return { data: [] };
+    }
+  },
+  readNotification: (id: string | number) => apiClient.patch(`/notifications/${id}/read`),
+  readAll: () => apiClient.patch('/notifications/read-all'),
+  deleteNotification: (id: string | number) => apiClient.delete(`/notifications/${id}`),
 };

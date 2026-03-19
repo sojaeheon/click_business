@@ -374,7 +374,7 @@ export const useGameStore = create<GameState>()(
         try {
           // 백엔드 API 종합 호출 (fallback 포함)
           const [companyRes, warehouseRes, inventoryRes, bankRes] = await Promise.all([
-            CompanyAPI.getStatus(companyId),
+            CompanyAPI.getStatus(),
             WarehouseAPI.getWarehouseItems(companyId),
             InventoryAPI.getInventory(companyId),
             BankAPI.getSummary(companyId)
