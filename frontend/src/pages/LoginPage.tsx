@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useAlertStore } from "../store/useAlertStore";
@@ -9,14 +9,17 @@ import { AuthAPI as authApi } from '../api/gameApi';
 
 export const LoginPage = () => {
   const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleLogin = () => {
+    setIsLoading(true);
     // 💡 백엔드 연동: 구글 OAuth2 로그인 요청
     localStorage.removeItem('isGuest');
     window.location.href = authApi.getLoginUrl();
   };
 
 const handleGuestMode = async () => {
+    setIsLoading(true);
     try {
       const { data } = await authApi.createGuest();
       // 기존 잔여 게임 데이터가 존재할 수 있으므로 삭제 (state 초기화 용도)
@@ -29,6 +32,7 @@ const handleGuestMode = async () => {
     } catch (error) {
       console.error("게스트 로그인 실패:", error);
       useAlertStore.getState().openAlert("서버와 연결할 수 없습니다. 백엔드(8000번 포트)가 켜져 있는지 확인해 주세요.", "서버 오류");
+      setIsLoading(false);
     }
 };
 
@@ -89,6 +93,17 @@ const handleGuestMode = async () => {
         </div>
       </div>
       
+      {/* ───────────────────────────────────────────────────────── */}
+      {/* 3. 전체 화면 로딩 오버레이 */}
+      {/* ───────────────────────────────────────────────────────── */}
+      {isLoading && (
+        <div className="absolute inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center flex-col animate-fade-in">
+          <div className="w-16 h-16 border-4 border-blue-400 border-t-white rounded-full animate-spin shadow-[0_0_15px_#60a5fa] mb-6"></div>
+          <h2 className="text-white text-2xl font-bold tracking-widest animate-pulse drop-shadow-md">
+            서버와 연결 중입니다...
+          </h2>
+        </div>
+      )}
     </div>
   );
 };
