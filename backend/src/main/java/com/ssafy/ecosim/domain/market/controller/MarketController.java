@@ -2,6 +2,7 @@ package com.ssafy.ecosim.domain.market.controller;
 
 import com.ssafy.ecosim.domain.company.entity.Company;
 import com.ssafy.ecosim.domain.company.repository.CompanyRepository;
+import com.ssafy.ecosim.domain.market.dto.response.OrderBookEntryDto;
 import com.ssafy.ecosim.domain.market.dto.response.OrderBookResponseDto;
 import com.ssafy.ecosim.domain.market.dto.response.TradeHistoryDto;
 import com.ssafy.ecosim.domain.market.service.OrderBookService;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Tag(name = "마켓", description = "실시간 호가창 조회, 체결 내역 조회")
