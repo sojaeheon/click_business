@@ -55,4 +55,5 @@ services:
 networks:
   ecosim-network:
     name: ecosim-network
+    external: true
 
