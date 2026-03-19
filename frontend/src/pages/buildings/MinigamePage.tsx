@@ -119,10 +119,11 @@ export function MinigamePage() {
     if (isProcessing) return;
     const { money, inventoryItems, inventoryMax } = useGameStore.getState();
 
-    // 인벤토리 가득 찼으면 게임 결제 차단
-    if (inventoryItems.length >= inventoryMax) {
+    // 인벤토리 가득 찼으면 게임 결제 차단 (워커 슬롯 기준, 티켓 제외)
+    const workerCount = inventoryItems.filter(i => i.type?.startsWith("worker_")).length;
+    if (workerCount >= inventoryMax) {
       useAlertStore.getState().openAlert(
-        `인벤토리가 가득 찼습니다. (${inventoryItems.length}/${inventoryMax})\n아이템을 버리거나 인벤토리를 확장한 후 이용하세요.`,
+        `인벤토리가 가득 찼습니다. (${workerCount}/${inventoryMax})\n아이템을 버리거나 인벤토리를 확장한 후 이용하세요.`,
         "게임 참여 불가"
       );
       return;
