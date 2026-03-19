@@ -160,6 +160,7 @@ public class MarketMatchingService {
                         NotificationType.TRADE
                 ));
             });
+        }
         
     }
 

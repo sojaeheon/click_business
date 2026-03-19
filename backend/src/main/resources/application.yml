@@ -23,9 +23,9 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-  autoconfigure:
-    exclude: org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:29092}
+  # autoconfigure:
+  #   exclude: org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
   security:
     oauth2:
       client:

@@ -28,7 +28,7 @@ public class KafkaProducerConfig {
     /**
      * Kafka bootstrap server 주소.
      */
-    @Value("${spring.kafka.bootstrap-servers:localhost:29092}")
+    @Value("${spring.kafka.bootstrap-servers:kafka:29092}")
     private String bootstrapServers;
 
     /**
@@ -37,24 +37,25 @@ public class KafkaProducerConfig {
      * Instant / LocalDateTime 등 Java Time 타입을
      * 숫자 timestamp가 아닌 ISO-8601 문자열로 직렬화하도록 설정한다.
      */
-    @Bean
-    public ObjectMapper kafkaObjectMapper() {
-        ObjectMapper objectMapper = new ObjectMapper();
+    // @Bean
+    // public ObjectMapper kafkaObjectMapper() {
+    //     ObjectMapper objectMapper = new ObjectMapper();
 
-        // Java Time(Instant, LocalDateTime 등) 지원
-        objectMapper.registerModule(new JavaTimeModule());
+    //     // Java Time(Instant, LocalDateTime 등) 지원
+    //     objectMapper.registerModule(new JavaTimeModule());
 
-        // 날짜/시간을 숫자(timestamp) 대신 문자열(ISO-8601)로 직렬화
-        objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+    //     // 날짜/시간을 숫자(timestamp) 대신 문자열(ISO-8601)로 직렬화
+    //     objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
-        return objectMapper;
-    }
+    //     return objectMapper;
+    // }
 
     /**
      * Kafka ProducerFactory Bean 등록.
      */
     @Bean
-    public ProducerFactory<String, Object> producerFactory(ObjectMapper kafkaObjectMapper) {
+    // public ProducerFactory<String, Object> producerFactory(ObjectMapper kafkaObjectMapper) {
+    public ProducerFactory<String, Object> producerFactory() {    
         Map<String, Object> config = new HashMap<>();
 
         // Kafka broker 주소
@@ -79,21 +80,31 @@ public class KafkaProducerConfig {
         // 짧은 batch 대기
         config.put(ProducerConfig.LINGER_MS_CONFIG, 1);
 
-        // JsonSerializer에 우리가 만든 ObjectMapper 사용
-        JsonSerializer<Object> jsonSerializer = new JsonSerializer<>(kafkaObjectMapper);
+        // 🔥 중요: 타입 헤더 제거 (Consumer 호환성)
+        config.put(JsonSerializer.ADD_TYPE_INFO_HEADERS, false);
 
-        return new DefaultKafkaProducerFactory<>(
-                config,
-                new StringSerializer(),
-                jsonSerializer
-        );
+        return new DefaultKafkaProducerFactory<>(config);
+
+        // // JsonSerializer에 우리가 만든 ObjectMapper 사용
+        // JsonSerializer<Object> jsonSerializer = new JsonSerializer<>(kafkaObjectMapper);
+
+        // return new DefaultKafkaProducerFactory<>(
+        //         config,
+        //         new StringSerializer(),
+        //         jsonSerializer
+        // );
     }
 
     /**
      * KafkaTemplate Bean 등록.
      */
+    // @Bean
+    // public KafkaTemplate<String, Object> kafkaTemplate(ProducerFactory<String, Object> producerFactory) {
+    //     return new KafkaTemplate<>(producerFactory);
+    // }
     @Bean
-    public KafkaTemplate<String, Object> kafkaTemplate(ProducerFactory<String, Object> producerFactory) {
+    public KafkaTemplate<String, Object> kafkaTemplate(
+            ProducerFactory<String, Object> producerFactory) {
         return new KafkaTemplate<>(producerFactory);
-    }
+    }   
 }
