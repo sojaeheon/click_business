@@ -204,8 +204,10 @@ export const MarketAPI = {
       totalQuantity: data.qty
     });
   },
-  cancelOrder: (orderId: number, companyId: number) => apiClient.delete('/market/orders/' + orderId, { params: { companyId } }),
+  cancelOrder: (orderId: number) => apiClient.delete('/market/orders/' + orderId),
   getMarketChart: (itemId: number, range: '1D' | '1W' | '1M' = '1D') => apiClient.get('/market/charts', { params: { itemId, range } }),
+  getTrades: (itemId: number) => apiClient.get('/market/trades', { params: { item_id: itemId } }),
+  collectTrade: (tradeHistoryId: number) => apiClient.post('/market/orders/' + tradeHistoryId),
 };
 
 export const BankAPI = {
