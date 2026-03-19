@@ -147,3 +147,14 @@ export interface OrderBook {
     item_name: string;
     entries: OrderBookEntry[];
 }
+
+// ==================== Notifications ====================
+export type NotificationType = 'TRADE' | 'PRODUCTION' | 'SYSTEM';
+
+export interface NotificationResponse {
+    id: number;
+    message: string;
+    type: NotificationType;
+    isRead: boolean;
+    createdAt: string;
+}

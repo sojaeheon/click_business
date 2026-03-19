@@ -461,16 +461,25 @@ export const InventoryAPI = {
   }
 };
 
-export const NotificationsAPI = {
-  getNotifications: async () => {
+// ==================== Notifications ====================
+export const NotificationAPI = {
+  /** 과거 알림 목록 조회 */
+  getAll: async (): Promise<import('./types').NotificationResponse[]> => {
     try {
       const res = await apiClient.get('/notifications');
-      return { data: res.data?.data ?? [] };
+      return res.data?.data ?? [];
     } catch (err) {
-      return { data: [] };
+      console.warn('NotificationAPI.getAll 실패, 빈 배열 반환', err);
+      return [];
     }
   },
-  readNotification: (id: string | number) => apiClient.patch(`/notifications/${id}/read`),
-  readAll: () => apiClient.patch('/notifications/read-all'),
-  deleteNotification: (id: string | number) => apiClient.delete(`/notifications/${id}`),
+
+  /** 특정 알림 읽음 처리 */
+  markRead: async (id: number): Promise<void> => {
+    try {
+      await apiClient.patch(`/notifications/${id}/read`);
+    } catch (err) {
+      console.warn('NotificationAPI.markRead 실패', err);
+    }
+  },
 };
