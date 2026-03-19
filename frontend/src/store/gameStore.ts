@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 // 🚨 gameApi.ts에 정의된 정확한 이름인 대문자 CompanyAPI로 가져옵니다.
 import { CompanyAPI, WarehouseAPI, InventoryAPI, BankAPI } from "../api/gameApi";
+import { WORKER_DEFINITIONS, getWorkerDefByLevel } from "../constants/workers";
 
 // ─────────────────────────────────────────────────────────────────────────
 // 1. 타입 정의 (Types)
@@ -49,14 +50,14 @@ export interface InventoryItem {
 type RewardEntry = { item: Omit<InventoryItem, "id">; weight: number };
 
 export const REWARD_WEIGHT_POOL: RewardEntry[] = [
-  { item: { type: "worker_lv1", name: "초보 일꾼",   icon: "⛏️", quantity: 1, level: 1 }, weight: 59.5 },
+  { item: { type: "worker_lv1", name: "초보 일꾼", icon: "⛏️", quantity: 1, level: 1 }, weight: 59.5 },
   { item: { type: "ticket_inventory", name: "인벤토리 확장권", icon: "🎒", quantity: 1 }, weight: 10.5 },
-  { item: { type: "ticket_warehouse", name: "창고 확장권",    icon: "📦", quantity: 1 }, weight: 10.5 },
-  { item: { type: "worker_lv2", name: "견습 일꾼",   icon: "🔥", quantity: 1, level: 2 }, weight: 10.0 },
-  { item: { type: "worker_lv3", name: "숙련 일꾼",   icon: "🔨", quantity: 1, level: 3 }, weight:  5.0 },
-  { item: { type: "worker_lv4", name: "마스터 일꾼", icon: "🏹", quantity: 1, level: 4 }, weight:  3.0 },
-  { item: { type: "worker_lv5", name: "에픽 일꾼",   icon: "🗡️", quantity: 1, level: 5 }, weight:  1.0 },
-  { item: { type: "worker_lv6", name: "레전드 일꾼", icon: "👑", quantity: 1, level: 6 }, weight:  0.5 },
+  { item: { type: "ticket_warehouse", name: "창고 확장권", icon: "📦", quantity: 1 }, weight: 10.5 },
+  { item: { type: "worker_lv2", name: "견습 일꾼", icon: "🔥", quantity: 1, level: 2 }, weight: 10.0 },
+  { item: { type: "worker_lv3", name: "숙련 일꾼", icon: "🔨", quantity: 1, level: 3 }, weight: 5.0 },
+  { item: { type: "worker_lv4", name: "마스터 일꾼", icon: "🏹", quantity: 1, level: 4 }, weight: 3.0 },
+  { item: { type: "worker_lv5", name: "에픽 일꾼", icon: "🗡️", quantity: 1, level: 5 }, weight: 1.0 },
+  { item: { type: "worker_lv6", name: "레전드 일꾼", icon: "👑", quantity: 1, level: 6 }, weight: 0.5 },
 ];
 
 /**
@@ -120,8 +121,8 @@ export interface GameState {
     startTime: number;
     totalMs: number;
     requestedQty: number;
-    storedCount: number; // 미수령 상태로 남아있는 양
-    producedCount: number; // 금번 작업에서 총 생산된 양 (UI 애니메이션 타겟)
+    storedCount: number;
+    producedCount: number;
   };
   setWorkstationState: (updater: Partial<GameState["workstationState"]>) => void;
 
@@ -143,6 +144,8 @@ export interface GameState {
   // 인베토리 아이템 관리
   addInventoryItem: (item: Omit<InventoryItem, 'id'>) => void;
   removeInventoryItem: (id: string) => void;
+  // ★ 강화 결과 반영 (같은 레벨 2개 소모 → 결과 레벨 1개 생성)
+  upgradeWorkerLevel: (workerName: string, oldLevel: number, newLevel: number) => void;
   // 확장권 사용
   useWarehouseTicket: () => boolean;    // 성공 시 true
   useInventoryTicket: () => boolean;
@@ -179,13 +182,13 @@ export const useGameStore = create<GameState>()(
       warehouseItems: [],
       hrData: { currentLevel: 1, expectedLevel: 2, successRate: 70, materialCurrent: 1, materialMax: 2 },
       isLoading: false,
-      // 인벤토리 아이템 (기본 캐릭터 지급 1개)
+      // 인벤토리 아이템 (기본 캐릭터 lv1 일꾼 1개 지급)
       inventoryItems: [
         { id: "inv_default_1", type: "worker_lv1", name: "초보 일꾼", icon: "⛏️", quantity: 1, level: 1 },
       ],
       warehouseExpandTickets: 0,
       inventoryExpandTickets: 0,
-      
+
       equippedWorkerId: "inv_default_1",
       hasNewWorker: false,
       setEquippedWorkerId: (id) => set({ equippedWorkerId: id }),
@@ -229,40 +232,93 @@ export const useGameStore = create<GameState>()(
 
       setCompanyInfo: (name, industry) => set({ companyName: name, industry }),
 
-      // 인벤토리 아이템 추가 (확장권일 경우 별도 수치 증가, 캐릭터일 경우 인벤토리 배열에 추가)
+      // 인벤토리 아이템 추가
+      // ✅ 확장권(ticket_*)도 아이템으로 슬롯에 들어감 — 별도 숫자 카운터로 빼지 않음
       addInventoryItem: (item) => set(state => {
-        if (item.type === "ticket_warehouse") {
-          return { warehouseExpandTickets: state.warehouseExpandTickets + item.quantity };
-        }
-        if (item.type === "ticket_inventory") {
-          return { inventoryExpandTickets: state.inventoryExpandTickets + item.quantity };
-        }
+        const newItem = { ...item, id: "inv_" + Date.now() + "_" + Math.random().toString(36).slice(2) };
+        const newItems = [...state.inventoryItems, newItem];
+        // 확장권 카운터는 inventoryItems에서 파생 계산
+        const wTickets = newItems.filter(i => i.type === "ticket_warehouse").reduce((a, i) => a + (i.quantity || 1), 0);
+        const iTickets = newItems.filter(i => i.type === "ticket_inventory").reduce((a, i) => a + (i.quantity || 1), 0);
         return {
-          inventoryItems: [...state.inventoryItems, { ...item, id: "inv_" + Date.now() + "_" + Math.random().toString(36).slice(2) }],
-          hasNewWorker: true,
+          inventoryItems: newItems,
+          warehouseExpandTickets: wTickets,
+          inventoryExpandTickets: iTickets,
+          hasNewWorker: item.type?.startsWith("worker_") ? true : state.hasNewWorker,
         };
       }),
       removeInventoryItem: (id) => set(state => ({
         inventoryItems: state.inventoryItems.filter(i => i.id !== id)
       })),
 
+      // ★ 강화 결과 반영: 같은 이름+레벨 캐릭터 2개 소모 → 결과 레벨 캐릭터 1개 생성
+      //   newLevel=0이면 파괴 (소모만 하고 생성 안 함)
+      upgradeWorkerLevel: (workerName, oldLevel, newLevel) => set(state => {
+        let items = [...state.inventoryItems];
+
+        // 1) 같은 일꾼 2개 소모 (stay 시에도 어차피 2개 소모하고 1개를 돌려주는 방식)
+        let consumed = 0;
+        items = items.map(item => {
+          if (consumed >= 2) return item;
+          // 이름 혹은 원래는 레벨과 일치하는 녀석 찾기
+          if (item.name === workerName && (item.level || 1) === oldLevel) {
+            const qty = item.quantity || 1;
+            const take = Math.min(qty, 2 - consumed);
+            consumed += take;
+            return { ...item, quantity: qty - take };
+          }
+          return item;
+        }).filter(i => (i.quantity || 0) > 0);
+
+        // 2) 결과 캐릭터 생성 (newLevel > 0일 때만, stay면 oldLevel과 같음)
+        if (newLevel > 0) {
+          const newDef = getWorkerDefByLevel(newLevel);
+          items.push({
+            id: "inv_" + Date.now() + "_" + Math.random().toString(36).slice(2),
+            type: `worker_lv${newLevel}` as InventoryItemType,
+            name: newDef.displayName, // "초보 일꾼" -> "견습 일꾼" 등 올바른 이름으로 덮어씀
+            icon: newDef.icon,
+            quantity: 1,
+            level: newLevel,
+          });
+        }
+
+        return { inventoryItems: items };
+      }),
+
       // 확장권 사용 — 삼엔드 스토어 수치 + 확장권 상담
       useWarehouseTicket: () => {
         const s = get();
-        if (s.warehouseExpandTickets <= 0) return false;
-        set(state => ({
-          warehouseExpandTickets: state.warehouseExpandTickets - 1,
-          warehouseMaxSlots: state.warehouseMaxSlots + 1,
-        }));
+        const ticketItem = s.inventoryItems.find(i => i.type === "ticket_warehouse" && (i.quantity || 1) > 0);
+        if (!ticketItem) return false;
+        set(state => {
+          const newItems = state.inventoryItems.map(i => {
+            if (i.id !== ticketItem.id) return i;
+            return { ...i, quantity: (i.quantity || 1) - 1 };
+          }).filter(i => (i.quantity ?? 1) > 0);
+          return {
+            inventoryItems: newItems,
+            warehouseExpandTickets: newItems.filter(i => i.type === "ticket_warehouse").reduce((a, i) => a + (i.quantity || 1), 0),
+            warehouseMaxSlots: state.warehouseMaxSlots + 1,
+          };
+        });
         return true;
       },
       useInventoryTicket: () => {
         const s = get();
-        if (s.inventoryExpandTickets <= 0) return false;
-        set(state => ({
-          inventoryExpandTickets: state.inventoryExpandTickets - 1,
-          inventoryMax: state.inventoryMax + 1,
-        }));
+        const ticketItem = s.inventoryItems.find(i => i.type === "ticket_inventory" && (i.quantity || 1) > 0);
+        if (!ticketItem) return false;
+        set(state => {
+          const newItems = state.inventoryItems.map(i => {
+            if (i.id !== ticketItem.id) return i;
+            return { ...i, quantity: (i.quantity || 1) - 1 };
+          }).filter(i => (i.quantity ?? 1) > 0);
+          return {
+            inventoryItems: newItems,
+            inventoryExpandTickets: newItems.filter(i => i.type === "ticket_inventory").reduce((a, i) => a + (i.quantity || 1), 0),
+            inventoryMax: state.inventoryMax + 1,
+          };
+        });
         return true;
       },
 
@@ -374,34 +430,25 @@ export const useGameStore = create<GameState>()(
         try {
           // 백엔드 API 종합 호출 (fallback 포함)
           const [companyRes, warehouseRes, inventoryRes, bankRes] = await Promise.all([
-            CompanyAPI.getStatus(companyId),
+            CompanyAPI.getStatus(),
             WarehouseAPI.getWarehouseItems(companyId),
             InventoryAPI.getInventory(companyId),
             BankAPI.getSummary(companyId)
           ]);
 
           const realData = companyRes.data;
-          
-          let wTickets = 0;
-          let iTickets = 0;
-          const workers: InventoryItem[] = [];
 
-          inventoryRes.data.forEach((item: any) => {
-            if (item.type === "ticket_warehouse" || item.id === "ticket_warehouse_expand") {
-              wTickets += item.quantity || 1;
-            } else if (item.type === "ticket_inventory" || item.id === "ticket_inventory_expand") {
-              iTickets += item.quantity || 1;
-            } else {
-              workers.push(item);
-            }
-          });
+          // 모든 아이템(티켓 / 일꾼 구분 없이)을 inventoryItems에 그대로 저장
+          // 관련 UI(InventoryModal)에서 type.startsWith("ticket_")로 구분한다
+          const allItems: InventoryItem[] = inventoryRes.data.map((item: any) => item);
 
-          // 기본 캐릭터 (수습 광부) 지급 보장 (비어있을 경우)
-          if (workers.length === 0) {
-            workers.push({
+          // 기본 캐릭터 보장 (인벤토리가 완전히 비어있는 후)
+          const hasWorker = allItems.some(i => i.type?.startsWith("worker_"));
+          if (!hasWorker) {
+            allItems.push({
               id: "inv_default_1",
               type: "worker_lv1",
-              name: "초보 일꾼",
+              name: "입재 일꾼",
               icon: "⛏️",
               quantity: 1,
               level: 1,
@@ -425,9 +472,10 @@ export const useGameStore = create<GameState>()(
             warehouseMaxSlots: realData?.slots?.warehouse_slots ?? (get().warehouseMaxSlots === 10 ? 6 : get().warehouseMaxSlots),
             inventoryMax: realData?.slots?.inventory_slots ?? (get().inventoryMax === 50 ? 4 : get().inventoryMax),
             warehouseItems: fixedWarehouseItems,
-            inventoryItems: workers,
-            warehouseExpandTickets: wTickets,
-            inventoryExpandTickets: iTickets,
+            inventoryItems: allItems,
+            // 티켓은 inventoryItems 안에 아이템으로 저장됨. 개수 정보는 UI에서 type로 필터링
+            warehouseExpandTickets: allItems.filter(i => i.type === 'ticket_warehouse').reduce((a, i) => a + (i.quantity || 1), 0),
+            inventoryExpandTickets: allItems.filter(i => i.type === 'ticket_inventory').reduce((a, i) => a + (i.quantity || 1), 0),
             bankData: {
               ...get().bankData,
               loanRate: bankRes.data.loanRate,
@@ -444,7 +492,7 @@ export const useGameStore = create<GameState>()(
         }
       }
     }),
-    { 
+    {
       name: "game-storage",
       partialize: (state) => ({
         companyName: state.companyName,
