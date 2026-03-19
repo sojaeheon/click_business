@@ -2,6 +2,7 @@ package com.ssafy.ecosim.domain.market.controller;
 
 import com.ssafy.ecosim.domain.company.entity.Company;
 import com.ssafy.ecosim.domain.company.repository.CompanyRepository;
+import com.ssafy.ecosim.domain.market.dto.response.OrderBookEntryDto;
 import com.ssafy.ecosim.domain.market.dto.response.OrderBookResponseDto;
 import com.ssafy.ecosim.domain.market.dto.response.TradeHistoryDto;
 import com.ssafy.ecosim.domain.market.service.OrderBookService;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @RestController
@@ -27,10 +29,6 @@ public class MarketController {
 
     /**
      * 실시간 호가창 조회
-     * GET /api/v1/market/orderbooks?item_id={itemId}
-     * - 현재가(시장가): Redis market:ticker:{itemId}:price
-     * - 매수 호가: 높은 가격 순 (최대 10 레벨)
-     * - 매도 호가: 낮은 가격 순 (최대 10 레벨)
      */
     @GetMapping("/orderbooks")
     public ResponseEntity<ApiResponse<OrderBookResponseDto>> getOrderBook(
