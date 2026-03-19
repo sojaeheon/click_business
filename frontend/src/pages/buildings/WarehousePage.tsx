@@ -177,8 +177,8 @@ export function WarehousePage() {
   const updateMaterial = useGameStore(s => s.updateMaterial);
   const updateProduct = useGameStore(s => s.updateProduct);
 
-  const totalMaterial = warehouseItems.find(i => i.type === "material")?.quantity || 0;
-  const totalProduct = warehouseItems.find(i => i.type === "product")?.quantity || 0;
+  const totalMaterial = warehouseItems.filter(i => i.type === "material").reduce((sum, i) => sum + i.quantity, 0);
+  const totalProduct = warehouseItems.filter(i => i.type === "product").reduce((sum, i) => sum + i.quantity, 0);
 
   const [slots, setSlots] = useState<SlotData[]>([]);
   const [showDiscard, setShowDiscard] = useState(false);
