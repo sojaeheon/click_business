@@ -3,6 +3,8 @@ import { IsometricScene } from "./components/game/IsometricScene";
 import { GameHUD } from "./components/game/GameHUD";
 import { ModalContainer } from "./components/modals/ModalContainer";
 import { ControlGuideModal } from "./components/modals/ControlGuideModal";
+import { Toaster } from 'sonner';
+import { useNotificationSocket } from "../hooks/useNotificationSocket";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
 // 건물 페이지들 (Lazy Loading 적용)
@@ -19,6 +21,9 @@ export default function App() {
   const activeBuildingPage = useGameStore(state => state.activeBuildingPage);
   const activeModal = useGameStore(state => state.activeModal);
   const fetchCompanyData = useGameStore(state => state.fetchCompanyData);
+
+  // ── 실시간 알림 WebSocket 연결 ──────────────────────────────
+  useNotificationSocket();
 
   const [isInitialLoad, setIsInitialLoad] = useState(true);
 
@@ -151,6 +156,9 @@ export default function App() {
         forceOpen={showGuide || autoGuide}
         onForceClose={() => { setShowGuide(false); setAutoGuide(false); }}
       />
+
+      {/* 실시간 알림 토스트 컨테이너 */}
+      <Toaster position="bottom-right" richColors closeButton />
     </div>
   );
 }
