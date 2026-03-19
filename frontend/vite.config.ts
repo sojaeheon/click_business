@@ -18,10 +18,12 @@ export default defineConfig({
   assetsInclude: ['**/*.svg', '**/*.csv'],
   server: {
     proxy: {
-      '/api': {
-        target: process.env.VITE_API_TARGET_URL || 'http://localhost:8000',
+      '/api/v1': {
+        target: 'http://localhost:8000',
         changeOrigin: true,
+        secure: false,
       }
     }
   }
 })
+

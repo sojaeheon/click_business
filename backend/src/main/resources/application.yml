@@ -41,12 +41,16 @@ jwt:
   secret: ${JWT_SECRET:vmsrehkbuckettestbacktokenKeyforEcoSimulationProject2026SSAFY}
   expiration-time: 2592000000 # 30일 (테스트 편의를 위해 연장)
 
-# 창고 도메인 설정
+# 창고 설정 (MATERIAL/PRODUCT)
 warehouse:
-  initial-slot-count: 20
+  initial-slot-count: 6
   expand-slot-amount: 5
   max-stack-size: 100
-  max-expandable-limit: 100 # 창고가 무제한으로 확장되는 것을 방지하기 위한 최대 슬롯 수 정의
+  max-expandable-limit: 100
+
+# 인벤토리 설정 (EQUIPMENT/TICKET)
+inventory:
+  initial-slot-count: 4
 
 # API 요청 로그 출력 설정
 logging:
@@ -63,3 +67,8 @@ management:
     web:
       exposure:
         include: health
+
+springdoc:
+  swagger-ui:
+    config-url: /api/v3/api-docs/swagger-config
+    url: /api/v3/api-docs
