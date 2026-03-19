@@ -73,23 +73,23 @@ create table if not exists industry_item_relation (
   constraint fk_iir_item foreign key (item_id) references item(item_id)
 );
 
--- ===== inventory =====
-create table if not exists company_inventory (
-  inventory_id bigserial primary key,
+-- ===== warehouse =====
+create table if not exists warehouse (
+  warehouse_id bigserial primary key,
   company_id bigint not null unique,
   max_slot int not null,
-  constraint fk_company_inventory_company foreign key (company_id) references company(company_id)
+  constraint fk_warehouse_company foreign key (company_id) references company(company_id)
 );
 
-create table if not exists inventory_slot (
+create table if not exists warehouse_slot (
   slot_id bigserial primary key,
-  inventory_id bigint not null,
+  warehouse_id bigint not null,
   slot_index int not null,
   item_id bigint,
   quantity bigint not null default 0,
-  constraint fk_inventory_slot_inventory foreign key (inventory_id) references company_inventory(inventory_id),
-  constraint fk_inventory_slot_item foreign key (item_id) references item(item_id),
-  constraint uq_inventory_slot unique (inventory_id, slot_index)
+  constraint fk_warehouse_slot_warehouse foreign key (warehouse_id) references warehouse(warehouse_id),
+  constraint fk_warehouse_slot_item foreign key (item_id) references item(item_id),
+  constraint uq_warehouse_slot unique (warehouse_id, slot_index)
 );
 
 create table if not exists equipment_inventory (
