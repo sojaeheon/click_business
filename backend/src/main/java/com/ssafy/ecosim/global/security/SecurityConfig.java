@@ -54,7 +54,10 @@ public class SecurityConfig {
                                                                 "/api/v1/users/guest",
                                                                 "/error",
                                                                 "/actuator/**",
-                                                                "/ws-ecosim/**"
+                                                                "/ws-ecosim/**",
+                                                                "/swagger-ui/**",
+                                                                "/v3/api-docs/**",
+                                                                "/swagger-ui.html"
                                                                 )
                                                 .permitAll()
                                                 .anyRequest().authenticated())
