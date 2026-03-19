@@ -272,15 +272,20 @@ export const RankingAPI = {
 };
 
 export const WarehouseAPI = {
+  discardItems: async (type: "material" | "product", qty: number) => {
+    const itemType = type === "material" ? "MATERIAL" : "PRODUCT";
+    await apiClient.delete('/inventory/discard', { params: { itemType, amount: qty } });
+  },
+
   getWarehouseItems: async (companyId: number) => {
     try {
       const res = await apiClient.get('/inventory');
       return {
         data: res.data.data
-          .filter((slot: any) => slot.itemId != null)
+          .filter((slot: any) => slot.itemId != null && (slot.itemType === "MATERIAL" || slot.itemType === "PRODUCT"))
           .map((slot: any) => ({
             id: `w_${slot.itemId || slot.slotIndex}`,
-            type: slot.itemName?.includes("광석") || slot.itemName === "광산 드릴" || slot.itemName === "금괴" ? "material" : "product", // 이름 추론 로직 (임시)
+            type: slot.itemType === "MATERIAL" ? "material" : "product",
             quantity: slot.quantity,
             name: slot.itemName,
           }))
