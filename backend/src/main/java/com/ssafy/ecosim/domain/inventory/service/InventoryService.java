@@ -2,9 +2,9 @@ package com.ssafy.ecosim.domain.inventory.service;
 
 import com.ssafy.ecosim.domain.company.entity.Company;
 import com.ssafy.ecosim.domain.inventory.dto.response.InventorySlotResponse;
-import com.ssafy.ecosim.domain.inventory.entity.CompanyInventory;
+import com.ssafy.ecosim.domain.inventory.entity.Inventory;
 import com.ssafy.ecosim.domain.inventory.entity.InventorySlot;
-import com.ssafy.ecosim.domain.inventory.repository.CompanyInventoryRepository;
+import com.ssafy.ecosim.domain.inventory.repository.InventoryRepository;
 import com.ssafy.ecosim.domain.inventory.repository.InventorySlotRepository;
 import com.ssafy.ecosim.domain.item.entity.Item;
 import com.ssafy.ecosim.domain.item.entity.ItemType;
@@ -22,45 +22,37 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class InventoryService {
 
-    private final CompanyInventoryRepository companyInventoryRepository;
+    private final InventoryRepository inventoryRepository;
     private final InventorySlotRepository inventorySlotRepository;
     private final ItemRepository itemRepository;
 
-    @Value("${warehouse.initial-slot-count:20}")
+    @Value("${inventory.initial-slot-count:10}")
     private int initialSlotCount;
 
-    @Value("${warehouse.expand-slot-amount:5}")
-    private int expandSlotAmount;
-
-    @Value("${warehouse.max-expandable-limit:100}")
-    private int maxExpandableLimit;
-
-    public InventoryService(CompanyInventoryRepository companyInventoryRepository,
+    public InventoryService(InventoryRepository inventoryRepository,
             InventorySlotRepository inventorySlotRepository,
             ItemRepository itemRepository) {
-        this.companyInventoryRepository = companyInventoryRepository;
+        this.inventoryRepository = inventoryRepository;
         this.inventorySlotRepository = inventorySlotRepository;
         this.itemRepository = itemRepository;
     }
 
     @Transactional
-    public CompanyInventory createDefaultInventory(Company company) {
-        CompanyInventory defaultInventory = new CompanyInventory(company, initialSlotCount);
-        CompanyInventory savedInventory = companyInventoryRepository.save(defaultInventory);
+    public Inventory createDefaultInventory(Company company) {
+        Inventory inventory = new Inventory(company, initialSlotCount);
+        Inventory saved = inventoryRepository.save(inventory);
 
-        List<InventorySlot> initialSlots = new ArrayList<>();
+        List<InventorySlot> slots = new ArrayList<>();
         for (int i = 0; i < initialSlotCount; i++) {
-            initialSlots.add(new InventorySlot(savedInventory, i));
+            slots.add(new InventorySlot(saved, i));
         }
-        inventorySlotRepository.saveAll(initialSlots);
+        inventorySlotRepository.saveAll(slots);
 
-        return savedInventory;
+        return saved;
     }
 
     public List<InventorySlotResponse> getInventory(Long companyId) {
-        CompanyInventory inventory = companyInventoryRepository.findByCompanyId(companyId)
-                .orElseThrow(() -> new IllegalArgumentException("창고를 찾을 수 없습니다."));
-
+        Inventory inventory = findInventory(companyId);
         return inventory.getSlots().stream()
                 .sorted(Comparator.comparingInt(InventorySlot::getSlotIndex))
                 .map(InventorySlotResponse::new)
@@ -68,231 +60,101 @@ public class InventoryService {
     }
 
     @Transactional
-    public void decreaseQuantity(Long companyId, Integer slotIndex, Long amount) {
-        if (amount <= 0)
-            throw new IllegalArgumentException("차감할 수량은 1 이상이어야 합니다.");
-
-        CompanyInventory inventory = companyInventoryRepository.findByCompanyId(companyId)
-                .orElseThrow(() -> new IllegalArgumentException("창고를 찾을 수 없습니다."));
-
-        InventorySlot inventorySlot = getSlotByIndex(inventory, slotIndex);
-
-        if (inventorySlot.getItem() == null)
-            throw new IllegalArgumentException("해당 슬롯이 비어있습니다.");
-        if (inventorySlot.getQuantity() < amount)
-            throw new IllegalStateException("슬롯의 수량이 부족합니다.");
-
-        long leftAmount = inventorySlot.getQuantity() - amount;
-        if (leftAmount == 0) {
-            inventorySlot.clearSlot();
-        } else {
-            inventorySlot.setItemAndQuantity(inventorySlot.getItem(), leftAmount);
-        }
-    }
-
-    @Transactional
     public void addItem(Long companyId, Long itemId, Long amount) {
-        if (amount <= 0)
-            throw new IllegalArgumentException("추가할 수량은 1 이상이어야 합니다.");
+        if (amount <= 0) throw new IllegalArgumentException("추가할 수량은 1 이상이어야 합니다.");
 
-        CompanyInventory inventory = companyInventoryRepository.findByCompanyId(companyId)
-                .orElseThrow(() -> new IllegalArgumentException("창고를 찾을 수 없습니다."));
+        Inventory inventory = findInventory(companyId);
         Item item = itemRepository.findById(itemId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 아이템입니다."));
 
+        if (item.getType() != ItemType.EQUIPMENT && item.getType() != ItemType.TICKET)
+            throw new IllegalArgumentException("인벤토리에는 EQUIPMENT, TICKET 아이템만 보관할 수 있습니다.");
+
         List<InventorySlot> slots = inventory.getSlots();
         slots.sort(Comparator.comparingInt(InventorySlot::getSlotIndex));
+        long remaining = amount;
 
-        long remainingAmount = amount;
-
-        // 1. 이미 동일한 아이템이 들어있는 슬롯 탐색 후 남은 여유공간에 먼저 채우기
         for (InventorySlot slot : slots) {
             if (slot.getItem() != null && slot.getItem().getId().equals(itemId)) {
-                long availableSpace = item.getMaxStackSize() - slot.getQuantity();
-                if (availableSpace > 0) {
-                    long added = Math.min(availableSpace, remainingAmount);
-                    slot.addItem(item, added); // 사실상 quantity 증가
-                    remainingAmount -= added;
-
-                    if (remainingAmount == 0)
-                        return;
+                long space = item.getMaxStackSize() - slot.getQuantity();
+                if (space > 0) {
+                    long added = Math.min(space, remaining);
+                    slot.addItem(item, added);
+                    remaining -= added;
+                    if (remaining == 0) return;
                 }
             }
         }
 
-        // 2. 다 못채웠다면 (혹은 아예 새 아이템이라면) 앞쪽 빈 슬롯부터 채워넣기
         for (InventorySlot slot : slots) {
             if (slot.getItem() == null) {
-                long added = Math.min(item.getMaxStackSize(), remainingAmount);
+                long added = Math.min(item.getMaxStackSize(), remaining);
                 slot.addItem(item, added);
-                remainingAmount -= added;
-
-                if (remainingAmount == 0)
-                    return;
+                remaining -= added;
+                if (remaining == 0) return;
             }
         }
 
-        // 3. 다 돌았는데도 remainingAmount가 남았다면 창고가 가득 찬 것
-        if (remainingAmount > 0) {
-            throw new IllegalArgumentException("창고 공간이 부족합니다. 획득 대기 상태로 전환하거나 소지품을 비우세요.");
-            // 나중 기획에 따라 우편함으로 보내거나 임시 보관소로 보내는 로직을 추가할 수 있습니다.
-        }
+        if (remaining > 0) throw new IllegalArgumentException("인벤토리 공간이 부족합니다.");
     }
 
     @Transactional
-    public void removeItem(Long companyId, Long itemId, Long amount) {
-        if (amount <= 0)
-            throw new IllegalArgumentException("차감할 수량은 1 이상이어야 합니다.");
+    public void swapSlots(Long companyId, int fromIndex, int toIndex) {
+        Inventory inventory = findInventory(companyId);
+        if (fromIndex == toIndex) return;
 
-        CompanyInventory inventory = companyInventoryRepository.findByCompanyId(companyId)
-                .orElseThrow(() -> new IllegalArgumentException("창고를 찾을 수 없습니다."));
+        InventorySlot from = getSlotByIndex(inventory, fromIndex);
+        InventorySlot to = getSlotByIndex(inventory, toIndex);
 
-        List<InventorySlot> slots = inventory.getSlots().stream()
-                .filter(slot -> slot.getItem() != null && slot.getItem().getId().equals(itemId))
-                .collect(Collectors.toList());
+        if (from.getItem() == null) throw new IllegalArgumentException("출발 슬롯이 비어있습니다.");
 
-        long totalAvailable = slots.stream().mapToLong(InventorySlot::getQuantity).sum();
-        if (totalAvailable < amount) {
-            throw new IllegalStateException("해당 아이템의 수량이 부족합니다.");
+        if (to.getItem() == null) {
+            to.setItemAndQuantity(from.getItem(), from.getQuantity());
+            from.clearSlot();
+            return;
         }
 
-        long remainingAmount = amount;
-        for (InventorySlot slot : slots) {
-            if (remainingAmount <= 0) break;
-
-            long currentSlotAmount = slot.getQuantity();
-            if (currentSlotAmount <= remainingAmount) {
-                // 이 슬롯의 아이템을 전부 소진
-                remainingAmount -= currentSlotAmount;
-                slot.clearSlot();
-            } else {
-                // 이 슬롯에서 일부만 소진
-                slot.setItemAndQuantity(slot.getItem(), currentSlotAmount - remainingAmount);
-                remainingAmount = 0;
+        if (to.getItem().getId().equals(from.getItem().getId())) {
+            long space = to.getItem().getMaxStackSize() - to.getQuantity();
+            if (space > 0) {
+                long move = Math.min(space, from.getQuantity());
+                to.addItem(to.getItem(), move);
+                long left = from.getQuantity() - move;
+                if (left <= 0) from.clearSlot();
+                else from.setItemAndQuantity(from.getItem(), left);
             }
+            return;
         }
+
+        Item tmp = to.getItem();
+        long tmpQty = to.getQuantity();
+        to.setItemAndQuantity(from.getItem(), from.getQuantity());
+        from.setItemAndQuantity(tmp, tmpQty);
     }
 
-    public long getItemQuantity(Long companyId, Long itemId) {
-        CompanyInventory inventory = companyInventoryRepository.findByCompanyId(companyId)
-                .orElseThrow(() -> new IllegalArgumentException("창고를 찾을 수 없습니다."));
+    @Transactional
+    public void decreaseQuantity(Long companyId, Integer slotIndex, Long amount) {
+        if (amount <= 0) throw new IllegalArgumentException("차감할 수량은 1 이상이어야 합니다.");
 
+        Inventory inventory = findInventory(companyId);
+        InventorySlot slot = getSlotByIndex(inventory, slotIndex);
+
+        if (slot.getItem() == null) throw new IllegalArgumentException("해당 슬롯이 비어있습니다.");
+        if (slot.getQuantity() < amount) throw new IllegalStateException("슬롯의 수량이 부족합니다.");
+
+        long left = slot.getQuantity() - amount;
+        if (left == 0) slot.clearSlot();
+        else slot.setItemAndQuantity(slot.getItem(), left);
+    }
+
+    private Inventory findInventory(Long companyId) {
+        return inventoryRepository.findByCompanyId(companyId)
+                .orElseThrow(() -> new IllegalArgumentException("인벤토리를 찾을 수 없습니다."));
+    }
+
+    private InventorySlot getSlotByIndex(Inventory inventory, int index) {
         return inventory.getSlots().stream()
-                .filter(slot -> slot.getItem() != null && slot.getItem().getId().equals(itemId))
-                .mapToLong(InventorySlot::getQuantity)
-                .sum();
-    }
-
-    @Transactional
-    public void swapOrMergeSlots(Long companyId, int fromSlotIndex, int toSlotIndex) {
-        CompanyInventory inventory = companyInventoryRepository.findByCompanyId(companyId)
-                .orElseThrow(() -> new IllegalArgumentException("창고를 찾을 수 없습니다."));
-
-        if (fromSlotIndex == toSlotIndex)
-            return;
-
-        InventorySlot fromSlot = getSlotByIndex(inventory, fromSlotIndex);
-        InventorySlot toSlot = getSlotByIndex(inventory, toSlotIndex);
-
-        if (fromSlot.getItem() == null) {
-            throw new IllegalArgumentException("출발 슬롯이 비어있습니다.");
-        }
-
-        // 도착 슬롯이 비어있는 경우 (단순 이동)
-        if (toSlot.getItem() == null) {
-            toSlot.setItemAndQuantity(fromSlot.getItem(), fromSlot.getQuantity());
-            fromSlot.clearSlot();
-            return;
-        }
-
-        // 도착 슬롯에 아이템이 있고, 이름(또는 ID)가 동일한 경우 (스택 병합 시도)
-        if (toSlot.getItem().getId().equals(fromSlot.getItem().getId())) {
-            long availableSpace = toSlot.getItem().getMaxStackSize() - toSlot.getQuantity();
-            if (availableSpace > 0) {
-                long amountToMove = Math.min(availableSpace, fromSlot.getQuantity());
-                toSlot.addItem(toSlot.getItem(), amountToMove);
-
-                long leftAmount = fromSlot.getQuantity() - amountToMove;
-                if (leftAmount <= 0) {
-                    fromSlot.clearSlot();
-                } else {
-                    fromSlot.setItemAndQuantity(fromSlot.getItem(), leftAmount);
-                }
-            }
-            return;
-        }
-
-        // 도착 슬롯에 다른 종류의 아이템이 있는 경우 (단순 서로 바꾸기 - Swap)
-        Item tempItem = toSlot.getItem();
-        long tempQuantity = toSlot.getQuantity();
-
-        toSlot.setItemAndQuantity(fromSlot.getItem(), fromSlot.getQuantity());
-        fromSlot.setItemAndQuantity(tempItem, tempQuantity);
-    }
-
-    @Transactional
-    public void useExpandTicket(Long companyId, int ticketSlotIndex) {
-        CompanyInventory inventory = companyInventoryRepository.findByCompanyId(companyId)
-                .orElseThrow(() -> new IllegalArgumentException("창고를 찾을 수 없습니다."));
-
-        InventorySlot ticketSlot = getSlotByIndex(inventory, ticketSlotIndex);
-        if (ticketSlot.getItem() == null
-                || ticketSlot.getItem().getType() != com.ssafy.ecosim.domain.item.entity.ItemType.TICKET) {
-            throw new IllegalArgumentException("해당 슬롯에 유효한 확장권(TICKET) 아이템이 없습니다.");
-        }
-
-        // 1. 최대 확장 한도 검사
-        int currentMaxSlot = inventory.getMaxSlot();
-        inventory.expandSlots(expandSlotAmount, maxExpandableLimit); // 제한 초과시 Exception 발생
-
-        // 2. 티켓 차감 (1장 사용)
-        long leftAmount = ticketSlot.getQuantity() - 1;
-        if (leftAmount <= 0) {
-            ticketSlot.clearSlot();
-        } else {
-            ticketSlot.setItemAndQuantity(ticketSlot.getItem(), leftAmount);
-        }
-
-        // 3. 빈 슬롯 추가 생성
-        List<InventorySlot> newSlots = new ArrayList<>();
-        for (int i = currentMaxSlot; i < currentMaxSlot + expandSlotAmount; i++) {
-            newSlots.add(new InventorySlot(inventory, i));
-        }
-        inventorySlotRepository.saveAll(newSlots);
-    }
-
-    @Transactional
-    public void discardByItemType(Long companyId, ItemType itemType, Long amount) {
-        if (amount <= 0)
-            throw new IllegalArgumentException("폐기 수량은 1 이상이어야 합니다.");
-        if (itemType != ItemType.MATERIAL && itemType != ItemType.PRODUCT)
-            throw new IllegalArgumentException("폐기 가능한 아이템 종류가 아닙니다: " + itemType);
-
-        CompanyInventory inventory = companyInventoryRepository.findByCompanyId(companyId)
-                .orElseThrow(() -> new IllegalArgumentException("창고를 찾을 수 없습니다."));
-
-        List<InventorySlot> slots = inventory.getSlots().stream()
-                .filter(slot -> slot.getItem() != null && slot.getItem().getType() == itemType)
-                .collect(Collectors.toList());
-
-        long totalAvailable = slots.stream().mapToLong(InventorySlot::getQuantity).sum();
-        if (totalAvailable < amount)
-            throw new IllegalStateException("해당 아이템의 수량이 부족합니다.");
-
-        long remaining = amount;
-        for (InventorySlot slot : slots) {
-            if (remaining <= 0) break;
-            long take = Math.min(slot.getQuantity(), remaining);
-            long left = slot.getQuantity() - take;
-            if (left == 0) slot.clearSlot();
-            else slot.setItemAndQuantity(slot.getItem(), left);
-            remaining -= take;
-        }
-    }
-
-    private InventorySlot getSlotByIndex(CompanyInventory inventory, int index) {
-        return inventory.getSlots().stream()
-                .filter(slot -> slot.getSlotIndex() == index)
+                .filter(s -> s.getSlotIndex() == index)
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("유효하지 않은 슬롯 번호입니다."));
     }
