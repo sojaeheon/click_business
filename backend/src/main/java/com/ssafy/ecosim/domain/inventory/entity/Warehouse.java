@@ -10,14 +10,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "company_inventory")
+@Table(name = "warehouse")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class CompanyInventory {
+public class Warehouse {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "inventory_id")
+    @Column(name = "warehouse_id")
     private Long id;
 
     @OneToOne(fetch = FetchType.LAZY)
@@ -27,10 +27,10 @@ public class CompanyInventory {
     @Column(name = "max_slot", nullable = false)
     private Integer maxSlot;
 
-    @OneToMany(mappedBy = "inventory", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<InventorySlot> slots = new ArrayList<>();
+    @OneToMany(mappedBy = "warehouse", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<WarehouseSlot> slots = new ArrayList<>();
 
-    public CompanyInventory(Company company, Integer initialMaxSlot) {
+    public Warehouse(Company company, Integer initialMaxSlot) {
         this.company = company;
         this.maxSlot = initialMaxSlot;
     }
