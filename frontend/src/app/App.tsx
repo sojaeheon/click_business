@@ -3,6 +3,7 @@ import { IsometricScene } from "./components/game/IsometricScene";
 import { GameHUD } from "./components/game/GameHUD";
 import { ModalContainer } from "./components/modals/ModalContainer";
 import { ControlGuideModal } from "./components/modals/ControlGuideModal";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 // 건물 페이지들 (Lazy Loading 적용)
 const BankPage = lazy(() => import("../pages/buildings/BankPage").then(module => ({ default: module.BankPage })));
@@ -113,7 +114,9 @@ export default function App() {
 
       {/* 1층: 3D Game Scene Layer */}
       <div className="absolute inset-0">
-        <IsometricScene />
+        <ErrorBoundary>
+          <IsometricScene />
+        </ErrorBoundary>
       </div>
 
       {/* 2층: HUD Overlay Layer */}

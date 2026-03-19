@@ -168,8 +168,9 @@ function DiscardPanel({ totalMaterial, totalProduct, materialName, productName, 
 
 // ── 메인 페이지 ────────────────────────────────────────────────────
 export function WarehousePage() {
-  const { state, closeBuildingPage } = useGame();
-  const { warehouseItems, warehouseExpandTickets } = state;
+  const closeBuildingPage = useGameStore(s => s.closeBuildingPage);
+  const warehouseItems = useGameStore(s => s.warehouseItems);
+  const warehouseExpandTickets = useGameStore(s => s.warehouseExpandTickets);
   const maxSlots = useGameStore(s => s.warehouseMaxSlots);
   const material = useGameStore(s => s.getIndustryItemNames().material);
   const product = useGameStore(s => s.getIndustryItemNames().product);
@@ -186,7 +187,8 @@ export function WarehousePage() {
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
 
   useEffect(() => {
-    const totalSlots = 100;
+    // maxSlots 이상의 예비 슬롯(자물쇠)칸을 화면에 보이도록, 6의 배수에 맞춰 동적 계산
+    const totalSlots = maxSlots + (6 - (maxSlots % 6 === 0 ? 6 : maxSlots % 6)) + 6;
     const initialSlots: SlotData[] = Array(totalSlots).fill(null).map((_, i) => ({
       id: i,
       item: null,
