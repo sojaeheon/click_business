@@ -164,7 +164,7 @@ export const WorkstationAPI = {
 
       let producedSoFar = 0;
       if (mockWorkInterval) { clearInterval(mockWorkInterval); mockWorkInterval = null; }
-      const intervalMs = 10;
+      const intervalMs = 500;
       const totalTicks = totalMs / intervalMs;
       const tickPercent = 100 / totalTicks;
 
@@ -231,25 +231,23 @@ export const WorkstationAPI = {
 
 
 export const MarketAPI = {
+  /** 📊 실시간 호가창 렌더링 */
   getOrderbook: async (itemId: number) => {
     try {
       const res = await apiClient.get('/market/orderbooks', { params: { item_id: itemId } });
-      return { data: res.data.data };
+      // 백엔드 응답 구조 디버그
+      console.log("📦 raw res.data:", JSON.stringify(res.data));
+      // ApiResponse { status, data: DTO } 또는 DTO 직접 반환 둘 다 처리
+      const payload = res.data?.data ?? res.data;
+      return { data: payload };
     } catch (err) {
-      console.warn("API 연동 실패! MarketAPI.getOrderbook 목업 데이터 사용", err);
-      await mockDelay();
-      return {
-        data: isGuestMode() ? [] : [
-          { price: 3000, qty: 50, type: 'SELL' },
-          { price: 2900, qty: 120, type: 'SELL' },
-          { price: 2800, qty: 200, type: 'BUY' },
-          { price: 2700, qty: 80, type: 'BUY' },
-        ]
-      };
+      console.warn("MarketAPI.getOrderbook 실패:", err);
+      return { data: { buyOrders: [], sellOrders: [], currentPrice: null } };
     }
   },
-  createOrder: async (data: { companyId: number; itemId: number; type: 'BUY' | 'SELL'; price: number; qty: number }) => {
-    // ✅ 실제 API 연동
+
+  /** 📝 지정가 주문 신청 */
+  createOrder: async (data: { itemId: number; type: 'BUY' | 'SELL'; price: number; qty: number }) => {
     return apiClient.post('/market/orders', {
       itemId: data.itemId,
       orderType: data.type,
@@ -257,11 +255,23 @@ export const MarketAPI = {
       totalQuantity: data.qty
     });
   },
-  cancelOrder: (orderId: number) => apiClient.delete('/market/orders/' + orderId),
+
+  /** ❌ 주문 취소 */
+  cancelOrder: (orderId: number) => apiClient.delete(`/market/orders/${orderId}`),
+
+  /** 📈 체결 내역 조회 */
+  getTrades: async (itemId: number) => {
+    return apiClient.get('/market/trades', { params: { item_id: itemId } });
+  },
+
+  /** 💰 체결 결과 수령 */
+  collectTrade: async (tradeHistoryId: number) => {
+    return apiClient.post(`/market/orders/${tradeHistoryId}`);
+  },
+
   getMarketChart: (itemId: number, range: '1D' | '1W' | '1M' = '1D') => apiClient.get('/market/charts', { params: { itemId, range } }),
-  getTrades: (itemId: number) => apiClient.get('/market/trades', { params: { item_id: itemId } }),
-  collectTrade: (tradeHistoryId: number) => apiClient.post('/market/orders/' + tradeHistoryId),
 };
+
 
 export const BankAPI = {
   getSummary: async (companyId: number) => {

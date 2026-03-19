@@ -52,6 +52,7 @@ public class SecurityConfig {
                                                 .requestMatchers("/", "/h2-console/**", "/oauth2/**", "/login/**",
                                                                 "/api/v1/users/signup",
                                                                 "/api/v1/users/guest",
+                                                                "/api/v1/market/orderbooks",
                                                                 "/error",
                                                                 "/actuator/**",
                                                                 "/ws-ecosim/**",

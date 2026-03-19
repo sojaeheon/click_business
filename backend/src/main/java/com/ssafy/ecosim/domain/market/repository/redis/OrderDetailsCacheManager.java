@@ -1,9 +1,9 @@
 package com.ssafy.ecosim.domain.market.repository.redis;
 
 import com.ssafy.ecosim.domain.market.entity.MarketOrder;
+import com.ssafy.ecosim.domain.market.entity.OrderType;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.redis.core.RedisTemplate;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -13,11 +13,9 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class OrderDetailsCacheManager {
 
-    private final RedisTemplate<String, Object> redisTemplate;
-    private final ObjectMapper objectMapper; // Spring Boot 기본 제공 객체 매퍼
+    private final StringRedisTemplate redisTemplate;
 
     private static final String KEY_PREFIX = "market:order:";
-    // 메모리 누수 방지를 위한 TTL 설정 (예: 1시간)
     private static final long CACHE_TTL_HOURS = 1L;
 
     private String getKey(Long orderId) {
@@ -25,38 +23,52 @@ public class OrderDetailsCacheManager {
     }
 
     /**
-     * [매칭 엔진 / 워커 전용]
-     * Kafka에서 수신한 체결 대기 누적 주문 객체를 매칭 처리를 위해 Redis Hash(HSET)로 개별 저장합니다.
-     * (주의: API 서버(MarketOrderService)에서 직접 호출하지 않으며, 이벤트를 컨슘하는 주체가 호출해야 합니다.)
+     * MarketOrder 객체를 필드 단위의 문자열 Hash로 Redis에 저장합니다.
      */
     public void saveOrderCache(MarketOrder order) {
         String key = getKey(order.getId());
-
-        // Java 객체 필드들을 Key-Value 형태의 Map으로 분해 (개발자 가시성 확보)
-        Map<String, Object> orderMap = objectMapper.convertValue(order, Map.class);
-
-        // 필드 단위로 Hash (서랍장 구조)에 쏙쏙 분산 적재
-        redisTemplate.opsForHash().putAll(key, orderMap);
-
-        // 만료 시간 설정
+        Map<String, String> fields = Map.of(
+            "itemId",            String.valueOf(order.getItemId()),
+            "orderType",         order.getOrderType().name(),
+            "price",             String.valueOf(order.getPrice()),
+            "remainingQuantity", String.valueOf(order.getRemainingQuantity()),
+            "totalQuantity",     String.valueOf(order.getTotalQuantity()),
+            "status",            order.getStatus().name(),
+            "isVirtual",         String.valueOf(order.getIsVirtual())
+        );
+        redisTemplate.opsForHash().putAll(key, fields);
         redisTemplate.expire(key, CACHE_TTL_HOURS, TimeUnit.HOURS);
     }
 
     /**
-     * Hash 캐시에서 필드들을 꺼내어 다시 하나의 주문 객체로 조립합니다.
+     * Hash 캐시의 문자열 필드를 직접 파싱해 MarketOrder 객체를 재조립합니다.
+     * CLI(redis-cli HSET)로 주입된 순수 문자열 데이터와도 호환됩니다.
      */
     public MarketOrder getOrderCache(Long orderId) {
         String key = getKey(orderId);
+        Map<Object, Object> map = redisTemplate.opsForHash().entries(key);
 
-        // Hash에 저장된 모든 필드 꺼내오기 (HGETALL)
-        Map<Object, Object> orderMap = redisTemplate.opsForHash().entries(key);
+        if (map == null || map.isEmpty()) return null;
 
-        if (orderMap == null || orderMap.isEmpty()) {
+        try {
+            Integer itemId        = Integer.parseInt(String.valueOf(map.getOrDefault("itemId", "1")));
+            OrderType orderType   = OrderType.valueOf(String.valueOf(map.getOrDefault("orderType", "BUY")));
+            Long price            = Long.parseLong(String.valueOf(map.getOrDefault("price", "0")));
+            Long remainingQty     = Long.parseLong(String.valueOf(map.getOrDefault("remainingQuantity", "0")));
+            Long totalQty         = Long.parseLong(String.valueOf(map.getOrDefault("totalQuantity", remainingQty.toString())));
+            Boolean isVirtual     = Boolean.parseBoolean(String.valueOf(map.getOrDefault("isVirtual", "false")));
+
+            return MarketOrder.builder()
+                    .itemId(itemId)
+                    .companyId(0L)   // 조회 목적 전용 (companyId 불필요)
+                    .orderType(orderType)
+                    .price(price)
+                    .totalQuantity(totalQty)
+                    .isVirtual(isVirtual)
+                    .build();
+        } catch (Exception e) {
             return null;
         }
-
-        // Map 형태의 데이터를 원래의 MarketOrder 객체로 통째 조립
-        return objectMapper.convertValue(orderMap, MarketOrder.class);
     }
 
     /**
