@@ -6,6 +6,7 @@ import com.ssafy.ecosim.domain.inventory.dto.request.SlotDecreaseRequest;
 import com.ssafy.ecosim.domain.inventory.dto.request.SlotItemRequest;
 import com.ssafy.ecosim.domain.inventory.dto.response.InventorySlotResponse;
 import com.ssafy.ecosim.domain.inventory.service.InventoryService;
+import com.ssafy.ecosim.domain.item.entity.ItemType;
 import com.ssafy.ecosim.global.common.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -78,6 +79,20 @@ public class InventoryController {
         return ApiResponse.success("성공적으로 아이템 획득이 처리되었습니다.");
     }
 
+    /**
+     * 아이템 종류(MATERIAL/PRODUCT)와 수량으로 창고에서 폐기
+     */
+    @DeleteMapping("/discard")
+    public ApiResponse<String> discardItems(@AuthenticationPrincipal UserDetails userDetails,
+            @RequestParam ItemType itemType,
+            @RequestParam Long amount) {
+        Long userId = Long.parseLong(userDetails.getUsername());
+        Company company = getCompanyByUserId(userId);
+
+        inventoryService.discardByItemType(company.getId(), itemType, amount);
+        return ApiResponse.success("아이템을 폐기했습니다.");
+    }
+
     @DeleteMapping("decrease")
     public ApiResponse<String> deleteItem(@AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody SlotDecreaseRequest request) {
@@ -87,6 +102,7 @@ public class InventoryController {
         inventoryService.decreaseQuantity(company.getId(), request.getSlotIndex(), request.getAmount());
         return ApiResponse.success("성공적으로 슬롯 아이템이 감소 되었습니다.");
     }
+
 
     private Company getCompanyByUserId(Long userId) {
         return companyRepository.findByUser_Id(userId)
