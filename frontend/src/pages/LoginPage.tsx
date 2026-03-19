@@ -5,7 +5,7 @@ import { useAlertStore } from "../store/useAlertStore";
 
 // 배경 3D 씬
 import { IsometricScene } from '../app/components/game/IsometricScene';
-import { authApi } from '../api/services';
+import { AuthAPI as authApi } from '../api/gameApi';
 
 export const LoginPage = () => {
   const navigate = useNavigate();
@@ -39,13 +39,6 @@ const handleGuestMode = async () => {
       {/* ───────────────────────────────────────────────────────── */}
       {/* 1. 배경 레이어 (3D 씬 + 블러 + 애니메이션) */}
       {/* ───────────────────────────────────────────────────────── */}
-      <style dangerouslySetInnerHTML={{
-        __html: `
-        @keyframes panCamera {
-          0%, 100% { transform: scale(1.15) translateX(-3%); }
-          50% { transform: scale(1.15) translateX(3%); }
-        }
-      `}} />
       
       <div 
         className="absolute inset-0 z-0 pointer-events-none"
