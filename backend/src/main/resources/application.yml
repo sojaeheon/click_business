@@ -10,6 +10,9 @@ spring:
     driver-class-name: org.postgresql.Driver
     username: ${SPRING_DATASOURCE_USERNAME:ecosim}
     password: ${SPRING_DATASOURCE_PASSWORD:ecosim}
+  redis:
+    host: redis
+    port: 6379
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
@@ -56,6 +59,7 @@ logging:
     org.apache.kafka: WARN
     org.springframework.kafka: WARN
     com.ssafy.ecosim.domain.market.kafka: WARN
+    com.ssafy.ecosim.domain.market.service: DEBUG # market 기능 로그 확인용
     # org.springframework.security: DEBUG (필요시 보안 필터 로그도 볼 수 있습니다)
 
 management:

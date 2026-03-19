@@ -18,7 +18,7 @@ public class TradeEventProducer {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
-    private static final String TOPIC_MARKET_EVENTS = "market.events";
+    private static final String TOPIC_MARKET_EVENTS = "market.trade.events";
 
     /** 체결 이벤트 전송 */
     public void sendTradeExecutedEvent(TradeEventEnvelope event) {

@@ -32,7 +32,8 @@ public class KafkaOrderEventPublisher implements OrderEventPublisher {
     @Override
     public void publishOrderEvent(OrderCreationEventDto event) {
         OrderEventPayload payload = OrderEventPayload.builder()
-                .orderId(null)                                      // DE/매칭엔진에서 DB 적재 후 채움
+                // .orderId(null)                                      // DE/매칭엔진에서 DB 적재 후 채움
+                .orderId(System.currentTimeMillis() % 10 + 1) //임시(수정필요)
                 .itemId(event.getItemId())
                 .side(event.getOrderType().name())                  // "BUY" / "SELL"
                 .price(event.getPrice().intValue())
@@ -48,7 +49,7 @@ public class KafkaOrderEventPublisher implements OrderEventPublisher {
                 .occurredAt(ZonedDateTime.now(KST))
                 .producer(PRODUCER_NAME)
                 .companyId("c" + event.getCompanyId())
-                .aggregateId("order_pending")                       // 체결 전이므로 임시값
+                .aggregateId("order")                       // 체결 전이므로 임시값
                 .payload(payload)
                 .build();
 
