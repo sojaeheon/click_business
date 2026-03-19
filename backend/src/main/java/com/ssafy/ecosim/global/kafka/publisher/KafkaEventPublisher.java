@@ -6,6 +6,7 @@ import com.ssafy.ecosim.global.kafka.resolver.TopicResolver;
 import com.ssafy.ecosim.global.kafka.validator.EventSchemaValidator;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
 
@@ -19,6 +20,7 @@ import java.util.Map;
  * 4) envelope 생성
  * 5) Kafka 전송
  */
+@Slf4j
 @Component
 public class KafkaEventPublisher implements EventPublisher {
 
@@ -68,6 +70,14 @@ public class KafkaEventPublisher implements EventPublisher {
 
         // 5) Kafka 전송
         // key가 null이면 Kafka 기본 partitioner 정책으로 분산
-        kafkaTemplate.send(topic, normalizedKey, envelope);
+        kafkaTemplate.send(topic, normalizedKey, envelope).whenComplete((result, ex) -> {
+            if (ex != null) {
+                log.error("Kafka send failed. eventType={}, topic={}, key={}", eventType, topic, normalizedKey, ex);
+            } else {
+                var md = result.getRecordMetadata();
+                log.info("Kafka send ok. eventType={}, topic={}, key={}, partition={}, offset={}",
+                        eventType, topic, normalizedKey, md.partition(), md.offset());
+            }
+        });
     }
 }
