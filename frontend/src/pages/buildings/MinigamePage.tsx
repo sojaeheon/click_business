@@ -3,7 +3,7 @@ import { Lock, Timer } from "lucide-react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
-import { useGameStore, REWARD_ITEM_POOL } from "../../store/gameStore";
+import { useGameStore, pickReward } from "../../store/gameStore";
 import type { InventoryItem } from "../../store/gameStore";
 import { MinigameAPI } from "../../api/gameApi";
 import { BackButton } from "../../app/components/ui/backbutton";
@@ -183,8 +183,8 @@ export function MinigamePage() {
       const next = Math.max(0, prev - damage);
       if (next === 0 && prev > 0) {
         setGameState("success");
-        // 랜덤 보상 뽑기
-        const randomReward = REWARD_ITEM_POOL[Math.floor(Math.random() * REWARD_ITEM_POOL.length)];
+        // 랜덤 보상 뽑기 (확률 가중치 로직 적용)
+        const randomReward = pickReward();
         setRewardItem(randomReward);
         useGameStore.getState().addInventoryItem(randomReward);
 
@@ -213,35 +213,6 @@ export function MinigamePage() {
       }}
     >
       {isFever && <div className="absolute inset-0 bg-red-950/60 pointer-events-none mix-blend-multiply transition-colors" />}
-
-      <style dangerouslySetInnerHTML={{
-        __html: `
-        @keyframes feverBgShake {
-          0%, 100% { transform: translate(0, 0); }
-          25% { transform: translate(2px, 2px); }
-          50% { transform: translate(-2px, -2px); }
-          75% { transform: translate(-2px, 2px); }
-        }
-        @keyframes textGlowPulse {
-          0%, 100% { text-shadow: 0 0 20px #ef4444, 0 0 40px #ef4444; transform: scale(1) translateX(-50%); }
-          50% { text-shadow: 0 0 40px #ef4444, 0 0 80px #ef4444; transform: scale(1.1) translateX(-45%); }
-        }
-        @keyframes damageFloat {
-          0% { opacity: 1; transform: translateY(0) scale(1.5) rotate(-15deg); }
-          50% { transform: translateY(-40px) scale(2.5) rotate(15deg); }
-          100% { opacity: 0; transform: translateY(-100px) scale(1) rotate(0deg); }
-        }
-        .hit-shake-anim {
-          animation: hitShake 0.1s ease-in-out;
-        }
-        @keyframes hitShake {
-          0% { transform: translate(0, 0) rotate(0); }
-          25% { transform: translate(8px, -8px) rotate(1deg); }
-          50% { transform: translate(-8px, 8px) rotate(-1deg); }
-          75% { transform: translate(8px, 8px) rotate(1deg); }
-          100% { transform: translate(0, 0) rotate(0); }
-        }
-      `}} />
 
       <BackButton onClick={handleBackClick} className="absolute top-6 left-6" />
 

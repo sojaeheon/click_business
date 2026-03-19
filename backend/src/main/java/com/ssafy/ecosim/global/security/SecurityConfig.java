@@ -55,7 +55,10 @@ public class SecurityConfig {
                                                                 "/api/v1/market/orderbooks",
                                                                 "/error",
                                                                 "/actuator/**",
-                                                                "/ws-ecosim/**"
+                                                                "/ws-ecosim/**",
+                                                                "/swagger-ui/**",
+                                                                "/v3/api-docs/**",
+                                                                "/swagger-ui.html"
                                                                 )
                                                 .permitAll()
                                                 .anyRequest().authenticated())

@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { SkeletonUtils } from "three-stdlib";
 import { useGame, useGameStore } from "../../../store/gameStore";
 import { WorkstationAPI } from "../../../api/gameApi";
+import { getWorkerDefByLevel, IndustryKey } from "../../../constants/workers";
 
 import {
   TILE_S, BX, BZ, BW, ROAD_STEP, ROAD_S,
@@ -581,22 +582,19 @@ function MapEnvironment() {
 // 게임 씬 메인 (조명, 객체 배치)
 // ─────────────────────────────────────────────────────────────────
 export function GameScene({
-  isWorkstationWorking,
-  setIsWorkstationWorking,
   isPaused,
   onDialog,
   isLoginMode,
 }: {
-  isWorkstationWorking: boolean;
-  setIsWorkstationWorking: (v: boolean) => void;
   isPaused: boolean;
   onDialog?: (d: ConfirmData) => void;
   isLoginMode?: boolean;
 }) {
-  const { openBuildingPage } = useGame();
+  const openBuildingPage = useGameStore(s => s.openBuildingPage);
+  const setWorkstationState = useGameStore(s => s.setWorkstationState);
+  const isWorkstationWorking = useGameStore(s => s.workstationState.isWorking);
   const [inWorkstation, setInWorkstation] = useState(false);
-  // 활성 시작시 requestedQty/totalMs를 Workstation 컴포넌트에 주입하는 콜백
-  const workstationStartRef = useRef<((opts: { requestedQty: number; totalMs: number }) => void) | null>(null);
+
 
   const go = useCallback((name: string, label: string) => {
     onDialog?.({
@@ -610,14 +608,20 @@ export function GameScene({
       type: "workstation",
       label: "작업장 컨트롤",
       isWorking: isWorkstationWorking,
-      onStart: async (qty) => {
+      onStart: async (qty, workerLevel) => {
         try {
           // ✅ 개수 비례 계산: qty개 기준으로 재료·시간 산출
           const store = useGameStore.getState();
           const { reqMat, resProd } = store.getIndustryItemNames();
           const ratio = qty / resProd;                        // 시간 비율
-          const totalMsNeeded = Math.ceil(ratio * 60000);    // ms (비례)
           const materialNeeded = Math.ceil(ratio * reqMat);  // 재료 (올림)
+
+          // 💡 게임 스토어에서 받은 일꾼 레벨로 속도 단축 적용
+          const def = getWorkerDefByLevel(workerLevel || 1);
+          const industryName = store.industry as IndustryKey;
+          const speedMult = def.speedMultiplier[industryName] || 1.0;
+          const totalMsNeeded = Math.ceil((ratio * 60000) / speedMult); // ms (비례 단축)
+
 
           // ✅ 재료 창고에서 차감 (updateMaterial 음수 = 차감)
           const deducted = store.updateMaterial(-materialNeeded);
@@ -626,13 +630,22 @@ export function GameScene({
             return;
           }
 
+          // 로딩 상태 시작
+          setWorkstationState({ isStarting: true });
+
           await WorkstationAPI.start({ companyId: 1, recipeId: 1, quantity: qty, workerId: 1 });
-          setIsWorkstationWorking(true);
 
-          // ✅ Workstation 컴포넌트에 목표 개수 & 예상 시간 전달
-          workstationStartRef.current?.({ requestedQty: qty, totalMs: totalMsNeeded });
+          // ✅ Workstation 컴포넌트에 목표 개수 & 예상 시간 전역상태 등록 및 로딩 종료
+          setWorkstationState({
+            isStarting: false,
+            isWorking: true,
+            startTime: Date.now(),
+            totalMs: totalMsNeeded,
+            requestedQty: qty,
+            producedCount: 0,
+          });
 
-          const timeSec = Math.ceil(ratio * 60);
+          const timeSec = Math.ceil((ratio * 60) / speedMult);
           const timeStr = timeSec >= 60
             ? `${Math.floor(timeSec / 60)}분 ${timeSec % 60 > 0 ? timeSec % 60 + '초' : ''}`
             : `${timeSec}초`;
@@ -644,10 +657,10 @@ export function GameScene({
       },
       onStop: async () => {
         // 수령은 3D 씩 더미 클릭으로 처리되므로 모달에서는 실제 collect 안 함
-        setIsWorkstationWorking(false);
+        setWorkstationState({ isWorking: false });
       },
     });
-  }, [onDialog, isWorkstationWorking, setIsWorkstationWorking]);
+  }, [onDialog, isWorkstationWorking, setWorkstationState]);
 
   return (
     <>
@@ -684,16 +697,8 @@ export function GameScene({
 
       <Workstation
         position={[0, 0, BZ]}
-        isWorking={isWorkstationWorking}
         inWorkstation={inWorkstation}
         onOpenModal={handleWorkstationClick}
-        onStoreGold={(count) => {
-          // 실제 창고 저장은 Workstation 내부에서 gameStore.updateProduct로 처리됨
-          // 여기에서는 추가 아이템 혼력 없도록 alert만 저장
-          console.log(`[Workstation] ${count}개 창고 저장 완료`);
-        }}
-        onWorkChange={setIsWorkstationWorking}
-        onRegisterStart={(fn) => { workstationStartRef.current = fn; }}
       />
 
       {!isLoginMode && (
@@ -725,7 +730,6 @@ function refocusCanvas(wrap: HTMLDivElement | null) {
 export function IsometricScene({ isLoginMode = false }: { isLoginMode?: boolean } = {}) {
   const { state, openModal, closeModal } = useGame();
   const [dialogData, setDialogData] = useState<ConfirmData | null>(null);
-  const [isWorkstationWorking, setIsWorkstationWorking] = useState(false);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
 
   const isGlobalPaused = isLoginMode || !!dialogData || !!state.activeModal || !!state.activeBuildingPage;
@@ -846,8 +850,6 @@ export function IsometricScene({ isLoginMode = false }: { isLoginMode?: boolean 
           <GameScene
             onDialog={setDialogData}
             isPaused={isGlobalPaused}
-            isWorkstationWorking={isWorkstationWorking}
-            setIsWorkstationWorking={setIsWorkstationWorking}
             isLoginMode={isLoginMode}
           />
           <WorldBounds />
@@ -868,42 +870,7 @@ export function IsometricScene({ isLoginMode = false }: { isLoginMode?: boolean 
 }
 
 // ──────────────────────────────────────────────────────────────
-// 프리로드 목록 (export 해서 로그인/산업선택 화면에서도 호출 가능)
-// 해당 페이지에서 preloadGameModels() 한 번만 호출하면 될
+// 메인 진입 시 fallback 프리로드
 // ──────────────────────────────────────────────────────────────
-export const PRELOAD_MODEL_URLS: string[] = [
-  // ── 환경/건물 (필수) ──
-  M.base, M.bank, M.hr, M.market, M.warehouse,
-  M.roadStraight, M.roadCornerCurved,
-  M.roadJunction, M.roadTsplit,
-  // ── 차/소품 ──
-  M.carHatchback, M.carSedan, M.carPolice,
-  M.ocean,
-  // ── 캐릭터 + 애니메이션 ──
-  "/models/characters/Barbarian.glb",
-  "/models/animations/Rig_Medium_Tools.glb",
-  "/models/animations/Rig_Medium_MovementBasic.glb",
-  "/models/animations/Rig_Medium_General.glb",
-  // ── 금 제련업 (콘베이어) ──
-  "/models/props/animated_conveyer_belt.glb",
-  "/models/props/Gold_Bar.gltf",
-  "/models/props/Gold_Bars_Stack_Small.gltf",
-  "/models/props/Gold_Bars_Stack_Medium.gltf",
-  "/models/props/Gold_Bars_Stack_Large.gltf",
-  // ── 금광업 ──
-  "/models/props/rocks_B.gltf",
-  "/models/props/Gold_Nuggets.gltf",
-  "/models/props/Gold_Nugget_Medium.gltf",
-  // ── 제조업 ──
-  "/models/props/machine1.glb",
-  "/models/props/drill.glb",
-  "/models/props/toolbox.glb",
-];
-
-/** 로그인/산업선택 화면에서 미리 호출함으로써 맞 화면 즔싹 워밍 */
-export function preloadGameModels() {
-  PRELOAD_MODEL_URLS.forEach(url => useGLTF.preload(url));
-}
-
-// 메인 진입 시(IsometricScene 렌더링 시점)에도 한번 더 호출 (fallback)
+import { preloadGameModels } from "./preload";
 preloadGameModels();
