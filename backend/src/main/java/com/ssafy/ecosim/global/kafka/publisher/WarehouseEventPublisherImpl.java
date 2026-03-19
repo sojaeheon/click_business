@@ -1,5 +1,6 @@
 package com.ssafy.ecosim.global.kafka.publisher;
 
+import com.ssafy.ecosim.global.kafka.resolver.MessageKeyResolver;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -7,18 +8,21 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 창고 도메인 이벤트 발행 구현체.
+ * 창고 이벤트 발행 구현체.
  *
- * 슬롯 상태 변화 결과만 payload에 담아 Kafka로 발행한다.
- * 회사 전체 아이템 보유량 집계는 Spark가 수행한다.
+ * 변경 포인트:
+ * - EventPublisher가 partitionKey 기반으로 바뀌었으므로
+ *   companyId를 문자열 partitionKey로 변환해 전달한다.
  */
 @Component
 public class WarehouseEventPublisherImpl implements WarehouseEventPublisher {
 
     private final EventPublisher eventPublisher;
+    private final MessageKeyResolver keyResolver;
 
-    public WarehouseEventPublisherImpl(EventPublisher eventPublisher) {
+    public WarehouseEventPublisherImpl(EventPublisher eventPublisher, MessageKeyResolver keyResolver) {
         this.eventPublisher = eventPublisher;
+        this.keyResolver = keyResolver;
     }
 
     @Override
@@ -44,12 +48,13 @@ public class WarehouseEventPublisherImpl implements WarehouseEventPublisher {
         payload.put("reason", reason);
         payload.put("stored_at", storedAt.toString());
 
+        String partitionKey = keyResolver.fromCompanyId(companyId);
         String aggregateId = String.valueOf(slotId);
 
         eventPublisher.publish(
                 "warehouse.item.stored",
                 "warehouse-service",
-                companyId,
+                partitionKey,
                 aggregateId,
                 payload
         );
@@ -78,12 +83,13 @@ public class WarehouseEventPublisherImpl implements WarehouseEventPublisher {
         payload.put("reason", reason);
         payload.put("removed_at", removedAt.toString());
 
+        String partitionKey = keyResolver.fromCompanyId(companyId);
         String aggregateId = String.valueOf(slotId);
 
         eventPublisher.publish(
                 "warehouse.item.removed",
                 "warehouse-service",
-                companyId,
+                partitionKey,
                 aggregateId,
                 payload
         );

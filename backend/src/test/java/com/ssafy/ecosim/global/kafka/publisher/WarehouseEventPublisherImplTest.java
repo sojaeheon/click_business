@@ -1,5 +1,6 @@
 package com.ssafy.ecosim.global.kafka.publisher;
 
+import com.ssafy.ecosim.global.kafka.resolver.MessageKeyResolver;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -12,21 +13,26 @@ import static org.mockito.Mockito.*;
 /**
  * WarehouseEventPublisherImpl 단위 테스트.
  *
- * payload가 올바르게 만들어지고,
- * EventPublisher에 기대한 파라미터로 위임되는지 검증한다.
+ * 검증 목표:
+ * - payload가 정확히 구성되는지
+ * - EventPublisher에 전달되는 partition_key / aggregate_id가 올바른지
  */
 class WarehouseEventPublisherImplTest {
 
+    /**
+     * publishItemStored 검증
+     */
     @Test
     void publishItemStored_shouldBuildPayloadAndDelegateToEventPublisher() {
-        // given
+        // 1) given
         EventPublisher eventPublisher = mock(EventPublisher.class);
+        MessageKeyResolver keyResolver = new MessageKeyResolver();
         WarehouseEventPublisherImpl warehouseEventPublisher =
-                new WarehouseEventPublisherImpl(eventPublisher);
+                new WarehouseEventPublisherImpl(eventPublisher, keyResolver);
 
         Instant now = Instant.parse("2026-03-19T10:00:00Z");
 
-        // when
+        // 2) when
         warehouseEventPublisher.publishItemStored(
                 10L,
                 501L,
@@ -39,10 +45,10 @@ class WarehouseEventPublisherImplTest {
                 now
         );
 
-        // then
+        // 3) then
         ArgumentCaptor<String> eventTypeCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> producerCaptor = ArgumentCaptor.forClass(String.class);
-        ArgumentCaptor<Long> companyIdCaptor = ArgumentCaptor.forClass(Long.class);
+        ArgumentCaptor<String> partitionKeyCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> aggregateIdCaptor = ArgumentCaptor.forClass(String.class);
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> payloadCaptor = ArgumentCaptor.forClass(Map.class);
@@ -50,14 +56,14 @@ class WarehouseEventPublisherImplTest {
         verify(eventPublisher, times(1)).publish(
                 eventTypeCaptor.capture(),
                 producerCaptor.capture(),
-                companyIdCaptor.capture(),
+                partitionKeyCaptor.capture(),
                 aggregateIdCaptor.capture(),
                 payloadCaptor.capture()
         );
 
         assertThat(eventTypeCaptor.getValue()).isEqualTo("warehouse.item.stored");
         assertThat(producerCaptor.getValue()).isEqualTo("warehouse-service");
-        assertThat(companyIdCaptor.getValue()).isEqualTo(1001L);
+        assertThat(partitionKeyCaptor.getValue()).isEqualTo("1001");
         assertThat(aggregateIdCaptor.getValue()).isEqualTo("501");
 
         Map<String, Object> payload = payloadCaptor.getValue();
@@ -72,16 +78,18 @@ class WarehouseEventPublisherImplTest {
         assertThat(payload.get("stored_at")).isEqualTo("2026-03-19T10:00:00Z");
     }
 
+    /**
+     * publishItemRemoved 검증
+     */
     @Test
     void publishItemRemoved_shouldBuildPayloadAndDelegateToEventPublisher() {
-        // given
         EventPublisher eventPublisher = mock(EventPublisher.class);
+        MessageKeyResolver keyResolver = new MessageKeyResolver();
         WarehouseEventPublisherImpl warehouseEventPublisher =
-                new WarehouseEventPublisherImpl(eventPublisher);
+                new WarehouseEventPublisherImpl(eventPublisher, keyResolver);
 
         Instant now = Instant.parse("2026-03-19T10:05:00Z");
 
-        // when
         warehouseEventPublisher.publishItemRemoved(
                 10L,
                 501L,
@@ -94,10 +102,9 @@ class WarehouseEventPublisherImplTest {
                 now
         );
 
-        // then
         ArgumentCaptor<String> eventTypeCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> producerCaptor = ArgumentCaptor.forClass(String.class);
-        ArgumentCaptor<Long> companyIdCaptor = ArgumentCaptor.forClass(Long.class);
+        ArgumentCaptor<String> partitionKeyCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> aggregateIdCaptor = ArgumentCaptor.forClass(String.class);
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> payloadCaptor = ArgumentCaptor.forClass(Map.class);
@@ -105,14 +112,14 @@ class WarehouseEventPublisherImplTest {
         verify(eventPublisher, times(1)).publish(
                 eventTypeCaptor.capture(),
                 producerCaptor.capture(),
-                companyIdCaptor.capture(),
+                partitionKeyCaptor.capture(),
                 aggregateIdCaptor.capture(),
                 payloadCaptor.capture()
         );
 
         assertThat(eventTypeCaptor.getValue()).isEqualTo("warehouse.item.removed");
         assertThat(producerCaptor.getValue()).isEqualTo("warehouse-service");
-        assertThat(companyIdCaptor.getValue()).isEqualTo(1001L);
+        assertThat(partitionKeyCaptor.getValue()).isEqualTo("1001");
         assertThat(aggregateIdCaptor.getValue()).isEqualTo("501");
 
         Map<String, Object> payload = payloadCaptor.getValue();

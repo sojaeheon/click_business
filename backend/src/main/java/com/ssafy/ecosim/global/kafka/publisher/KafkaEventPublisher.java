@@ -10,12 +10,14 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /**
- * 실제 Kafka 발행 구현체.
+ * EventPublisher 구현체.
  *
- * payload를 검증하고 EventEnvelope를 만든 뒤,
- * KafkaTemplate을 통해 객체를 그대로 전송한다.
- *
- * 직렬화는 KafkaProducerConfig의 JsonSerializer가 담당한다.
+ * 처리 순서:
+ * 1) payload 검증
+ * 2) topic 결정
+ * 3) partition key 정규화
+ * 4) envelope 생성
+ * 5) Kafka 전송
  */
 @Component
 public class KafkaEventPublisher implements EventPublisher {
@@ -41,31 +43,31 @@ public class KafkaEventPublisher implements EventPublisher {
     public void publish(
             String eventType,
             String producer,
-            Long companyId,
+            String partitionKey,
             String aggregateId,
             Map<String, Object> payload
     ) {
-        // 1. payload 검증
+        // 1) 이벤트 타입별 payload 스키마 검증
         validator.validate(eventType, payload);
 
-        // 2. 공통 envelope 생성
+        // 2) 이벤트 타입으로 토픽 결정
+        String topic = topicResolver.resolve(eventType);
+
+        // 3) partition key 정규화 (blank -> null)
+        String normalizedKey = keyResolver.normalize(partitionKey);
+
+        // 4) 공통 envelope 생성
         EventEnvelope<Map<String, Object>> envelope = EventEnvelope.create(
                 eventType,
                 1,
                 producer,
-                companyId,
+                normalizedKey,
                 aggregateId,
-                null,
-                null,
                 payload
         );
 
-        // 3. topic / key 결정
-        String topic = topicResolver.resolve(eventType);
-        String key = keyResolver.resolve(companyId);
-
-        // 4. Kafka 전송
-        // 직렬화는 JsonSerializer가 처리함
-        kafkaTemplate.send(topic, key, envelope);
+        // 5) Kafka 전송
+        // key가 null이면 Kafka 기본 partitioner 정책으로 분산
+        kafkaTemplate.send(topic, normalizedKey, envelope);
     }
 }
