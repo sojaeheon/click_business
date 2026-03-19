@@ -11,12 +11,18 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * EventSchemaValidator 단위 테스트.
  *
- * warehouse 이벤트 payload의 필수 필드 검증이 올바르게 동작하는지 확인한다.
+ * 검증 목표:
+ * - 이벤트별 필수 필드가 모두 있으면 통과
+ * - 필수 필드 누락 시 예외 발생
  */
 class EventSchemaValidatorTest {
 
+    // 테스트 대상 객체
     private final EventSchemaValidator validator = new EventSchemaValidator();
 
+    /**
+     * warehouse.item.stored payload 정상 케이스
+     */
     @Test
     void validWarehouseStoredPayload_shouldPass() {
         Map<String, Object> payload = new HashMap<>();
@@ -34,6 +40,9 @@ class EventSchemaValidatorTest {
                 .doesNotThrowAnyException();
     }
 
+    /**
+     * warehouse.item.removed payload 정상 케이스
+     */
     @Test
     void validWarehouseRemovedPayload_shouldPass() {
         Map<String, Object> payload = new HashMap<>();
@@ -51,6 +60,27 @@ class EventSchemaValidatorTest {
                 .doesNotThrowAnyException();
     }
 
+    /**
+     * company.cash.changed payload 정상 케이스 (신규)
+     */
+    @Test
+    void validCompanyCashChangedPayload_shouldPass() {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("company_id", 1001L);
+        payload.put("cash", 1_200_000L);
+        payload.put("changed_amount", -300_000L);
+        payload.put("reason", "MARKET_BUY");
+        payload.put("changed_at", "2026-03-19T10:05:00+09:00");
+        // optional
+        payload.put("reference_id", "order-20260317-0001");
+
+        assertThatCode(() -> validator.validate("company.cash.changed", payload))
+                .doesNotThrowAnyException();
+    }
+
+    /**
+     * 필수 필드 누락 시 예외 발생 검증
+     */
     @Test
     void missingRequiredField_shouldThrowException() {
         Map<String, Object> payload = new HashMap<>();
