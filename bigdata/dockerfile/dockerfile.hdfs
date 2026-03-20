@@ -1,0 +1,19 @@
+# bigdata/kafka/Dockerfile
+FROM python:3.11-slim
+
+# 로그 즉시 출력 + pycache 비활성화
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# 의존성 먼저 설치 (레이어 캐시 활용)
+COPY ../kafka/configs/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# 코드 복사
+COPY ../kafka/consumers /app/consumers
+COPY ../kafka/.env /app/.env
+
+# 기본 실행 (원하면 compose에서 command로 덮어쓰기 가능)
+CMD ["python", "consumers/hdfs_raw_sink_consumer.py"]
