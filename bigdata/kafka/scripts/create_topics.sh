@@ -17,6 +17,9 @@ done
 echo "Creating topics..."
 
 # 마켓 주문 이벤트
+# ==========================================
+# Kafka Topic 생성 (단일 토픽: market.order.events)
+# ==========================================
 /usr/bin/kafka-topics --create --if-not-exists \
   --bootstrap-server $BOOTSTRAP \
   --topic market.order.events \
@@ -24,6 +27,9 @@ echo "Creating topics..."
   --replication-factor 1
 
 # 마켓 체결 이벤트
+# ==========================================
+# Kafka Topic 생성 (단일 토픽: market.trade.events)
+# ==========================================
 /usr/bin/kafka-topics --create --if-not-exists \
   --bootstrap-server $BOOTSTRAP \
   --topic market.trade.events \
@@ -31,6 +37,9 @@ echo "Creating topics..."
   --replication-factor 1
 
 # 창고 이벤트
+# ==========================================
+# Kafka Topic 생성 (단일 토픽: warehouse.events)
+# ==========================================
 /usr/bin/kafka-topics --create --if-not-exists \
   --bootstrap-server $BOOTSTRAP \
   --topic warehouse.events \
@@ -46,17 +55,9 @@ echo "Creating topics..."
   --partitions 3 \
   --replication-factor 1
 
-# ==========================================
-# Kafka Topic 생성 (단일 토픽: company.events)
-# ==========================================
-/usr/bin/kafka-topics --create --if-not-exists \
-  --bootstrap-server $BOOTSTRAP \
-  --topic company.events \
-  --partitions 3 \
-  --replication-factor 1
 
 echo "Topic creation completed."
 
 # Kakfa Topic 조회
-echo "Current topics:"
+echo "Current topics"
 /usr/bin/kafka-topics --bootstrap-server $BOOTSTRAP --list
