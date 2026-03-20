@@ -173,8 +173,8 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                   </span>
                 </div>
               )}
-              {/* ✨ NEW 뱃지 표시 */}
-              {hasNewWorker && !data.isWorking && (
+              {/* ✨ NEW 뱃지 표시: 장착된 일꾼이 없을 때만 */}
+              {hasNewWorker && !data.isWorking && !equippedWorker && (
                 <span className="absolute top-1 right-1 bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full shadow-md animate-bounce pointer-events-none">
                   NEW!
                 </span>
@@ -331,18 +331,38 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
               {!slots || slots.length === 0 ? (
                 <div className="text-center text-slate-400 mt-10">인벤토리가 비어 있습니다.</div>
               ) : (
-                slots.filter(item => item.type.startsWith("worker_")).map((item) => (
-                  <div key={item.id} className="w-full">
-                    <WorkerCard
-                      item={item}
-                      isSmall={false}
-                      onClick={() => {
-                        setEquippedWorkerId(item.id);
-                        setIsInventoryOpen(false);
-                      }}
-                    />
-                  </div>
-                ))
+                slots.filter(item => item.type.startsWith("worker_")).map((item) => {
+                  const isEquipped = item.id === equippedWorkerId;
+                  return (
+                    <div key={item.id} className="w-full relative">
+                      <WorkerCard
+                        item={item}
+                        isSmall={false}
+                        onClick={() => {
+                          if (isEquipped) {
+                            // 이미 장착 중인 일꾼 클릭 → 장착 해제
+                            setEquippedWorkerId(null);
+                          } else {
+                            setEquippedWorkerId(item.id);
+                          }
+                          setIsInventoryOpen(false);
+                        }}
+                      />
+                      {/* 장착중 배지 */}
+                      {isEquipped && (
+                        <div className="absolute top-2 right-2 flex items-center gap-1">
+                          <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
+                            ✔ 장착중
+                          </span>
+                        </div>
+                      )}
+                      {/* 장착중일 때 클릭 힌트 */}
+                      {isEquipped && (
+                        <p className="text-[10px] text-slate-400 text-center mt-1 font-bold">클릭하면 장착 해제</p>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
             <style dangerouslySetInnerHTML={{

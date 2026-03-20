@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 // 🚨 gameApi.ts에 정의된 정확한 이름인 대문자 CompanyAPI로 가져옵니다.
 import { CompanyAPI, WarehouseAPI, InventoryAPI, BankAPI } from "../api/gameApi";
 import { WORKER_DEFINITIONS, getWorkerDefByLevel } from "../constants/workers";
+import { useAlertStore } from "./useAlertStore";
 
 // ─────────────────────────────────────────────────────────────────────────
 // 1. 타입 정의 (Types)
@@ -91,6 +92,7 @@ export interface GameState {
   debt: number;
   warehouseMaxSlots: number;
   inventoryMax: number;
+  inventoryPurchaseCount: number; // 돈으로 구매한 슬롯 횟수 (가격 산정용)
 
   // 인벤토리 아이템 (캐릭터 + 확장권) 전역 관리
   inventoryItems: InventoryItem[];
@@ -149,6 +151,7 @@ export interface GameState {
   // 확장권 사용
   useWarehouseTicket: () => boolean;    // 성공 시 true
   useInventoryTicket: () => boolean;
+  purchaseInventorySlot: () => { success: boolean; cost: number }; // 돈으로 슬롯 구매
   // 은행 데이터 동기화
   updateBankData: (data: Partial<BankData>) => void;
   updateDebt: (amount: number) => void; // 양수 = 부칄 증가, 음수 = 부칄 감소
@@ -173,6 +176,7 @@ export const useGameStore = create<GameState>()(
       debt: 0,
       warehouseMaxSlots: 6,
       inventoryMax: 4,
+      inventoryPurchaseCount: 0,
       alerts: [],
       news: [],
       activeModal: null,
@@ -235,6 +239,11 @@ export const useGameStore = create<GameState>()(
       // 인벤토리 아이템 추가
       // ✅ 확장권(ticket_*)도 아이템으로 슬롯에 들어감 — 별도 숫자 카운터로 빼지 않음
       addInventoryItem: (item) => set(state => {
+        // 슬롯 초과 확인: 확장권/일꾼 모두 슬롯 사용
+        if (state.inventoryItems.length >= state.inventoryMax) {
+          useAlertStore.getState().openAlert("인벤토리가 꽉 찼습니다. 슬롯을 확장해주세요.", "인벤토리 초과");
+          return state; // 추가 거부
+        }
         const newItem = { ...item, id: "inv_" + Date.now() + "_" + Math.random().toString(36).slice(2) };
         const newItems = [...state.inventoryItems, newItem];
         // 확장권 카운터는 inventoryItems에서 파생 계산
@@ -320,6 +329,23 @@ export const useGameStore = create<GameState>()(
           };
         });
         return true;
+      },
+
+      // 돈으로 인벤토리 슬롯 구매 (슬롯 번호 기준, 유저 무관하게 동일 가격)
+      // Row 1 (1-3): 무료, Row 2 (4-6): 30만원, Row 3 (7-9): 60만원, Row4+: 2배씩 증가
+      purchaseInventorySlot: () => {
+        const s = get();
+        const nextSlot = s.inventoryMax + 1;
+        const rowIndex = Math.ceil(nextSlot / 3); // 1-indexed 행 번호
+        const basePrice = 300000;
+        const cost = rowIndex <= 1 ? 0 : basePrice * Math.pow(2, rowIndex - 2);
+        if (s.money < cost) return { success: false, cost };
+        set(state => ({
+          money: state.money - cost,
+          inventoryMax: state.inventoryMax + 1,
+          inventoryPurchaseCount: state.inventoryPurchaseCount + 1,
+        }));
+        return { success: true, cost };
       },
 
       // 은행 데이터 통합 동기화
@@ -503,6 +529,7 @@ export const useGameStore = create<GameState>()(
         debt: state.debt,
         warehouseMaxSlots: state.warehouseMaxSlots,
         inventoryMax: state.inventoryMax,
+        inventoryPurchaseCount: state.inventoryPurchaseCount,
         bankData: state.bankData,
         warehouseItems: state.warehouseItems,
         inventoryItems: state.inventoryItems,

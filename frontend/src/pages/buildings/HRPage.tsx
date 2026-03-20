@@ -39,6 +39,7 @@ const LEVEL_GLOWS: Record<number, string> = {
 export function HRPage() {
   const { closeBuildingPage } = useGame();
   const slots = useGameStore(s => s.inventoryItems);
+  const equippedWorkerId = useGameStore(s => s.equippedWorkerId);
 
   const [selected, setSelected] = useState<any>(null);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -59,9 +60,10 @@ export function HRPage() {
     return slots.filter(s => s.name === w.name && (s.level || 1) === (w.level || 1)).reduce((a, s) => a + (s.quantity || 1), 0);
   }, [slots]);
 
-  // 전체 워커를 균일+식별 키로 그룹화  (eligible 필터 없이 전체 표시)
+  // 전체 워커를 균일+식별 키로 그룹화
   const allWorkerGroups = useMemo(() => {
-    const ws = slots.filter(i => i.type?.startsWith("worker_"));
+    // 장착중인 일꾼 ID를 제외한 일꾼만 강화 목록에 표시
+    const ws = slots.filter(i => i.type?.startsWith("worker_") && i.id !== equippedWorkerId);
     const m = new Map<string, { item: any; total: number }>();
     ws.forEach(s => {
       const k = `${s.name}_${s.level ?? 1}`;
@@ -70,7 +72,12 @@ export function HRPage() {
     });
     // 레벨 오름차순으로 정렬
     return [...m.values()].sort((a, b) => (a.item.level ?? 1) - (b.item.level ?? 1));
-  }, [slots]);
+  }, [slots, equippedWorkerId]);
+
+  // 장착중인 일꾼 (ID로 직접 찾기)
+  const equippedWorkerItem = useMemo(() => {
+    return slots.find(i => i.id === equippedWorkerId && i.type?.startsWith("worker_")) ?? null;
+  }, [slots, equippedWorkerId]);
 
   // ── 강화 실행 ──
   const handleUpgrade = async () => {
@@ -333,10 +340,11 @@ export function HRPage() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
+              {/* 강화 가능한 캐릭터 목록 */}
               {allWorkerGroups.length === 0 ? (
-                <div className="flex flex-col items-center mt-20 gap-5">
+                <div className="flex flex-col items-center mt-10 gap-5">
                   <span className="text-6xl opacity-15">🔒</span>
-                  <p className="text-white/30 font-bold text-sm text-center">보유 캐릭터가 없습니다</p>
+                  <p className="text-white/30 font-bold text-sm text-center">강화 가능한 캐릭터가 없습니다</p>
                   <p className="text-white/15 text-xs text-center leading-relaxed">미니게임에서 캐릭터를 획득하세요</p>
                 </div>
               ) : allWorkerGroups.map(({ item, total }) => {
@@ -394,6 +402,37 @@ export function HRPage() {
                   </div>
                 );
               })}
+
+              {/* ── 장착중인 일꾼 섹션 ── */}
+              {equippedWorkerItem && (
+                <>
+                  <div className="mt-4 mb-2 px-1">
+                    <p className="text-[11px] font-black text-white/30 uppercase tracking-widest">장착중인 일꾼</p>
+                  </div>
+                  <div className="relative">
+                    <div
+                      className="w-full flex items-center gap-4 p-4 rounded-xl"
+                      style={{
+                        background: "rgba(255,255,255,.03)",
+                        border: `1px solid rgba(255,255,255,.05)`,
+                        opacity: 0.55,
+                      }}
+                    >
+                      <div className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl" style={{ background: `${LEVEL_COLORS[equippedWorkerItem.level ?? 1] ?? '#6b7280'}15`, border: `2px solid ${LEVEL_COLORS[equippedWorkerItem.level ?? 1] ?? '#6b7280'}30` }}>
+                        {getWorkerDefByLevel(equippedWorkerItem.level ?? 1).icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-black truncate text-white/50">{equippedWorkerItem.name}</p>
+                        <p className="text-xs font-bold text-white/25 flex items-center gap-2">
+                          Lv.{equippedWorkerItem.level ?? 1}
+                          <span className="text-[10px] font-black text-white/30 bg-white/5 px-1.5 py-0.5 rounded-full">⛔ 강화 불가</span>
+                        </p>
+                      </div>
+                      <span className="text-xs font-black text-amber-400/60 bg-amber-500/10 px-2 py-0.5 rounded-full">장착중</span>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="p-4 pt-3 border-t border-white/5">
