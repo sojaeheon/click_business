@@ -8,11 +8,11 @@ import { WORKER_LEVEL_NAMES, WORKER_LEVEL_ICONS, WORKER_LEVEL_IMAGES, getWorkerD
 
 // ── 강화 확률 (내부 전용) ──
 const UPGRADE_TABLE: Record<number, { success: number; stay: number; down: number; reset: number }> = {
-  1: { success: 0.45, stay: 0.55, down: 0, reset: 0 },
-  2: { success: 0.30, stay: 0.45, down: 0.25, reset: 0 },
+  1: { success: 0.7, stay: 0.3, down: 0.0, reset: 0 },
+  2: { success: 0.5, stay: 0.35, down: 0.15, reset: 0 },
   3: { success: 0.15, stay: 0.40, down: 0.35, reset: 0.10 },
-  4: { success: 0.07, stay: 0.33, down: 0.40, reset: 0.20 },
-  5: { success: 0.03, stay: 0.17, down: 0.50, reset: 0.30 },
+  4: { success: 0.05, stay: 0.35, down: 0.40, reset: 0.20 },
+  5: { success: 0.01, stay: 0.3, down: 0.5, reset: 0.19 },
 };
 type UpgradeResult = "success" | "stay" | "down" | "reset";
 
@@ -57,8 +57,8 @@ export function HRPage() {
 
   const countOf = useCallback((w: any) => {
     if (!w) return 0;
-    return slots.filter(s => s.name === w.name && (s.level || 1) === (w.level || 1)).reduce((a, s) => a + (s.quantity || 1), 0);
-  }, [slots]);
+    return slots.filter(s => s.name === w.name && (s.level || 1) === (w.level || 1) && s.id !== equippedWorkerId).reduce((a, s) => a + (s.quantity || 1), 0);
+  }, [slots, equippedWorkerId]);
 
   // 전체 워커를 균일+식별 키로 그룹화
   const allWorkerGroups = useMemo(() => {
@@ -123,16 +123,9 @@ export function HRPage() {
       }
     }
 
-    // selected 동기화: upgradeWorkerLevel이 새 아이템을 getWorkerDefByLevel(newLevel).displayName으로 생성하므로
-    // selected의 name과 level을 모두 새 값으로 맞춰줘야 countOf()가 0이 안 됨
-    if (res.result === "success" || res.result === "down") {
-      const newDef = getWorkerDefByLevel(res.newLevel);
-      setSelected((p: any) => p ? { ...p, level: res.newLevel, name: newDef.displayName } : null);
-    } else if (res.result === "stay") {
-      // stay: 같은 레벨 1개가 남아있으므로 selected 유지 (name·level 변화 없음)
-    } else if (res.result === "reset") {
-      setTimeout(() => setSelected(null), 1500);
-    }
+    // 유저 피드백: "강화 성공 시에도 기존 캐릭터 화면을 그대로 유지하고, 다음 레벨은 유저가 직접 변경하게 해달라"
+    // 따라서 setSelected를 통한 자동 레벨업 추적이나 팝업 강제종료를 수행하지 않습니다.
+    // 기존 선택된(lower level) 캐릭터가 남아 수량이 차감된 것(예: 0/2)을 화면에 그대로 보여줍니다.
 
     setTimeout(() => { setPhase("idle"); setLastResult(null); setBusy(false); }, 1800);
   };
@@ -301,7 +294,7 @@ export function HRPage() {
       {phase === "result" && lastResult && (() => {
         const c = {
           success: { text: "LEVEL UP!", emoji: "🎉", color: "#f59e0b", bg: "rgba(0,0,0,0.85)" },
-          stay: { text: "변화 없음", emoji: "🤔", color: "#94a3b8", bg: "rgba(0,0,0,0.85)" },
+          stay: { text: "레벨 유지", emoji: "🤔", color: "#94a3b8", bg: "rgba(0,0,0,0.85)" },
           down: { text: "레벨 하락", emoji: "📉", color: "#ef4444", bg: "rgba(0,0,0,0.85)" },
           reset: { text: "파괴!", emoji: "💥", color: "#dc2626", bg: "rgba(0,0,0,0.85)" },
         }[lastResult.result];

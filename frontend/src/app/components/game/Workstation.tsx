@@ -24,7 +24,7 @@ function getSingleStackLevel(count: number, cap: number): number {
 }
 
 // ─── 더미 단계별 모델 (산업별 분기) ─────────────────────────────
-function ProductStack({ stackLevel, industry }: { stackLevel: number; industry: string }) {
+function ProductStack({ stackLevel, industry, count = 0 }: { stackLevel: number; industry: string; count?: number }) {
     if (stackLevel <= 0) return null;
 
     if (industry === "금광업") {
@@ -48,22 +48,24 @@ function ProductStack({ stackLevel, industry }: { stackLevel: number; industry: 
     }
 
     if (industry === "제조업") {
-        // 드릴 차곡차곡 쌓기 (고정 위치·회전)
-        const rotations: [number, number, number][] = [
-            [0, 0, Math.PI / 2],
-            [0, Math.PI / 4, Math.PI / 2],
-            [0, Math.PI / 2, Math.PI / 2],
-            [0, Math.PI * 3 / 4, Math.PI / 2],
-        ];
+        // 드릴을 실제 더미처럼 여러 개 쌓기 (count 기반, 최대 12개 3층)
+        const drillCount = Math.min(count > 0 ? count : (stackLevel * 3), 12);
         return (
             <group>
-                {Array.from({ length: Math.min(stackLevel, 4) }).map((_, i) => (
-                    <group key={i} position={[0, (i * 0.45) + 0.3, 0]} rotation={rotations[i % rotations.length]}>
-                        <React.Suspense fallback={null}>
-                            <EnvModel url="/models/props/drill.glb" scale={TILE_S * 0.4} />
-                        </React.Suspense>
-                    </group>
-                ))}
+                {Array.from({ length: drillCount }).map((_, i) => {
+                    const layer = Math.floor(i / 4);
+                    const idxInLayer = i % 4;
+                    const offsetX = (idxInLayer % 2 === 0 ? 0.35 : -0.35) * (1 - layer * 0.1);
+                    const offsetZ = (Math.floor(idxInLayer / 2) === 0 ? 0.35 : -0.35) * (1 - layer * 0.1);
+                    const rotationY = (Math.PI / 4) * idxInLayer + (layer * Math.PI / 6);
+                    return (
+                        <group key={i} position={[offsetX, layer * 0.2 + 0.1, offsetZ]} rotation={[0, rotationY, Math.PI / 2]}>
+                            <React.Suspense fallback={null}>
+                                <EnvModel url="/models/props/drill.glb" scale={TILE_S * 0.4} />
+                            </React.Suspense>
+                        </group>
+                    );
+                })}
             </group>
         );
     }
@@ -444,7 +446,7 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
 
                 {/* 더미 스택 — 단일 */}
                 <group position={stackPos}>
-                    <ProductStack stackLevel={singleStackLevel} industry={industry} />
+                    <ProductStack stackLevel={singleStackLevel} industry={industry} count={wsState.storedCount} />
                 </group>
             </group>
 

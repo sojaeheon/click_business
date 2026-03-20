@@ -51,14 +51,14 @@ export interface InventoryItem {
 type RewardEntry = { item: Omit<InventoryItem, "id">; weight: number };
 
 export const REWARD_WEIGHT_POOL: RewardEntry[] = [
-  { item: { type: "worker_lv1", name: "초보 일꾼", icon: "⛏️", quantity: 1, level: 1 }, weight: 59.5 },
-  { item: { type: "ticket_inventory", name: "인벤토리 확장권", icon: "🎒", quantity: 1 }, weight: 10.5 },
-  { item: { type: "ticket_warehouse", name: "창고 확장권", icon: "📦", quantity: 1 }, weight: 10.5 },
-  { item: { type: "worker_lv2", name: "견습 일꾼", icon: "🔥", quantity: 1, level: 2 }, weight: 10.0 },
-  { item: { type: "worker_lv3", name: "숙련 일꾼", icon: "🔨", quantity: 1, level: 3 }, weight: 5.0 },
-  { item: { type: "worker_lv4", name: "마스터 일꾼", icon: "🏹", quantity: 1, level: 4 }, weight: 3.0 },
-  { item: { type: "worker_lv5", name: "에픽 일꾼", icon: "🗡️", quantity: 1, level: 5 }, weight: 1.0 },
-  { item: { type: "worker_lv6", name: "레전드 일꾼", icon: "👑", quantity: 1, level: 6 }, weight: 0.5 },
+  { item: { type: "worker_lv1", name: "초보 일꾼", icon: "⛏️", quantity: 1, level: 1 }, weight: 70 },
+  { item: { type: "ticket_inventory", name: "인벤토리 확장권", icon: "🎒", quantity: 1 }, weight: 24.7 },
+  { item: { type: "ticket_warehouse", name: "창고 확장권", icon: "📦", quantity: 1 }, weight: 4.7 },
+  { item: { type: "worker_lv2", name: "견습 일꾼", icon: "🔥", quantity: 1, level: 2 }, weight: 0.4 },
+  { item: { type: "worker_lv3", name: "숙련 일꾼", icon: "🔨", quantity: 1, level: 3 }, weight: 0.18 },
+  { item: { type: "worker_lv4", name: "마스터 일꾼", icon: "🏹", quantity: 1, level: 4 }, weight: 0.01 },
+  { item: { type: "worker_lv5", name: "에픽 일꾼", icon: "🗡️", quantity: 1, level: 5 }, weight: 0.009 },
+  { item: { type: "worker_lv6", name: "레전드 일꾼", icon: "👑", quantity: 1, level: 6 }, weight: 0.001 },
 ];
 
 /**
@@ -269,7 +269,9 @@ export const useGameStore = create<GameState>()(
         let consumed = 0;
         items = items.map(item => {
           if (consumed >= 2) return item;
-          // 이름 혹은 원래는 레벨과 일치하는 녀석 찾기
+          // 장착 중인 캐릭터는 소모 대상에서 배제
+          if (item.id === state.equippedWorkerId) return item;
+
           if (item.name === workerName && (item.level || 1) === oldLevel) {
             const qty = item.quantity || 1;
             const take = Math.min(qty, 2 - consumed);
@@ -474,7 +476,7 @@ export const useGameStore = create<GameState>()(
             allItems.push({
               id: "inv_default_1",
               type: "worker_lv1",
-              name: "입재 일꾼",
+              name: "초보 일꾼",
               icon: "⛏️",
               quantity: 1,
               level: 1,

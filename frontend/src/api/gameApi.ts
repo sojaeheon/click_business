@@ -338,14 +338,19 @@ export const RankingAPI = {
 
 export const WarehouseAPI = {
   discardItems: async (type: "material" | "product", qty: number) => {
-    // 실제로는 창고 폐기 API가 없어서 mock으로 막거나, delete api를 호출해야 함. 이전 코드는 delete /storage/warehouses/{warehouseId} 였을 것입니다.
-    const companyId = 1; // 임시 고정
-    await apiClient.delete(`/storage/warehouses/${companyId}`);
+    try {
+      const itemType = type === "material" ? "MATERIAL" : "PRODUCT";
+      await apiClient.delete(`/warehouses/discard`, { params: { itemType, amount: qty } });
+      return { data: { success: true } };
+    } catch (err) {
+      console.warn("API 연동 실패! WarehouseAPI.discardItems 목업", err);
+      return { data: { success: true } };
+    }
   },
 
-  getWarehouseItems: async (companyId: number) => {
+  getWarehouseItems: async () => {
     try {
-      const res = await apiClient.get('/storage/warehouses');
+      const res = await apiClient.get('/warehouses');
       return {
         data: res.data.data
           .filter((slot: any) => slot.itemId != null && (slot.itemType === "MATERIAL" || slot.itemType === "PRODUCT"))
@@ -367,10 +372,10 @@ export const WarehouseAPI = {
       };
     }
   },
-  unlockSlot: async (data: { companyId: number; maxSlot: number }) => {
+  unlockSlot: async (data: { ticketSlotIndex: number }) => {
     try {
-      // ✅ 명세: 창고 슬롯 확장 (POST /api/v1/storage/warehouses)
-      await apiClient.post('/storage/warehouses', { company_id: data.companyId, max_slot: data.maxSlot });
+      // ✅ 창고 슬롯 확장 (ticketSlotIndex를 params로 전달)
+      await apiClient.post('/warehouses/expand', null, { params: { ticketSlotIndex: data.ticketSlotIndex } });
       return { data: { success: true } };
     } catch (err) {
       console.warn("API 연동 실패! WarehouseAPI.unlockSlot 목업 데이터 사용", err);
@@ -378,10 +383,10 @@ export const WarehouseAPI = {
       return { data: { success: true } };
     }
   },
-  moveSlot: async (data: { companyId: number, fromIdx: number, toIdx: number }) => {
+  moveSlot: async (data: { fromIdx: number, toIdx: number }) => {
     try {
-      // ✅ 명세: 슬롯 간 이동
-      await apiClient.patch(`/storage/warehouses/slots`, { warehouse_id: data.companyId, from_idx: data.fromIdx, to_idx: data.toIdx });
+      // ✅ 명세: 슬롯 간 아이템 이동 (스왑 혹은 머지)
+      await apiClient.post(`/warehouses/swap`, { fromSlot: data.fromIdx, toSlot: data.toIdx });
       return { data: { success: true } };
     } catch (err) {
       console.warn("API 연동 실패! WarehouseAPI.moveSlot 목업 데이터 사용", err);
@@ -392,10 +397,10 @@ export const WarehouseAPI = {
 };
 
 export const InventoryAPI = {
-  getInventory: async (companyId: number) => {
-    // ✅ 실제 API 연동: GET /api/v1/inventory/
+  getInventory: async () => {
+    // ✅ 실제 API 연동: GET /api/v1/inventory
     try {
-      const res = await apiClient.get('/inventory/'); // 백엔드 경로 수정
+      const res = await apiClient.get('/inventory');
       return {
         data: res.data.data
           .filter((slot: any) => slot.itemId != null) // 실제 아이템이 들어있는 슬롯만 프론트엔드 인벤토리에 담기
@@ -430,10 +435,10 @@ export const InventoryAPI = {
       };
     }
   },
-  unlockSlot: async (data: { companyId: number; slotId: number }) => {
+  unlockSlot: async (data: { ticketSlotIndex: number }) => {
     try {
       // ✅ 실제 API 연동 (확장권 사용)
-      await apiClient.post('/inventory/expand', null, { params: { ticketSlotIndex: data.slotId } });
+      await apiClient.post('/inventory/expand', null, { params: { ticketSlotIndex: data.ticketSlotIndex } });
       return { data: { success: true } };
     } catch (err) {
       console.warn("API 연동 실패! InventoryAPI.unlockSlot 목업 데이터 사용", err);
@@ -441,10 +446,10 @@ export const InventoryAPI = {
       return { data: { success: true } };
     }
   },
-  moveSlot: async (data: { fromSlot: number; toSlot: number }) => {
+  moveSlot: async (data: { fromIdx: number; toIdx: number }) => {
     try {
-      // ✅ 명세: { "fromSlot": 0, "toSlot": 5 } -> 인벤토리 슬롯 아이템 교환
-      await apiClient.post('/inventory/swap', data);
+      // ✅ 명세: 슬롯 아이템 교환
+      await apiClient.post('/inventory/swap', { fromSlot: data.fromIdx, toSlot: data.toIdx });
       return { data: { success: true } };
     } catch (err) {
       console.warn("API 연동 실패! InventoryAPI.moveSlot 목업 데이터 사용", err);
