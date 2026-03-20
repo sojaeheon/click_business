@@ -5,7 +5,7 @@ import { useGame } from "../../../store/gameStore";
 import { useAlertStore } from "../../../store/useAlertStore";
 import { getWorkerIcon, WorkerCard } from "../ui/WorkerCard";
 import { useGameStore } from "../../../store/gameStore";
-import { getWorkerDefByLevel, IndustryKey } from "../../../constants/workers";
+import { getWorkerDefByLevel, WORKER_LEVEL_IMAGES, IndustryKey } from "../../../constants/workers";
 
 // 다른 곳에서도 쓸 수 있게 export 해줍니다.
 export interface ConfirmData {
@@ -151,9 +151,11 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
             >
               {equippedWorker ? (
                 <>
-                  <span className="text-4xl drop-shadow-md group-hover:scale-110 transition-transform">
-                    {getWorkerIcon(equippedWorker.name)}
-                  </span>
+                  <img
+                    src={WORKER_LEVEL_IMAGES[equippedWorker.level] ?? WORKER_LEVEL_IMAGES[1]}
+                    alt={equippedWorker.name}
+                    className="w-14 h-14 object-contain drop-shadow-md group-hover:scale-110 transition-transform"
+                  />
                   <span className="absolute bottom-1 bg-blue-600/90 text-white font-black px-2 py-0.5 rounded text-[10px] shadow-sm">
                     Lv.{equippedWorker.level}
                   </span>

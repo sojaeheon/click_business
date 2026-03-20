@@ -4,6 +4,7 @@ import { useGame, useGameStore, MAX_PER_SLOT } from "../../store/gameStore";
 import { BackButton } from "../../app/components/ui/backbutton";
 import { useAlertStore } from "../../store/useAlertStore";
 import { WarehouseAPI } from "../../api/gameApi";
+import { getPropsImage } from "../../constants/workers";
 
 interface SlotData {
   id: number;
@@ -73,8 +74,8 @@ function DiscardPanel({ totalMaterial, totalProduct, materialName, productName, 
             <button
               onClick={() => { setSelectedType("material"); setQty(""); }}
               className={`flex items-center gap-3 px-4 py-3 rounded-2xl border-2 transition-all font-bold text-sm cursor-pointer ${selectedType === "material"
-                  ? "bg-yellow-50 border-yellow-400 text-yellow-800"
-                  : "bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300"
+                ? "bg-yellow-50 border-yellow-400 text-yellow-800"
+                : "bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300"
                 }`}
             >
               <div className={`w-3 h-3 rounded-full ${selectedType === "material" ? "bg-yellow-500" : "bg-gray-300"}`} />
@@ -86,8 +87,8 @@ function DiscardPanel({ totalMaterial, totalProduct, materialName, productName, 
             <button
               onClick={() => { setSelectedType("product"); setQty(""); }}
               className={`flex items-center gap-3 px-4 py-3 rounded-2xl border-2 transition-all font-bold text-sm cursor-pointer ${selectedType === "product"
-                  ? "bg-blue-50 border-blue-400 text-blue-800"
-                  : "bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300"
+                ? "bg-blue-50 border-blue-400 text-blue-800"
+                : "bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300"
                 }`}
             >
               <div className={`w-3 h-3 rounded-full ${selectedType === "product" ? "bg-blue-500" : "bg-gray-300"}`} />
@@ -154,8 +155,8 @@ function DiscardPanel({ totalMaterial, totalProduct, materialName, productName, 
             onClick={handleConfirm}
             disabled={!canDiscard}
             className={`flex-1 py-3 rounded-2xl font-black transition-all ${canDiscard
-                ? "bg-red-500 text-white hover:bg-red-600 cursor-pointer shadow-lg shadow-red-200"
-                : "bg-gray-100 text-gray-400 cursor-not-allowed"
+              ? "bg-red-500 text-white hover:bg-red-600 cursor-pointer shadow-lg shadow-red-200"
+              : "bg-gray-100 text-gray-400 cursor-not-allowed"
               }`}
           >
             폐기 확인
@@ -325,8 +326,8 @@ export function WarehousePage() {
             setShowDiscard(true);
           }}
           className={`flex items-center gap-2 px-4 py-3 rounded-2xl border-2 font-black text-sm transition-all shadow-lg cursor-pointer ${hasAnyItem
-              ? "bg-red-50 border-red-300 text-red-600 hover:bg-red-100 hover:border-red-400 hover:shadow-red-200"
-              : "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed opacity-60"
+            ? "bg-red-50 border-red-300 text-red-600 hover:bg-red-100 hover:border-red-400 hover:shadow-red-200"
+            : "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed opacity-60"
             }`}
           title="아이템 폐기"
         >
@@ -392,8 +393,8 @@ export function WarehousePage() {
                   {slot.locked ? (
                     <div className="flex flex-col items-center justify-center text-gray-400 w-full h-full">
                       <Lock className={`w-12 h-12 mb-2 transition-all ${warehouseExpandTickets > 0
-                          ? "group-hover:scale-110 group-hover:text-amber-500 text-slate-400"
-                          : "text-gray-300"
+                        ? "group-hover:scale-110 group-hover:text-amber-500 text-slate-400"
+                        : "text-gray-300"
                         }`} />
                       {warehouseExpandTickets > 0 ? (
                         <span className="text-xs font-bold text-amber-700 bg-amber-200 px-3 py-1 rounded-full shadow-sm mt-1">확장 가능</span>
@@ -405,21 +406,30 @@ export function WarehousePage() {
                       </div>
                     </div>
                   ) : hasItem ? (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-3 pt-8">
-                      <div
-                        className="w-16 h-16 rounded-2xl flex items-center justify-center mb-3 shadow-md relative overflow-hidden ring-1 ring-white/40"
-                        style={{
-                          background: slot.item!.type === "material"
-                            ? "linear-gradient(135deg, rgba(234, 179, 8, 0.2) 0%, rgba(202, 138, 4, 0.3) 100%)"
-                            : "linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.3) 100%)",
-                        }}
-                      >
-                        <Package className={`w-8 h-8 drop-shadow-md ${slot.item!.type === "material" ? "text-yellow-600" : "text-blue-500"}`} />
-                      </div>
-                      <div className="bg-white/90 backdrop-blur border border-white/50 shadow-sm rounded-xl px-3 py-2 text-center w-[90%] pointer-events-none">
-                        <span className="text-sm text-gray-800 font-extrabold block truncate w-full">{slot.item!.name}</span>
-                        <span className="text-xs text-gray-600 font-bold block mt-1 truncate">
-                          {slot.item!.quantity.toLocaleString()} 개
+                    <div className="w-full h-full relative overflow-hidden rounded-2xl">
+                      {/* 이미지 꽉 채우기 */}
+                      {(() => {
+                        const imgSrc = getPropsImage(slot.item!.name);
+                        return imgSrc ? (
+                          <img
+                            src={imgSrc}
+                            alt={slot.item!.name}
+                            className="absolute inset-0 w-full h-full object-contain p-4 drop-shadow-lg"
+                          />
+                        ) : (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <Package className={`w-12 h-12 drop-shadow-md ${slot.item!.type === "material" ? "text-yellow-600" : "text-blue-500"}`} />
+                          </div>
+                        );
+                      })()}
+
+                      {/* 하단 정보 바 */}
+                      <div className="absolute bottom-0 left-0 right-0 flex justify-between items-end px-4 py-2 bg-black/55 rounded-b-2xl">
+                        <span className="text-white font-extrabold text-[14px] leading-tight drop-shadow truncate max-w-[58%]">
+                          {slot.item!.name}
+                        </span>
+                        <span className="text-white font-black text-[13px] bg-black/40 px-2 py-1 rounded-full shrink-0">
+                          {slot.item!.quantity.toLocaleString()}개
                         </span>
                       </div>
                     </div>

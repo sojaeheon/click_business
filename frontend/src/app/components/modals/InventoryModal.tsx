@@ -3,6 +3,7 @@ import { Lock, ShoppingBag, HelpCircle, X, Trash2 } from "lucide-react";
 import { useGameStore } from "../../../store/gameStore";
 import { useAlertStore } from "../../../store/useAlertStore";
 import type { InventoryItem } from "../../../store/gameStore";
+import { WORKER_LEVEL_IMAGES } from "../../../constants/workers";
 
 export function InventoryModal() {
   const { inventoryItems, inventoryExpandTickets, inventoryMax, useInventoryTicket, removeInventoryItem } = useGameStore();
@@ -170,9 +171,19 @@ export function InventoryModal() {
                           </span>
                         )}
                       </div>
-                    ) : item ? (
+                      ) : item ? (
                       <div className="flex flex-col items-center z-10 p-2 pointer-events-none">
-                        <span className="text-4xl mb-2 drop-shadow-md group-hover:scale-110 transition-transform">{item.icon}</span>
+                        {item.type?.startsWith("worker_") ? (
+                          <img
+                            src={WORKER_LEVEL_IMAGES[item.level ?? 1] ?? WORKER_LEVEL_IMAGES[1]}
+                            alt={item.name}
+                            className="w-12 h-12 object-contain mb-1 drop-shadow-md group-hover:scale-110 transition-transform"
+                          />
+                        ) : item.type?.startsWith("ticket_") ? (
+                          <span className="text-3xl mb-1 drop-shadow-md group-hover:scale-110 transition-transform">🎫</span>
+                        ) : (
+                          <span className="text-4xl mb-2 drop-shadow-md group-hover:scale-110 transition-transform">{item.icon}</span>
+                        )}
                         <div className={`px-3 py-1 rounded-full shadow-sm truncate max-w-[100px] text-xs
                           ${isSelected ? "bg-indigo-500 text-white font-black" : "bg-white border text-gray-700 font-bold"}`}>
                           {item.type.startsWith("ticket_") ? item.name : `Lv.${item.level} ${item.name}`}

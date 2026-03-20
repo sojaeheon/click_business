@@ -4,7 +4,7 @@ import { useGame, useGameStore } from "../../store/gameStore";
 import { HRAPI } from "../../api/gameApi";
 import { BackButton } from "../../app/components/ui/backbutton";
 import { useAlertStore } from "../../store/useAlertStore";
-import { WORKER_LEVEL_NAMES, WORKER_LEVEL_ICONS, getWorkerDefByLevel } from "../../constants/workers";
+import { WORKER_LEVEL_NAMES, WORKER_LEVEL_ICONS, WORKER_LEVEL_IMAGES, getWorkerDefByLevel } from "../../constants/workers";
 
 // ── 강화 확률 (내부 전용) ──
 const UPGRADE_TABLE: Record<number, { success: number; stay: number; down: number; reset: number }> = {
@@ -201,9 +201,12 @@ export function HRPage() {
                   animation: phase === "charging" ? "charge-glow 1s ease-in-out infinite" : phase === "idle" ? "float 3s ease-in-out infinite" : "none",
                 }}
               >
-                <span className="text-8xl select-none" style={{ filter: phase === "striking" ? "brightness(3)" : "none", transition: "filter .2s" }}>
-                  {WORKER_LEVEL_ICONS[lv] ?? "⛏️"}
-                </span>
+                <img
+                  src={WORKER_LEVEL_IMAGES[lv] ?? WORKER_LEVEL_IMAGES[1]}
+                  alt={`Lv.${lv} 일꾼`}
+                  className="w-24 h-24 object-contain select-none drop-shadow-2xl"
+                  style={{ filter: phase === "striking" ? "brightness(2) saturate(0)" : "none", transition: "filter .2s" }}
+                />
 
                 {/* 레벨 뱃지 */}
                 <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 px-5 py-1 rounded-full font-black text-white text-sm tracking-wider" style={{ background: borderColor, boxShadow: `0 4px 12px ${borderColor}60` }}>
@@ -361,8 +364,12 @@ export function HRPage() {
                         border: `1px solid ${sel ? `${c}40` : "rgba(255,255,255,.05)"}`,
                       }}
                     >
-                      <div className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl" style={{ background: `${c}15`, border: `2px solid ${c}30` }}>
-                        {d.icon}
+                      <div className="w-12 h-12 rounded-lg flex items-center justify-center overflow-hidden" style={{ background: `${c}15`, border: `2px solid ${c}30` }}>
+                        <img
+                          src={WORKER_LEVEL_IMAGES[itemLv] ?? WORKER_LEVEL_IMAGES[1]}
+                          alt={d.displayName}
+                          className="w-10 h-10 object-contain"
+                        />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className={`font-black truncate ${canUpgrade ? "text-white/90" : "text-white/30"}`}>{d.displayName}</p>

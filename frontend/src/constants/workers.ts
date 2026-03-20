@@ -24,7 +24,7 @@ export const WORKER_LEVEL_MODELS: Record<number, string> = {
   6: "/models/characters/Mage.glb",
 };
 
-// 레벨 → 아이콘
+// 레벨 → 아이콘 (이모지 레거시, 하위호환용)
 export const WORKER_LEVEL_ICONS: Record<number, string> = {
   1: "⛏️",
   2: "🔥",
@@ -33,6 +33,31 @@ export const WORKER_LEVEL_ICONS: Record<number, string> = {
   5: "🗡️",
   6: "👑",
 };
+
+// 레벨 → 캐릭터 이미지 경로 (public/images/character/)
+export const WORKER_LEVEL_IMAGES: Record<number, string> = {
+  1: "/images/character/Barbarian.png",
+  2: "/images/character/Knight.png",
+  3: "/images/character/Rogue.png",
+  4: "/images/character/Rogue_Hooded.png",
+  5: "/images/character/Ranger.png",
+  6: "/images/character/Mage.png",
+};
+
+// 산업별 재료/생산품 이미지 경로 (public/images/props/)
+export const PROPS_IMAGES = {
+  nugget: "/images/props/nugget.png",   // 금광석 (금광업 재료)
+  goldbar: "/images/props/goldbar.png", // 금괴 (금제련업 재료/금광업 생산)
+  drill: "/images/props/drill.png",     // 광산드릴 (제조업 생산)
+} as const;
+
+// 아이템 이름 → 이미지 경로
+export function getPropsImage(itemName: string): string | null {
+  if (itemName.includes("광산 드릴") || itemName.includes("드릴")) return PROPS_IMAGES.drill;
+  if (itemName.includes("금광석") || itemName.includes("원자재")) return PROPS_IMAGES.nugget;
+  if (itemName.includes("금괴") || itemName.includes("생산품")) return PROPS_IMAGES.goldbar;
+  return null;
+}
 
 export type WorkerClass =
   | "worker_lv1"

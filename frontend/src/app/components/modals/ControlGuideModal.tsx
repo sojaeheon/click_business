@@ -27,6 +27,18 @@ export function ControlGuideModal({ forceOpen = false, onForceClose }: {
     onForceClose?.();
   };
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        handleClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, hideForever, onForceClose]);
+
   if (!isOpen) return null;
 
   const Key = ({ children, className = "" }: { children: React.ReactNode, className?: string }) => (
