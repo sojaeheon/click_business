@@ -46,6 +46,15 @@ echo "Creating topics..."
   --partitions 3 \
   --replication-factor 1
 
+# ==========================================
+# Kafka Topic 생성 (단일 토픽: company.events)
+# ==========================================
+/usr/bin/kafka-topics --create --if-not-exists \
+  --bootstrap-server $BOOTSTRAP \
+  --topic company.events \
+  --partitions 3 \
+  --replication-factor 1
+
 echo "Topic creation completed."
 
 # Kakfa Topic 조회
