@@ -13,12 +13,12 @@ export const AuthAPI = {
   callback: (code: string) => apiClient.get('/auth/callback', { params: { code } }),
   refresh: () => apiClient.post('/auth/refresh'),
   logout: () => apiClient.post('/auth/logout'),
+  createGuest: () => apiClient.post('/users/guest'),
 };
 
 export const UserAPI = {
   signup: (data: any) => apiClient.post('/users/signup', data),
   login: (data: any) => apiClient.post('/users/login', data),
-  createGuest: () => apiClient.post('/users/guest'),
   getMe: () => apiClient.get('/users/me'),
   updateNickname: (userId: number, nickname: string) => apiClient.patch(`/users/${userId}`, { nickname }),
 };

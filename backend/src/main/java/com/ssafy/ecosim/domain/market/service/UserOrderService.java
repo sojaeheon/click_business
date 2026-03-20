@@ -2,15 +2,20 @@ package com.ssafy.ecosim.domain.market.service;
 
 import com.ssafy.ecosim.domain.company.entity.Company;
 import com.ssafy.ecosim.domain.company.repository.CompanyRepository;
+import com.ssafy.ecosim.domain.inventory.service.WarehouseService;
 import com.ssafy.ecosim.domain.market.dto.event.OrderCancellationEventDto;
 import com.ssafy.ecosim.domain.market.dto.event.OrderCreationEventDto;
 import com.ssafy.ecosim.domain.market.dto.request.UserOrderRequestDto;
 import com.ssafy.ecosim.domain.market.entity.MarketOrder;
+import com.ssafy.ecosim.domain.market.entity.OrderType;
 import com.ssafy.ecosim.domain.market.kafka.OrderEventPublisher;
 import com.ssafy.ecosim.domain.market.repository.MarketOrderRepository;
+import com.ssafy.ecosim.global.kafka.publisher.CompanyCashEventPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
 
 @Service
 @RequiredArgsConstructor
@@ -19,22 +24,38 @@ public class UserOrderService {
     private final OrderEventPublisher eventPublisher;
     private final CompanyRepository companyRepository;
     private final MarketOrderRepository marketOrderRepository;
+    private final CompanyCashEventPublisher companyCashEventPublisher;
+    private final WarehouseService warehouseService;
 
     /**
-     * 3. 체결 서버(Kafka)에 주문 이벤트 발행 (UserOrderService.create)
-     * → market.events 토픽 발행 (eventType: market.order.created)
+     * 주문 생성:
+     * 1. 자산 보유량 검증
+     * 2. 즉시 자산 차감 (BUY → cash, SELL → item)
+     * 3. Kafka market.events 발행
      */
+    @Transactional
     public void createOrder(Long userId, UserOrderRequestDto request) {
 
-        // 1. userId → companyId DB 조회 (User FK 경로 사용)
         Company company = companyRepository.findByUser_Id(userId)
                 .orElseThrow(() -> new IllegalArgumentException("해당 유저에게 소속된 회사가 없습니다. userId=" + userId));
         Long companyId = company.getId();
+        long price = request.getPrice();
+        long qty = request.getTotalQuantity();
 
-        // 2. 유효성 검증 로직 (보유 자산 체크)
         validateOrderPossibility(company, request);
 
-        // 3. 통합 이벤트 DTO 생성 (실제 유저의 요청이므로 isVirtual = false)
+        if (request.getOrderType() == OrderType.BUY) {
+            long cost = price * qty;
+            company.spendCash(cost);
+            companyCashEventPublisher.publishCashChanged(
+                    companyId, company.getCash(), -cost,
+                    "MARKET_BUY_ORDER", null, Instant.now()
+            );
+        } else {
+            // SELL: 창고에서 아이템 즉시 차감
+            warehouseService.removeItem(companyId, (long) request.getItemId(), qty, "MARKET_SELL_ORDER");
+        }
+
         OrderCreationEventDto eventDto = OrderCreationEventDto.builder()
                 .itemId(request.getItemId())
                 .companyId(companyId)
@@ -45,22 +66,21 @@ public class UserOrderService {
                 .timestamp(System.currentTimeMillis())
                 .build();
 
-        // Kafka 토픽으로 전송
         eventPublisher.publishOrderEvent(eventDto);
     }
 
     /**
-     * 2. 체결 서버(Kafka)에 취소 이벤트 발행 (UserOrderService.cancel)
-     * → market.events 토픽 발행 (eventType: market.order.cancelled)
+     * 주문 취소:
+     * 1. 권한 확인
+     * 2. 차감했던 자산 복구 (BUY → cash 환불, SELL → item 반환)
+     * 3. Kafka market.events 발행
      */
     @Transactional
     public void cancelOrder(Long userId, Long orderId) {
 
-        // 1. 주문 조회
         MarketOrder order = marketOrderRepository.findById(orderId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 주문입니다. orderId=" + orderId));
 
-        // 2. 권한 확인: 해당 주문이 이 유저 회사의 주문인지 검증
         Company company = companyRepository.findByUser_Id(userId)
                 .orElseThrow(() -> new IllegalArgumentException("해당 유저에게 소속된 회사가 없습니다. userId=" + userId));
 
@@ -68,10 +88,23 @@ public class UserOrderService {
             throw new IllegalStateException("본인 회사의 주문만 취소할 수 있습니다.");
         }
 
-        // 3. 주문 상태를 CANCELED로 변경 (entity 비즈니스 로직 사용)
         order.cancelOrder();
 
-        // 4. 취소 이벤트 DTO 생성 및 Kafka 발행
+        long remaining = order.getRemainingQuantity();
+        long price = order.getPrice();
+
+        if (order.getOrderType() == OrderType.BUY) {
+            long refund = price * remaining;
+            company.receiveCash(refund);
+            companyCashEventPublisher.publishCashChanged(
+                    company.getId(), company.getCash(), refund,
+                    "MARKET_BUY_CANCEL", orderId.toString(), Instant.now()
+            );
+        } else {
+            // SELL 취소: 차감했던 아이템 복구
+            warehouseService.addItem(company.getId(), (long) order.getItemId(), remaining, "MARKET_SELL_CANCEL");
+        }
+
         OrderCancellationEventDto eventDto = OrderCancellationEventDto.builder()
                 .orderId(order.getId())
                 .itemId(order.getItemId())
@@ -87,21 +120,28 @@ public class UserOrderService {
     }
 
     /**
-     * 유저가 매수/매도 주문을 넣을 자격(돈/아이템 보유량)이 있는지 검증합니다.
+     * 주문 가능 여부 검증 (자산 체크)
      */
     private void validateOrderPossibility(Company company, UserOrderRequestDto request) {
-        switch (request.getOrderType()) {
-            case BUY:
-                // 매수의 경우: 회사 잔고(Cash) >= (price * quantity) 인지 확인
-                // TODO: company.getCash() < request.getPrice() * request.getTotalQuantity()
-                // throw new InsufficientBalanceException();
-                break;
+        long price = request.getPrice();
+        long qty = request.getTotalQuantity();
 
-            case SELL:
-                // 매도의 경우: 유저가 속한 회사의 인벤토리에 해당 아이템 잔량이 충분한지 확인
-                // TODO: Inventory 레포지토리에서 물품 수량 조회하여 비교
-                // throw new InsufficientItemException();
-                break;
+        switch (request.getOrderType()) {
+            case BUY -> {
+                long required = price * qty;
+                if (company.getCash() < required) {
+                    throw new IllegalStateException(
+                            String.format("잔고가 부족합니다. 필요: %d, 보유: %d", required, company.getCash()));
+                }
+            }
+            case SELL -> {
+                long held = warehouseService.getItemQuantity(company.getId(), request.getItemId().longValue());
+                if (held < qty) {
+                    throw new IllegalStateException(
+                            String.format("아이템 수량이 부족합니다. 필요: %d, 보유: %d", qty, held));
+                }
+            }
         }
     }
 }
+
