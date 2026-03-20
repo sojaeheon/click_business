@@ -28,6 +28,22 @@ services:
       - ecosim-network
 
   # -----------------------------
+  # external loader 서비스
+  # -----------------------------
+  external-loader:
+    image: python:3.11-slim
+    container_name: external-loader
+    working_dir: /app
+    volumes:
+      - ../bigdata:/app
+    env_file:
+      - .env
+    command: >
+      sh -c "pip install --no-cache-dir psycopg2-binary &&
+            python external_data/loader/external_data_loader.py"
+    networks:
+      - ecosim-network
+  # -----------------------------
   # ZooKeeper 서비스
   # -----------------------------
   zookeeper:
@@ -125,8 +141,8 @@ services:
   # -----------------------------
   market-consumer:
     build:
-      context: ../bigdata/kafka
-      dockerfile: Dockerfile.kafka
+      context: ../bigdata
+      dockerfile: dockerfile/Dockerfile.kafka
     container_name: market-consumer
     restart: always
     depends_on:
@@ -136,6 +152,19 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    networks:
+      - ecosim-network
+  
+  # -----------------------------
+  # Kafka Consumer (HDFS 적재용)
+  # -----------------------------
+  hdfs-raw-sink-consumer:
+    build:
+      context: ../bigdata
+      dockerfile: dockerfile/dockerfile.hdfs
+    env_file:
+      - .env
+    command: python consumers/hdfs_raw_sink_consumer.py
     networks:
       - ecosim-network
       
