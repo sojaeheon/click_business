@@ -58,7 +58,7 @@ export function MinigamePage() {
   const closeBuildingPage = useGameStore((state) => state.closeBuildingPage);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  const TOTAL_CLICKS = 10;
+  const TOTAL_CLICKS = 100;
   const [gameState, setGameState] = useState<"locked" | "playing" | "success" | "failure">("locked");
   const [timeLeft, setTimeLeft] = useState(10);
   const [clicksLeft, setClicksLeft] = useState(TOTAL_CLICKS);
@@ -218,33 +218,41 @@ export function MinigamePage() {
       <BackButton onClick={handleBackClick} className="absolute top-6 left-6" />
 
       {gameState === "locked" && (
-        <div className="absolute inset-0 z-50 bg-gray-950/80 flex flex-col items-center justify-center backdrop-blur-sm pointer-events-auto">
-          <div className="mb-10 flex items-center justify-center animate-bounce bg-white/10 p-10 rounded-full border-2 border-white/20">
-            <Lock className="w-24 h-24 text-white drop-shadow-2xl" strokeWidth={2} />
-          </div>
-          <button
-            onClick={handleUnlock}
-            className="px-16 py-5 bg-gradient-to-b from-yellow-300 to-yellow-500 border-4 border-yellow-700 rounded-full text-2xl font-black text-yellow-950 hover:from-yellow-200 hover:to-yellow-400 active:scale-95 transition-all shadow-[0_8px_0_rgb(161,98,7)] cursor-pointer tracking-widest"
-          >
-            100,000원 투입
-          </button>
+        <div className="absolute inset-0 z-50 bg-gray-950/80 flex flex-row items-center justify-center backdrop-blur-sm pointer-events-auto px-16 gap-8">
+          {/* Left spacer (mirrors right panel width) */}
+          <div className="flex-1 max-w-xl" />
 
-          {/* 💡 오른쪽 조작법 패널 */}
-          <div className="absolute right-32 top-1/2 -translate-y-1/2 bg-black/60 backdrop-blur-md rounded-2xl border-2 border-white/10 p-6 max-w-lg flex flex-col gap-4 text-left shadow-2xl whitespace-nowrap">
-            <h3 className="text-xl font-black text-yellow-400 flex items-center gap-2">
-              <span className="text-2xl">💡</span> 게임 조작 방법
-            </h3>
-            <div className="w-full h-0.5 bg-white/10"></div>
-            <ul className="flex flex-col gap-3 text-slate-200 font-bold text-sm leading-relaxed">
-              <li className="flex gap-2">
-                <span className="text-yellow-400">•</span>
-                <span>마우스 <strong className="text-white text-base">클릭</strong>이나 <strong className="text-white text-base">스페이스바</strong>를 누르면 타이머가 시작됩니다!</span>
-              </li>
-              <li className="flex gap-2">
-                <span className="text-yellow-400">•</span>
-                <span>게임이 시작된 후에는 어떤 연사 수단이든 동원하여 차를 부숴보세요 🚗🔥</span>
-              </li>
-            </ul>
+          {/* Center: lock + button */}
+          <div className="flex flex-col items-center flex-shrink-0">
+            <div className="mb-10 flex items-center justify-center animate-bounce bg-white/10 p-10 rounded-full border-2 border-white/20">
+              <Lock className="w-24 h-24 text-white drop-shadow-2xl" strokeWidth={2} />
+            </div>
+            <button
+              onClick={handleUnlock}
+              className="px-16 py-5 bg-gradient-to-b from-yellow-300 to-yellow-500 border-4 border-yellow-700 rounded-full text-2xl font-black text-yellow-950 hover:from-yellow-200 hover:to-yellow-400 active:scale-95 transition-all shadow-[0_8px_0_rgb(161,98,7)] cursor-pointer tracking-widest"
+            >
+              100,000원 투입
+            </button>
+          </div>
+
+          {/* Right: 조작법 패널 */}
+          <div className="flex-1 max-w-xl flex justify-end">
+            <div className="bg-black/60 backdrop-blur-md rounded-2xl border-2 border-white/10 p-6 flex flex-col gap-4 text-left shadow-2xl w-full">
+              <h3 className="text-xl font-black text-yellow-400 flex items-center gap-2">
+                <span className="text-2xl">💡</span> 게임 조작 방법
+              </h3>
+              <div className="w-full h-0.5 bg-white/10" />
+              <ul className="flex flex-col gap-3 text-slate-200 font-bold text-sm leading-relaxed">
+                <li className="flex gap-2">
+                  <span className="text-yellow-400">•</span>
+                  <span>마우스 <strong className="text-white text-base">클릭</strong>이나 <strong className="text-white text-base">스페이스바</strong>를 누르면 타이머가 시작됩니다!</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-yellow-400">•</span>
+                  <span>게임이 시작된 후에는 어떤 연사 수단이든 동원하여 차를 부숴보세요 🚗🔥</span>
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
       )}
@@ -278,7 +286,6 @@ export function MinigamePage() {
           onClick={handleClickBuilding}
           className={`relative transition-transform outline-none mt-auto mb-20 ${gameState === "locked" ? "cursor-default" : "cursor-pointer"}`}
           style={{
-            transform: `scale(${1 - damagePercent * 0.002})`,
             filter: `brightness(${isFever ? 70 - damagePercent / 4 : 100 - damagePercent / 4}%) sepia(${isFever ? 0.8 : 0}) hue-rotate(${isFever ? -50 : 0}deg)`,
           }}
         >

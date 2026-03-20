@@ -325,11 +325,11 @@ export const RankingAPI = {
       await mockDelay();
       return {
         data: [
-          { rank: 1, companyName: "삼성제철", score: 99999, tier: "챌린저" },
-          { rank: 2, companyName: "현대광업", score: 88888, tier: "다이아" },
-          { rank: 3, companyName: "딸깍 컴퍼니", score: 77777, tier: "플래티넘" },
-          { rank: 4, companyName: "SSAFY 광물", score: 66666, tier: "골드" },
-          { rank: 5, companyName: "개미구멍", score: 55555, tier: "실버" },
+          { rank: 1, companyName: "삼성제철", score: 99999 },
+          { rank: 2, companyName: "현대광업", score: 88888 },
+          { rank: 3, companyName: "딸깍 컴퍼니", score: 77777 },
+          { rank: 4, companyName: "SSAFY 광물", score: 66666 },
+          { rank: 5, companyName: "개미구멍", score: 55555 },
         ]
       };
     }

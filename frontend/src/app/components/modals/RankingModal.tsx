@@ -107,7 +107,6 @@ export function RankingModal() {
             <div className="flex flex-col items-center gap-2 group animate-fade-in" style={{ animationDelay: '100ms' }}>
               <div className="text-center mb-1">
                 <p className="text-sm font-black text-gray-700">{top3[1]?.name}</p>
-                <p className="text-[10px] font-bold text-slate-400">{top3[1]?.company}</p>
               </div>
               <div className={`w-20 h-24 rounded-t-2xl border-2 border-b-0 flex flex-col items-center justify-start pt-3 transition-transform group-hover:-translate-y-2 ${podiumColors[2]}`}>
                 <span className="text-3xl font-black text-slate-500 drop-shadow-sm">2</span>
@@ -121,7 +120,6 @@ export function RankingModal() {
               <div className="text-center mb-2">
                 <Trophy className="w-8 h-8 text-yellow-500 mx-auto drop-shadow-md mb-1 animate-bounce" />
                 <p className="text-base font-black text-gray-800">{top3[0]?.name}</p>
-                <p className="text-xs text-yellow-600 font-bold">{top3[0]?.company}</p>
               </div>
               <div className={`relative w-28 h-32 rounded-t-2xl border-2 border-b-0 flex flex-col items-center justify-start pt-4 transition-transform group-hover:-translate-y-2 ${podiumColors[1]}`}>
                 <span className="text-5xl font-black text-yellow-600 drop-shadow-md">1</span>
@@ -133,7 +131,6 @@ export function RankingModal() {
             <div className="flex flex-col items-center gap-2 group animate-fade-in" style={{ animationDelay: '200ms' }}>
               <div className="text-center mb-1">
                 <p className="text-sm font-black text-gray-700">{top3[2]?.name}</p>
-                <p className="text-[10px] font-bold text-orange-400">{top3[2]?.company}</p>
               </div>
               <div className={`w-20 h-16 rounded-t-2xl border-2 border-b-0 flex flex-col items-center justify-start pt-2 transition-transform group-hover:-translate-y-2 ${podiumColors[3]}`}>
                 <span className="text-3xl font-black text-orange-500 drop-shadow-sm">3</span>
@@ -149,7 +146,7 @@ export function RankingModal() {
                 <tr className="border-b border-gray-200">
                   <th className="py-3 px-4 text-left text-gray-500 font-bold">순위</th>
                   <th className="py-3 px-4 text-left text-gray-500 font-bold">기업명</th>
-                  <th className="py-3 px-4 text-center text-gray-500 font-bold">티어</th>
+                  
                   <th className="py-3 px-4 text-right text-gray-500 font-bold">자산</th>
                 </tr>
               </thead>
@@ -158,7 +155,6 @@ export function RankingModal() {
                   <tr key={entry.rank} className="border-b border-gray-100 transition-colors">
                     <td className="py-3 px-4 text-gray-600 font-black">{entry.rank}</td>
                     <td className="py-3 px-4 text-gray-800 font-bold">{entry.name}</td>
-                    <td className="py-3 px-4 text-center text-blue-500 font-bold">{entry.company}</td>
                     <td className="py-3 px-4 text-right text-gray-700 font-bold">{entry.amount}</td>
                   </tr>
                 ))}

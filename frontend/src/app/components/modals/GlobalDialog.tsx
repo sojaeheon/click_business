@@ -173,7 +173,7 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
               )}
               {/* ✨ NEW 뱃지 표시 */}
               {hasNewWorker && !data.isWorking && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full shadow-md animate-bounce pointer-events-none">
+                <span className="absolute top-1 right-1 bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full shadow-md animate-bounce pointer-events-none">
                   NEW!
                 </span>
               )}
