@@ -58,5 +58,5 @@ echo "Creating topics..."
 echo "Topic creation completed."
 
 # Kakfa Topic 조회
-echo "Current topics:"
+echo "Current topics"
 /usr/bin/kafka-topics --bootstrap-server $BOOTSTRAP --list
