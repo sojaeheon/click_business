@@ -172,8 +172,6 @@ export function WarehousePage() {
   const warehouseExpandTickets = useGameStore(s => s.warehouseExpandTickets);
   const material = useGameStore(s => s.getIndustryItemNames().material);
   const product = useGameStore(s => s.getIndustryItemNames().product);
-  const useWarehouseTicket = useGameStore(s => s.useWarehouseTicket);
-
   const [slots, setSlots] = useState<SlotData[]>([]);
   const [showDiscard, setShowDiscard] = useState(false);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -216,15 +214,17 @@ export function WarehousePage() {
     fetchSlots();
   }, []);
 
-  const handleUnlockSlot = (slotId: number) => {
+  const handleUnlockSlot = async (slotId: number) => {
     if (warehouseExpandTickets <= 0) {
       useAlertStore.getState().openAlert("창고 확장권이 부족합니다. 미니게임에서 획득할 수 있습니다.", "확장 불가");
       return;
     }
-    const success = useWarehouseTicket();
-    if (success) {
-      setSlots(prev => prev.map(s => s.id === slotId ? { ...s, locked: false } : s));
+    try {
+      await WarehouseAPI.unlockSlot({ companyId: 0, maxSlot: slotId });
+      await fetchSlots();
       useAlertStore.getState().openAlert("창고 슬롯이 확장되었습니다!", "확장 완료");
+    } catch {
+      useAlertStore.getState().openAlert("슬롯 확장에 실패했습니다.", "확장 실패");
     }
   };
 
