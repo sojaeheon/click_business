@@ -74,7 +74,7 @@ def save_order(data, payload):
     created_at_ms = to_epoch_millis(payload.get("created_at"))
     updated_at_ms = created_at_ms
 
-    status = payload.get("status", "OPEN")
+    status = payload.get("status", "PENDING")
     remaining_quantity = payload.get("remaining_quantity", quantity)
 
     score = compute_score(side, price, created_at_ms)
@@ -82,17 +82,17 @@ def save_order(data, payload):
     # 주문 상세 정보 HASH
     order_key = f"market:order:{order_id}"
     r.hset(order_key, mapping={
-        "company_id": str(company_id),
-        "order_id": str(order_id),
-        "item_id": str(item_id),
-        "side": side,
+        "companyId": str(company_id),
+        "orderId": str(order_id),
+        "itemId": str(item_id),
+        "orderType": side,
         "price": str(price),
-        "quantity": str(quantity),
-        "remaining_quantity": str(remaining_quantity),
+        "totalQuantity": str(quantity),
+        "remainingQuantity": str(remaining_quantity),
         "status": status,
-        "is_virtual": str(int(is_virtual)),
-        "created_at": str(created_at_ms),
-        "updated_at": str(updated_at_ms)
+        "isVirtual": "true" if is_virtual else "false",
+        "createdAt": str(created_at_ms),
+        "updatedAt": str(updated_at_ms)
     })
 
     # # 주문 상세 정보 JSON
@@ -143,8 +143,8 @@ def cancel_order(data, payload):
     # HASH 상태 업데이트
     if r.exists(order_key):
         r.hset(order_key, mapping={
-            "status": "CANCELLED",
-            "cancelled_at": str(int(time.time() * 1000))
+            "status": "CANCELED",
+            "cancelledAt": str(int(time.time() * 1000))
         })
 
     print(f"[CANCEL] Order 취소 완료: {order_id} -> {zset_key}")
