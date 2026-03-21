@@ -41,13 +41,13 @@ export function MarketPage() {
   let matScale = 2;
   let prodScale = 2;
 
-  if (industry === "금광업") {
+  if (industry === "GOLD_MINING") {
     matUrl = "/models/props/drill.glb"; matScale = 2.5;
     prodUrl = "/models/props/Gold_Nuggets.gltf"; prodScale = 4;
-  } else if (industry === "금 제련업" || industry === "제철업") {
+  } else if (industry === "GOLD_SMELTING") {
     matUrl = "/models/props/Gold_Nuggets.gltf"; matScale = 4;
     prodUrl = "/models/props/Gold_Bar.gltf"; prodScale = 3;
-  } else if (industry === "제조업") {
+  } else if (industry === "MANUFACTURING") {
     matUrl = "/models/props/Gold_Bar.gltf"; matScale = 3;
     prodUrl = "/models/props/drill.glb"; prodScale = 2.5;
   }
@@ -68,9 +68,9 @@ export function MarketPage() {
 
   // 🏷️ 아이템 ID 매핑 헬퍼
   const getItemId = (m: MarketMode): number => {
-    if (industry === "금광업") return m === "buy" ? 3 : 1;
-    if (industry === "금 제련업" || industry === "제철업") return m === "buy" ? 1 : 2;
-    if (industry === "제조업") return m === "buy" ? 2 : 3;
+    if (industry === "GOLD_MINING") return m === "buy" ? 3 : 1;
+    if (industry === "GOLD_SMELTING") return m === "buy" ? 1 : 2;
+    if (industry === "MANUFACTURING") return m === "buy" ? 2 : 3;
     return 1;
   };
 
