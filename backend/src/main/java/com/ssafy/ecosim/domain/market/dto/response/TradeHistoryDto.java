@@ -1,5 +1,6 @@
 package com.ssafy.ecosim.domain.market.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.ssafy.ecosim.domain.market.entity.OrderType;
 import com.ssafy.ecosim.domain.market.entity.TradeHistory;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -30,6 +31,7 @@ public class TradeHistoryDto {
     private OrderType orderType;
 
     @Schema(description = "수령 완료 여부", example = "false")
+    @JsonProperty("isCollected")
     private boolean isCollected;
 
     @Schema(description = "체결 시각", example = "2026-03-19T11:00:00")
