@@ -18,8 +18,8 @@ import java.util.*;
 @RequiredArgsConstructor
 public class OrderBookService {
 
-    private static final int ORDER_BOOK_DEPTH = 10;   // 호가창 표시 가격 단계 수
-    private static final int SCAN_LIMIT = 200;        // Redis ZSet 스캔 상한 (price level로 묶기 위해 여유 있게)
+    private static final int ORDER_BOOK_DEPTH = 10; // 호가창 표시 가격 단계 수
+    private static final int SCAN_LIMIT = 200; // Redis ZSet 스캔 상한 (price level로 묶기 위해 여유 있게)
     private static final int RECENT_TRADES_COUNT = 30;
 
     private final OrderBookManager orderBookManager;
@@ -35,12 +35,10 @@ public class OrderBookService {
         Long currentPrice = orderBookManager.getMarketPrice(itemId);
         List<OrderBookEntryDto> buyOrders = aggregateOrders(
                 orderBookManager.getTopBuys(itemId, SCAN_LIMIT),
-                true
-        );
+                true);
         List<OrderBookEntryDto> sellOrders = aggregateOrders(
                 orderBookManager.getTopSells(itemId, SCAN_LIMIT),
-                false
-        );
+                false);
         return new OrderBookResponseDto(itemId, currentPrice, buyOrders, sellOrders);
     }
 
@@ -68,8 +66,7 @@ public class OrderBookService {
      */
     private List<OrderBookEntryDto> aggregateOrders(
             Set<ZSetOperations.TypedTuple<String>> tuples,
-            boolean descSort
-    ) {
+            boolean descSort) {
         if (tuples == null || tuples.isEmpty()) {
             return Collections.emptyList();
         }
@@ -80,7 +77,8 @@ public class OrderBookService {
         for (ZSetOperations.TypedTuple<String> tuple : tuples) {
             Long orderId = Long.valueOf(tuple.getValue());
             MarketOrder order = orderDetailsCacheManager.getOrderCache(orderId);
-            if (order == null) continue;
+            if (order == null)
+                continue;
 
             long price = order.getPrice();
             long qty = order.getRemainingQuantity();

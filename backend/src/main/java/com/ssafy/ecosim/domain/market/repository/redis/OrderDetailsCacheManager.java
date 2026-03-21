@@ -28,14 +28,13 @@ public class OrderDetailsCacheManager {
     public void saveOrderCache(MarketOrder order) {
         String key = getKey(order.getId());
         Map<String, String> fields = Map.of(
-            "itemId",            String.valueOf(order.getItemId()),
-            "orderType",         order.getOrderType().name(),
-            "price",             String.valueOf(order.getPrice()),
-            "remainingQuantity", String.valueOf(order.getRemainingQuantity()),
-            "totalQuantity",     String.valueOf(order.getTotalQuantity()),
-            "status",            order.getStatus().name(),
-            "isVirtual",         String.valueOf(order.getIsVirtual())
-        );
+                "itemId", String.valueOf(order.getItemId()),
+                "orderType", order.getOrderType().name(),
+                "price", String.valueOf(order.getPrice()),
+                "remainingQuantity", String.valueOf(order.getRemainingQuantity()),
+                "totalQuantity", String.valueOf(order.getTotalQuantity()),
+                "status", order.getStatus().name(),
+                "isVirtual", String.valueOf(order.getIsVirtual()));
         redisTemplate.opsForHash().putAll(key, fields);
         redisTemplate.expire(key, CACHE_TTL_HOURS, TimeUnit.HOURS);
     }
@@ -48,19 +47,20 @@ public class OrderDetailsCacheManager {
         String key = getKey(orderId);
         Map<Object, Object> map = redisTemplate.opsForHash().entries(key);
 
-        if (map == null || map.isEmpty()) return null;
+        if (map == null || map.isEmpty())
+            return null;
 
         try {
-            Integer itemId        = Integer.parseInt(String.valueOf(map.getOrDefault("itemId", "1")));
-            OrderType orderType   = OrderType.valueOf(String.valueOf(map.getOrDefault("orderType", "BUY")));
-            Long price            = Long.parseLong(String.valueOf(map.getOrDefault("price", "0")));
-            Long remainingQty     = Long.parseLong(String.valueOf(map.getOrDefault("remainingQuantity", "0")));
-            Long totalQty         = Long.parseLong(String.valueOf(map.getOrDefault("totalQuantity", remainingQty.toString())));
-            Boolean isVirtual     = Boolean.parseBoolean(String.valueOf(map.getOrDefault("isVirtual", "false")));
+            Integer itemId = Integer.parseInt(String.valueOf(map.getOrDefault("itemId", "1")));
+            OrderType orderType = OrderType.valueOf(String.valueOf(map.getOrDefault("orderType", "BUY")));
+            Long price = Long.parseLong(String.valueOf(map.getOrDefault("price", "0")));
+            Long remainingQty = Long.parseLong(String.valueOf(map.getOrDefault("remainingQuantity", "0")));
+            Long totalQty = Long.parseLong(String.valueOf(map.getOrDefault("totalQuantity", remainingQty.toString())));
+            Boolean isVirtual = Boolean.parseBoolean(String.valueOf(map.getOrDefault("isVirtual", "false")));
 
             return MarketOrder.builder()
                     .itemId(itemId)
-                    .companyId(0L)   // 조회 목적 전용 (companyId 불필요)
+                    .companyId(0L) // 조회 목적 전용 (companyId 불필요)
                     .orderType(orderType)
                     .price(price)
                     .totalQuantity(totalQty)

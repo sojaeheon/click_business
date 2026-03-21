@@ -32,9 +32,10 @@ public class OrderBookManager {
 
     /**
      * 매수(Buy) 주문을 호가창에 등록합니다.
-     * @param itemId 아이템 식별자
+     * 
+     * @param itemId  아이템 식별자
      * @param orderId 주문 고유 식별자
-     * @param score 정렬 기준 점수 (보통 체결 우선순위 가격을 가공한 값)
+     * @param score   정렬 기준 점수 (보통 체결 우선순위 가격을 가공한 값)
      */
     public void addBuy(Integer itemId, Long orderId, Double score) {
         stringRedisTemplate.opsForZSet().add(getBuyKey(itemId), String.valueOf(orderId), score);
@@ -42,9 +43,10 @@ public class OrderBookManager {
 
     /**
      * 매도(Sell) 주문을 호가창에 등록합니다.
-     * @param itemId 아이템 식별자
+     * 
+     * @param itemId  아이템 식별자
      * @param orderId 주문 고유 식별자
-     * @param score 정렬 기준 점수 (매도는 낮은 가격이 우선 등)
+     * @param score   정렬 기준 점수 (매도는 낮은 가격이 우선 등)
      */
     public void addSell(Integer itemId, Long orderId, Double score) {
         stringRedisTemplate.opsForZSet().add(getSellKey(itemId), String.valueOf(orderId), score);
@@ -72,7 +74,8 @@ public class OrderBookManager {
     public Long getMarketPrice(Integer itemId) {
         String key = String.format(TICKER_KEY_PREFIX, itemId);
         String value = stringRedisTemplate.opsForValue().get(key);
-        if (value == null) return null;
+        if (value == null)
+            return null;
         try {
             return Long.parseLong(value);
         } catch (NumberFormatException e) {
@@ -82,8 +85,9 @@ public class OrderBookManager {
 
     /**
      * 최근 체결가를 Redis에 기록합니다 (시장가 갱신).
+     * 
      * @param itemId 아이템 ID
-     * @param price 체결 가격
+     * @param price  체결 가격
      */
     public void setMarketPrice(Integer itemId, Long price) {
         String key = String.format(TICKER_KEY_PREFIX, itemId);
@@ -113,7 +117,8 @@ public class OrderBookManager {
         // Score 범위로 OrderId Set 조회
         Set<String> orderIds = stringRedisTemplate.opsForZSet().rangeByScore(key, minScore, maxScore);
 
-        if (orderIds == null || orderIds.isEmpty()) return 0L;
+        if (orderIds == null || orderIds.isEmpty())
+            return 0L;
 
         long totalVolume = 0L;
         for (String orderId : orderIds) {
@@ -122,7 +127,8 @@ public class OrderBookManager {
             if (qty != null) {
                 try {
                     totalVolume += Long.parseLong(qty.toString());
-                } catch (NumberFormatException ignored) {}
+                } catch (NumberFormatException ignored) {
+                }
             }
         }
         return totalVolume;
