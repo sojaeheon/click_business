@@ -147,8 +147,8 @@ services:
   # -----------------------------
   order-redis-consumer:
     build:
-      context: ../bigdata/kafka
-      dockerfile: Dockerfile.kafka
+      context: ../bigdata
+      dockerfile: dockerfile/Dockerfile.kafka
     container_name: order-redis-consumer
     restart: always
     depends_on:
@@ -161,8 +161,8 @@ services:
     
   order-db-consumer:
     build:
-      context: ../bigdata/kafka
-      dockerfile: Dockerfile.kafka
+      context: ../bigdata
+      dockerfile: dockerfile/Dockerfile.kafka
     container_name: order-db-consumer
     restart: always
     depends_on:
@@ -175,8 +175,8 @@ services:
   
   trade-db-consumer:
     build:
-      context: ../bigdata/kafka
-      dockerfile: Dockerfile.kafka
+      context: ../bigdata
+      dockerfile: dockerfile/Dockerfile.kafka
     container_name: trade-db-consumer
     restart: always
     depends_on:
