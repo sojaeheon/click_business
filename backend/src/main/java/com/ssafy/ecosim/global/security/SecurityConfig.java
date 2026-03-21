@@ -61,7 +61,9 @@ public class SecurityConfig {
                                                                 "/ws-ecosim/**",
                                                                 "/swagger-ui/**",
                                                                 "/v3/api-docs/**",
-                                                                "/swagger-ui.html"
+                                                                "/swagger-ui.html",
+                                                                "/api/swagger-ui/**",
+                                                                "/api/v3/api-docs/**"
                                                                 )
                                                 .permitAll()
                                                 .anyRequest().authenticated())
