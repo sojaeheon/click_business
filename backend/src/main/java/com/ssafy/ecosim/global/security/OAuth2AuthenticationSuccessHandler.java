@@ -5,6 +5,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler;
@@ -20,6 +21,9 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
 
     private final JwtTokenProvider tokenProvider;
 
+    @Value("${cors.allowed-origins}")
+    private String allowedOrigins;
+
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
             Authentication authentication) throws IOException, ServletException {
@@ -28,7 +32,9 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
 
         String token = tokenProvider.createToken(user.getId(), (String) principalDetails.getAttributes().get("email"));
 
-        String targetUrl = UriComponentsBuilder.fromUriString("/login/success")
+        // 프론트엔드 주소로 리다이렉트 (cors.allowed-origins의 첫 번째 값 사용)
+        String frontendUrl = allowedOrigins.split(",")[0];
+        String targetUrl = UriComponentsBuilder.fromUriString(frontendUrl + "/login/success")
                 .queryParam("token", token)
                 .build().toUriString();
 
