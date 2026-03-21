@@ -10,6 +10,10 @@ spring:
     driver-class-name: org.postgresql.Driver
     username: ${SPRING_DATASOURCE_USERNAME:ecosim}
     password: ${SPRING_DATASOURCE_PASSWORD:ecosim}
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:redis}
+      port: 6379
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
@@ -22,9 +26,9 @@ spring:
     repair-on-migrate: true  # V1 체크섬 불일치 자동 보정
 
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-  autoconfigure:
-    exclude: org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:29092}
+  # autoconfigure:
+  #   exclude: org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
   security:
     oauth2:
       client:
@@ -42,6 +46,19 @@ cors:
 jwt:
   secret: ${JWT_SECRET:vmsrehkbuckettestbacktokenKeyforEcoSimulationProject2026SSAFY}
   expiration-time: 2592000000 # 30일 (테스트 편의를 위해 연장)
+
+# 미니게임 보상 가중치 (아이템 이름: 가중치, 합계가 100이 되도록 맞출 것)
+# 가중치를 수정하면 다음 서버 재시작부터 반영됩니다
+minigame:
+  reward-weights:
+    "초보 일꾼": 59.5
+    "인벤토리 확장권": 10.5
+    "창고 확장권": 10.5
+    "견습 일꾼": 10.0
+    "숙련 일꾼": 5.0
+    "마스터 일꾼": 3.0
+    "에픽 일꾼": 1.0
+    "레전드 일꾼": 0.5
 
 # 창고 설정 (MATERIAL/PRODUCT)
 warehouse:
@@ -62,6 +79,7 @@ logging:
     org.apache.kafka: WARN
     org.springframework.kafka: WARN
     com.ssafy.ecosim.domain.market.kafka: WARN
+    com.ssafy.ecosim.domain.market.service: DEBUG # market 기능 로그 확인용
     # org.springframework.security: DEBUG (필요시 보안 필터 로그도 볼 수 있습니다)
 
 management:

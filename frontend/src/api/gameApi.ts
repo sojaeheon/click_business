@@ -338,14 +338,8 @@ export const RankingAPI = {
 
 export const WarehouseAPI = {
   discardItems: async (type: "material" | "product", qty: number) => {
-    try {
-      const itemType = type === "material" ? "MATERIAL" : "PRODUCT";
-      await apiClient.delete(`/warehouses/discard`, { params: { itemType, amount: qty } });
-      return { data: { success: true } };
-    } catch (err) {
-      console.warn("API 연동 실패! WarehouseAPI.discardItems 목업", err);
-      return { data: { success: true } };
-    }
+    const itemType = type === "material" ? "MATERIAL" : "PRODUCT";
+    await apiClient.delete('/warehouses/discard', { params: { itemType, amount: qty } });
   },
 
   getWarehouseItems: async () => {
@@ -362,35 +356,25 @@ export const WarehouseAPI = {
           }))
       };
     } catch (err) {
-      console.warn("API 연동 실패! WarehouseAPI 목업 데이터 사용", err);
-      await mockDelay();
-      return {
-        data: isGuestMode() ? [] : [
-          { id: "m1", type: "material", quantity: 47, name: "광산 드릴" },
-          { id: "p1", type: "product", quantity: 253, name: "금광석" },
-        ]
-      };
+      console.warn("API 연동 실패! WarehouseAPI", err);
+      return { data: [] };
     }
   },
   unlockSlot: async (data: { ticketSlotIndex: number }) => {
     try {
-      // ✅ 창고 슬롯 확장 (ticketSlotIndex를 params로 전달)
-      await apiClient.post('/warehouses/expand', null, { params: { ticketSlotIndex: data.ticketSlotIndex } });
+      await apiClient.post('/warehouses/expand', null, { params: { ticketSlotIndex: data.maxSlot } });
       return { data: { success: true } };
     } catch (err) {
-      console.warn("API 연동 실패! WarehouseAPI.unlockSlot 목업 데이터 사용", err);
-      await mockDelay();
+      console.warn("API 연동 실패! WarehouseAPI.unlockSlot", err);
       return { data: { success: true } };
     }
   },
   moveSlot: async (data: { fromIdx: number, toIdx: number }) => {
     try {
-      // ✅ 명세: 슬롯 간 아이템 이동 (스왑 혹은 머지)
-      await apiClient.post(`/warehouses/swap`, { fromSlot: data.fromIdx, toSlot: data.toIdx });
+      await apiClient.post('/warehouses/swap', { fromSlot: data.fromIdx, toSlot: data.toIdx });
       return { data: { success: true } };
     } catch (err) {
-      console.warn("API 연동 실패! WarehouseAPI.moveSlot 목업 데이터 사용", err);
-      await mockDelay();
+      console.warn("API 연동 실패! WarehouseAPI.moveSlot", err);
       return { data: { success: true } };
     }
   }

@@ -32,7 +32,9 @@ public class KafkaOrderEventPublisher implements OrderEventPublisher {
     @Override
     public void publishOrderEvent(OrderCreationEventDto event) {
         OrderEventPayload payload = OrderEventPayload.builder()
-                .orderId(null)                                      // DE/매칭엔진에서 DB 적재 후 채움
+                // Snowflake-style ID: [43-bit Timestamp][20-bit Random] (Positive Long)
+                // 시간순 정렬을 유지하면서 밀리초당 약 100만개의 유니크한 ID 생성 가능
+                .orderId((System.currentTimeMillis() << 20) | (java.util.concurrent.ThreadLocalRandom.current().nextLong(1 << 20)))
                 .itemId(event.getItemId())
                 .side(event.getOrderType().name())                  // "BUY" / "SELL"
                 .price(event.getPrice().intValue())
@@ -48,7 +50,7 @@ public class KafkaOrderEventPublisher implements OrderEventPublisher {
                 .occurredAt(ZonedDateTime.now(KST))
                 .producer(PRODUCER_NAME)
                 .companyId("c" + event.getCompanyId())
-                .aggregateId("order_pending")                       // 체결 전이므로 임시값
+                .aggregateId("order")                       // 체결 전이므로 임시값
                 .payload(payload)
                 .build();
 

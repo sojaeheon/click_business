@@ -1,25 +1,56 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: app-ingress
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
+  name: backend-ingress
 spec:
   ingressClassName: nginx
   rules:
   - http:
       paths:
-      # /api/xxx → backend-service:8000/xxx (prefix 제거)
-      - path: /api(/|$)(.*)
-        pathType: ImplementationSpecific
+      # REST API
+      - path: /api
+        pathType: Prefix
         backend:
           service:
             name: backend-service
             port:
               number: 8000
-      # / → frontend-service:80
-      - path: /()(.*)
-        pathType: ImplementationSpecific
+      # WebSocket
+      - path: /ws-ecosim
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 8000
+      # OAuth2 인증 시작
+      - path: /oauth2
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 8000
+      # OAuth2 Google 콜백 (Spring Security가 처리)
+      - path: /login/oauth2
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frontend-ingress
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
         backend:
           service:
             name: frontend-service
