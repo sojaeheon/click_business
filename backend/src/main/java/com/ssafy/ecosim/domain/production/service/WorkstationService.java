@@ -137,11 +137,11 @@ public class WorkstationService {
                 if (!workstation.getIsActive()) return;
 
                 LocalDateTime now = LocalDateTime.now();
-                long secondsPassed = ChronoUnit.MINUTES.between(workstation.getLastTickTime(), now);
+                long secondsPassed = ChronoUnit.SECONDS.between(workstation.getLastTickTime(), now);
 
                 if (secondsPassed <= 0) return;
 
-                // 기본 생산량: 구 장비(EquipmentInventory) 레벨 기반
+                // 기본 생산량: 장비(EquipmentInventory) 레벨 기반 (없으면 분당 1회)
                 long productionPerMinute = 1L;
                 if (workstation.getEquipmentInventory() != null) {
                         productionPerMinute = workstation.getEquipmentInventory().getLevel();
@@ -157,7 +157,8 @@ public class WorkstationService {
                                 .orElse(1.0);
                 }
 
-                long potentialProduction = (long) (secondsPassed * productionPerMinute * workerMult);
+                // 잠재 생산량 = 경과 초 × (분당 생산량 / 60) × 일꾼 배율
+                long potentialProduction = (long) (secondsPassed * productionPerMinute / 60.0 * workerMult);
                 Company company = workstation.getCompany();
                 int requirement = company.getIndustryType().getBaseRequirement();
                 int yield = company.getIndustryType().getBaseYield();
@@ -182,9 +183,13 @@ public class WorkstationService {
 
         /**
          * 결과물 수확: 워크스테이션 → 창고(PRODUCT)
+         * 수확 전 processProduction을 실행하여 미처리된 생산량을 반영합니다.
          */
         @Transactional
         public void harvestOutput(Long companyId, Long workstationId) {
+                // 수확 전 지연 평가 실행 (생산 시간이 경과했다면 producedQuantity 증가)
+                processProduction(companyId, workstationId);
+
                 Workstation workstation = findWorkstation(companyId, workstationId);
 
                 long harvestQuantity = workstation.getProducedQuantity();
@@ -195,6 +200,15 @@ public class WorkstationService {
 
                 warehouseService.addItem(companyId, harvestItemId, harvestQuantity);
                 workstation.clearProducedQuantity();
+        }
+
+        public WorkstationStatusResponse getMyWorkstationStatus(Long companyId) {
+                Workstation workstation = workstationRepository.findAllByCompanyId(companyId)
+                                .stream()
+                                .findFirst()
+                                .orElseThrow(() -> new IllegalArgumentException("공장이 존재하지 않습니다."));
+                processProduction(companyId, workstation.getId());
+                return getWorkstationStatus(companyId, workstation.getId());
         }
 
         public WorkstationStatusResponse getWorkstationStatus(Long companyId, Long workstationId) {

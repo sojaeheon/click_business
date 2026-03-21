@@ -44,6 +44,14 @@ public class CompanyController {
         return ApiResponse.success(new CompanyResponse(company));
     }
 
+    @Operation(summary = "내 기업 게임 상태 조회", description = "현재 로그인한 유저의 현금, 총 자산 등 게임 상태 데이터를 반환합니다. (ID 불필요)")
+    @GetMapping("/me/status")
+    public ApiResponse<GameStatusResponse> getMyCompanyStatus(@AuthenticationPrincipal UserDetails userDetails) {
+        Long userId = Long.parseLong(userDetails.getUsername());
+        Company company = companyService.getCompanyByUserId(userId);
+        return ApiResponse.success(new GameStatusResponse(company));
+    }
+
     @Operation(summary = "기업 게임 상태 조회", description = "메인 게임 화면에 필요한 현금, 총 자산 등 기업 상태 데이터를 반환합니다.")
     @GetMapping("/{id}/status")
     public ApiResponse<GameStatusResponse> getCompanyStatus(
