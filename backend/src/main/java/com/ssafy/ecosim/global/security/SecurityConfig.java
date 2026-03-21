@@ -26,15 +26,18 @@ public class SecurityConfig {
         private final CustomOAuth2UserService customOAuth2UserService;
         private final OAuth2AuthenticationSuccessHandler successHandler;
         private final CustomAuthenticationEntryPoint customAuthenticationEntryPoint;
+        private final HttpCookieOAuth2AuthorizationRequestRepository cookieAuthorizationRequestRepository;
 
         public SecurityConfig(JwtTokenProvider tokenProvider,
                         CustomOAuth2UserService customOAuth2UserService,
                         OAuth2AuthenticationSuccessHandler successHandler,
-                        CustomAuthenticationEntryPoint customAuthenticationEntryPoint) {
+                        CustomAuthenticationEntryPoint customAuthenticationEntryPoint,
+                        HttpCookieOAuth2AuthorizationRequestRepository cookieAuthorizationRequestRepository) {
                 this.tokenProvider = tokenProvider;
                 this.customOAuth2UserService = customOAuth2UserService;
                 this.successHandler = successHandler;
                 this.customAuthenticationEntryPoint = customAuthenticationEntryPoint;
+                this.cookieAuthorizationRequestRepository = cookieAuthorizationRequestRepository;
         }
 
         @Bean
@@ -68,8 +71,16 @@ public class SecurityConfig {
                                 .addFilterBefore(new JwtAuthenticationFilter(tokenProvider),
                                                 UsernamePasswordAuthenticationFilter.class)
                                 .oauth2Login(oauth2 -> oauth2
+                                                .authorizationEndpoint(endpoint -> endpoint
+                                                                .authorizationRequestRepository(cookieAuthorizationRequestRepository))
                                                 .userInfoEndpoint(info -> info.userService(customOAuth2UserService))
-                                                .successHandler(successHandler))
+                                                .successHandler(successHandler)
+                                                .failureHandler((request, response, exception) -> {
+                                                        // 실패 원인을 로그로 출력
+                                                        exception.printStackTrace();
+                                                        String frontendUrl = allowedOrigins.split(",")[0];
+                                                        response.sendRedirect(frontendUrl + "/login?error=" + exception.getMessage());
+                                                }))
                                 .exceptionHandling(handler -> handler
                                                 .authenticationEntryPoint(customAuthenticationEntryPoint));
 
