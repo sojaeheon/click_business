@@ -338,14 +338,13 @@ export const RankingAPI = {
 
 export const WarehouseAPI = {
   discardItems: async (type: "material" | "product", qty: number) => {
-    // 실제로는 창고 폐기 API가 없어서 mock으로 막거나, delete api를 호출해야 함. 이전 코드는 delete /storage/warehouses/{warehouseId} 였을 것입니다.
-    const companyId = 1; // 임시 고정
-    await apiClient.delete(`/storage/warehouses/${companyId}`);
+    const itemType = type === "material" ? "MATERIAL" : "PRODUCT";
+    await apiClient.delete('/warehouses/discard', { params: { itemType, amount: qty } });
   },
 
   getWarehouseItems: async (companyId: number) => {
     try {
-      const res = await apiClient.get('/storage/warehouses');
+      const res = await apiClient.get('/warehouses');
       return {
         data: res.data.data
           .filter((slot: any) => slot.itemId != null && (slot.itemType === "MATERIAL" || slot.itemType === "PRODUCT"))
@@ -357,35 +356,25 @@ export const WarehouseAPI = {
           }))
       };
     } catch (err) {
-      console.warn("API 연동 실패! WarehouseAPI 목업 데이터 사용", err);
-      await mockDelay();
-      return {
-        data: isGuestMode() ? [] : [
-          { id: "m1", type: "material", quantity: 47, name: "광산 드릴" },
-          { id: "p1", type: "product", quantity: 253, name: "금광석" },
-        ]
-      };
+      console.warn("API 연동 실패! WarehouseAPI", err);
+      return { data: [] };
     }
   },
   unlockSlot: async (data: { companyId: number; maxSlot: number }) => {
     try {
-      // ✅ 명세: 창고 슬롯 확장 (POST /api/v1/storage/warehouses)
-      await apiClient.post('/storage/warehouses', { company_id: data.companyId, max_slot: data.maxSlot });
+      await apiClient.post('/warehouses/expand', null, { params: { ticketSlotIndex: data.maxSlot } });
       return { data: { success: true } };
     } catch (err) {
-      console.warn("API 연동 실패! WarehouseAPI.unlockSlot 목업 데이터 사용", err);
-      await mockDelay();
+      console.warn("API 연동 실패! WarehouseAPI.unlockSlot", err);
       return { data: { success: true } };
     }
   },
   moveSlot: async (data: { companyId: number, fromIdx: number, toIdx: number }) => {
     try {
-      // ✅ 명세: 슬롯 간 이동
-      await apiClient.patch(`/storage/warehouses/slots`, { warehouse_id: data.companyId, from_idx: data.fromIdx, to_idx: data.toIdx });
+      await apiClient.post('/warehouses/swap', { fromSlot: data.fromIdx, toSlot: data.toIdx });
       return { data: { success: true } };
     } catch (err) {
-      console.warn("API 연동 실패! WarehouseAPI.moveSlot 목업 데이터 사용", err);
-      await mockDelay();
+      console.warn("API 연동 실패! WarehouseAPI.moveSlot", err);
       return { data: { success: true } };
     }
   }

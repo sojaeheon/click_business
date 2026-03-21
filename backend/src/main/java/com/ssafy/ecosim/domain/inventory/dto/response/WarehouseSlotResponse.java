@@ -27,14 +27,31 @@ public class WarehouseSlotResponse {
     @Schema(description = "최대 적재 수량 (빈 슬롯이면 null)", example = "100")
     private final Long maxQuantity;
 
-    public WarehouseSlotResponse(WarehouseSlot slot) {
+    /**
+     * @param slot         창고 슬롯
+     * @param inputItemId  회사의 생산 input 아이템 ID (company.inputItemId)
+     * @param outputItemId 회사의 생산 output 아이템 ID (company.outputItemId)
+     *
+     * itemType은 아이템 자체의 DB 타입이 아닌 회사 config 기준으로 결정됩니다.
+     *   - 슬롯 아이템 == inputItemId  → MATERIAL
+     *   - 슬롯 아이템 == outputItemId → PRODUCT
+     */
+    public WarehouseSlotResponse(WarehouseSlot slot, Long inputItemId, Long outputItemId) {
         this.slotIndex = slot.getSlotIndex();
         if (slot.getItem() != null) {
             this.itemId = slot.getItem().getId();
             this.itemName = slot.getItem().getName();
-            this.itemType = slot.getItem().getType();
             this.quantity = slot.getQuantity();
             this.maxQuantity = slot.getItem().getMaxStackSize();
+
+            Long id = slot.getItem().getId();
+            if (id.equals(inputItemId)) {
+                this.itemType = ItemType.MATERIAL;
+            } else if (id.equals(outputItemId)) {
+                this.itemType = ItemType.PRODUCT;
+            } else {
+                this.itemType = slot.getItem().getType();
+            }
         } else {
             this.itemId = null;
             this.itemName = null;

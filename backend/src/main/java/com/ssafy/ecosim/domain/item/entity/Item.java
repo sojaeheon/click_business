@@ -30,11 +30,15 @@ public class Item {
     @Column(name = "max_stack_size", nullable = false)
     private Long maxStackSize;
 
+    @Column(name = "worker_level")
+    private Integer workerLevel; // 일꾼 아이템만 사용 (lv1~6), 나머지는 null
+
     @Builder
-    public Item(String name, ItemType type, String description, Long maxStackSize) {
+    public Item(String name, ItemType type, String description, Long maxStackSize, Integer workerLevel) {
         this.name = name;
         this.type = type;
         this.description = description;
         this.maxStackSize = maxStackSize;
+        this.workerLevel = workerLevel;
     }
 }

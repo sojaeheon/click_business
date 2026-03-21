@@ -3,9 +3,10 @@ import { Client } from '@stomp/stompjs';
 import { toast } from 'sonner';
 import { useGameStore } from '../store/gameStore';
 
-const WS_BASE = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1')
-  .replace('/api/v1', '')
-  .replace(/^http/, 'ws'); // http → ws, https → wss
+// 로컬: ws://localhost:5173/ws-ecosim → Vite proxy → ws://localhost:8000/ws-ecosim
+// EC2:  ws://15.165.236.217/ws-ecosim → nginx ingress → backend
+const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const WS_BASE = `${protocol}//${window.location.host}`;
 
 /**
  * WebSocket(STOMP)으로 백엔드 알림 채널을 구독하는 훅.

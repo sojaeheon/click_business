@@ -63,11 +63,11 @@ public class WarehouseService {
         return saved;
     }
 
-    public List<WarehouseSlotResponse> getWarehouse(Long companyId) {
+    public List<WarehouseSlotResponse> getWarehouse(Long companyId, Long inputItemId, Long outputItemId) {
         Warehouse warehouse = findWarehouse(companyId);
         return warehouse.getSlots().stream()
                 .sorted(Comparator.comparingInt(WarehouseSlot::getSlotIndex))
-                .map(WarehouseSlotResponse::new)
+                .map(slot -> new WarehouseSlotResponse(slot, inputItemId, outputItemId))
                 .collect(Collectors.toList());
     }
 
@@ -287,15 +287,22 @@ public class WarehouseService {
         else slot.setItemAndQuantity(slot.getItem(), left);
     }
 
+    /**
+     * 회사 config 기준으로 MATERIAL(input) 또는 PRODUCT(output) 아이템을 폐기합니다.
+     * 아이템의 DB 타입이 아닌 inputItemId/outputItemId로 대상 아이템을 결정합니다.
+     */
     @Transactional
-    public void discardByItemType(Long companyId, ItemType itemType, Long amount) {
+    public void discardByItemType(Long companyId, ItemType itemType, Long amount,
+                                  Long inputItemId, Long outputItemId) {
         if (amount <= 0) throw new IllegalArgumentException("폐기 수량은 1 이상이어야 합니다.");
-        if (itemType != ItemType.MATERIAL && itemType != ItemType.PRODUCT)
-            throw new IllegalArgumentException("폐기 가능한 아이템 종류가 아닙니다: " + itemType);
+
+        Long targetItemId = (itemType == ItemType.MATERIAL) ? inputItemId : outputItemId;
+        if (targetItemId == null)
+            throw new IllegalArgumentException("회사의 생산 아이템 설정이 되어있지 않습니다.");
 
         Warehouse warehouse = findWarehouse(companyId);
         List<WarehouseSlot> slots = warehouse.getSlots().stream()
-                .filter(s -> s.getItem() != null && s.getItem().getType() == itemType)
+                .filter(s -> s.getItem() != null && s.getItem().getId().equals(targetItemId))
                 .collect(Collectors.toList());
 
         long total = slots.stream().mapToLong(WarehouseSlot::getQuantity).sum();
