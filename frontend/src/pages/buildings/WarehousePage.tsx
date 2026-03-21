@@ -233,7 +233,7 @@ export function WarehousePage() {
     setDraggingIndex(index);
   };
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
-  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
+  const handleDrop = async (e: React.DragEvent, targetIndex: number) => {
     e.preventDefault();
     setDragOverIndex(null);
     setDraggingIndex(null);
@@ -241,16 +241,31 @@ export function WarehousePage() {
     if (!sourceIndexStr) return;
     const sourceIndex = parseInt(sourceIndexStr, 10);
     if (sourceIndex === targetIndex) return;
+
+    // 잠긴 슬롯으로 이동 불가
+    const targetSlot = slots[targetIndex];
+    if (targetSlot?.locked) return;
+
+    // 낙관적 UI 업데이트 (즉각 반영)
     setSlots((prev) => {
       const newSlots = [...prev];
-      const sourceSlot = newSlots[sourceIndex];
-      const targetSlot = newSlots[targetIndex];
-      if (targetSlot.locked) return prev;
-      const tempItem = sourceSlot.item;
-      sourceSlot.item = targetSlot.item;
-      targetSlot.item = tempItem;
+      const src = newSlots[sourceIndex];
+      const tgt = newSlots[targetIndex];
+      if (tgt.locked) return prev;
+      const tempItem = src.item;
+      src.item = tgt.item;
+      tgt.item = tempItem;
       return newSlots;
     });
+
+    // 백엔드 동기화
+    try {
+      await WarehouseAPI.moveSlot({ companyId: 0, fromIdx: sourceIndex, toIdx: targetIndex });
+    } catch {
+      // 실패 시 서버 상태로 롤백
+      await fetchSlots();
+      useAlertStore.getState().openAlert("슬롯 이동에 실패했습니다.", "이동 실패");
+    }
   };
 
   // 폐기 처리
