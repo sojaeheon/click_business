@@ -148,7 +148,7 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
     // ── 스토어 연결 (프론트 전역 상태) ─────────────────────────────
     const wsState = useGameStore(s => s.workstationState);
     const setWsState = useGameStore(s => s.setWorkstationState);
-    const updateProduct = useGameStore(s => s.updateProduct);
+
     const usedSlots = useGameStore(s => s.getWarehouseUsage().usedSlots);
     const warehouseMaxSlots = useGameStore(s => s.warehouseMaxSlots);
     const industry = useGameStore(s => s.industry);
@@ -415,23 +415,18 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
                     e.stopPropagation();
                     if (wsState.storedCount > 0) {
                         try {
-                            // ✅ gameStore.updateProduct → warehouseItems.product 수량 증액 후 실제 추가량
-                            const added = updateProduct(wsState.storedCount);
-                            if (added > 0) {
-                                await WorkstationAPI.collect(1);
-                                // storedCount만 줄임 — producedCount는 이번 생산 누적값이므로 건드리지 않음
-                                setWsState({ storedCount: Math.max(0, wsState.storedCount - added) });
-                                useGameStore.getState().addAlert({
-                                    message: "수령 완료 ✅",
-                                    detail: `${added}개를 창고에 저장했습니다.`
-                                });
-                                useAlertStore.getState().openAlert(`${added}개를 창고에 저장했습니다.`, "수령 완료 ✅");
-                            } else {
-                                useGameStore.getState().addAlert({ message: "수령 불가", detail: "창고가 완전히 가득 찼습니다." });
-                                useAlertStore.getState().openAlert("창고에 더 이상 남은 공간이 없습니다.", "수령 불가");
-                            }
-                        } catch (err) {
-                            console.error("수령 실패:", err);
+                            await WorkstationAPI.collect(1);
+                            // 수령 성공 후 백엔드에서 창고 상태 동기화 (생산물 반영)
+                            await useGameStore.getState().fetchCompanyData(1);
+                            setWsState({ storedCount: 0, producedCount: 0, isWorking: false });
+                            useGameStore.getState().addAlert({
+                                message: "수령 완료 ✅",
+                                detail: `창고에 저장되었습니다.`
+                            });
+                            useAlertStore.getState().openAlert("창고에 저장되었습니다.", "수령 완료 ✅");
+                        } catch (err: any) {
+                            const msg = err?.response?.data?.message || err?.message || "수령에 실패했습니다.";
+                            useAlertStore.getState().openAlert(msg, "수령 실패");
                         }
                     }
                 }}
