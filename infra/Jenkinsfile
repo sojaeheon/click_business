@@ -34,18 +34,18 @@ pipeline {
             steps {
                 script {
                     // 수동 빌드(UserIdCause)면 파라미터 브랜치로, 웹훅이면 해당 브랜치로 체크아웃
-                    def branch = currentBuild.rawBuild.getCause(hudson.model.Cause.UserIdCause) != null
+                    def isManual = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause').size() > 0
+                    def branch = isManual
                         ? params.DEPLOY_BRANCH
                         : (env.gitlabSourceBranch ?: env.GIT_BRANCH ?: 'develop')
 
-                    echo "체크아웃 브랜치: ${branch}"
+                    echo "체크아웃 브랜치: ${branch} (수동빌드: ${isManual})"
                     checkout([
                         $class: 'GitSCM',
                         branches: [[name: "*/${branch}"]],
                         extensions: [[$class: 'CleanBeforeCheckout']],
                         userRemoteConfigs: scm.userRemoteConfigs
                     ])
-                    env.BUILT_BRANCH = branch
                 }
                 script {
                     env.CHANGED_FILES = sh(
