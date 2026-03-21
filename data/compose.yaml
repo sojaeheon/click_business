@@ -127,21 +127,56 @@ services:
       - ecosim-network
 
   # -----------------------------
-  # Kafka Consumer (Redis 적재용)
+  # Kafka Consumer
   # -----------------------------
-  market-consumer:
+  order-redis-consumer:
     build:
       context: ../bigdata/kafka
       dockerfile: Dockerfile.kafka
-    container_name: market-consumer
+    container_name: order-redis-consumer
     restart: always
     depends_on:
       - kafka
       - redis
     environment:
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      CONSUMER_TYPE: order_redis
+      # KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      # REDIS_HOST: redis
+      # REDIS_PORT: 6379
+    networks:
+      - ecosim-network
+    
+  order-db-consumer:
+    build:
+      context: ../bigdata/kafka
+      dockerfile: Dockerfile.kafka
+    container_name: order-db-consumer
+    restart: always
+    depends_on:
+      - kafka
+      - postgres
+    environment:
+      CONSUMER_TYPE: order_db
+      # KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      # REDIS_HOST: redis
+      # REDIS_PORT: 6379
+    networks:
+      - ecosim-network
+  
+  trade-db-consumer:
+    build:
+      context: ../bigdata/kafka
+      dockerfile: Dockerfile.kafka
+    container_name: trade-db-consumer
+    restart: always
+    depends_on:
+      - kafka
+      - postgres
+    environment:
+      CONSUMER_TYPE: trade_db
+      # KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      # REDIS_HOST: redis
+      # REDIS_PORT: 6379
     networks:
       - ecosim-network
       
