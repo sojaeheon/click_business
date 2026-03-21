@@ -5,14 +5,10 @@ import com.ssafy.ecosim.domain.item.entity.Item;
 import com.ssafy.ecosim.domain.item.repository.ItemRepository;
 import com.ssafy.ecosim.domain.minigame.dto.MinigameClaimResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 
 @Service
@@ -49,45 +45,30 @@ public class MinigameService {
     /**
      * 가중치 기반 랜덤 아이템 이름 선택.
      *
-     * 예) weights = { "초보 일꾼": 59.5, "견습 일꾼": 10.0, ... }
+     * 예) rewards = [{ itemName: "초보 일꾼", weight: 59.5 }, ...]
      *     totalWeight = 100.0
      *     rand = 0 ~ 100 사이 난수
      *     누적합이 rand를 초과하는 첫 번째 항목을 반환
      */
     private String pickItemName() {
-        Map<String, Double> weights = rewardProperties.getRewardWeights();
+        List<MinigameRewardProperties.RewardEntry> rewards = rewardProperties.getRewards();
 
-        // Map → 순서 보장 리스트로 변환
-        List<Map.Entry<String, Double>> entries = new ArrayList<>(weights.entrySet());
+        if (rewards.isEmpty()) {
+            throw new IllegalStateException("보상 목록이 비어 있습니다. application.yml의 minigame.rewards 설정을 확인하세요.");
+        }
 
-        double total = entries.stream().mapToDouble(Map.Entry::getValue).sum();
+        double total = rewards.stream().mapToDouble(MinigameRewardProperties.RewardEntry::getWeight).sum();
         double rand = random.nextDouble() * total;
 
         double cumulative = 0.0;
-        for (Map.Entry<String, Double> entry : entries) {
-            cumulative += entry.getValue();
+        for (MinigameRewardProperties.RewardEntry entry : rewards) {
+            cumulative += entry.getWeight();
             if (rand < cumulative) {
-                return entry.getKey();
+                return entry.getItemName();
             }
         }
 
         // 부동소수점 오차 보정: 마지막 항목 반환
-        return entries.get(entries.size() - 1).getKey();
-    }
-
-    // ──────────────────────────────────────────────────────────────────────
-    // application.yml 바인딩용 내부 설정 클래스
-    // ──────────────────────────────────────────────────────────────────────
-    @Component
-    @ConfigurationProperties(prefix = "minigame")
-    @lombok.Getter
-    @lombok.Setter
-    public static class MinigameRewardProperties {
-
-        /**
-         * 아이템 이름 → 가중치 매핑
-         * application.yml의 minigame.reward-weights 섹션과 연결됩니다.
-         */
-        private Map<String, Double> rewardWeights = new java.util.LinkedHashMap<>();
+        return rewards.get(rewards.size() - 1).getItemName();
     }
 }
