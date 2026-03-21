@@ -35,7 +35,8 @@ public class WarehouseController {
     @GetMapping
     public ApiResponse<List<WarehouseSlotResponse>> getMyWarehouse(@AuthenticationPrincipal UserDetails userDetails) {
         Company company = getCompany(userDetails);
-        return ApiResponse.success(warehouseService.getWarehouse(company.getId()));
+        return ApiResponse.success(warehouseService.getWarehouse(
+                company.getId(), company.getInputItemId(), company.getOutputItemId()));
     }
 
     @Operation(summary = "슬롯 간 아이템 이동", description = "두 슬롯의 아이템을 스왑하거나 같은 종류면 병합합니다.")
@@ -72,7 +73,8 @@ public class WarehouseController {
             @Parameter(description = "폐기할 아이템 종류 (MATERIAL 또는 PRODUCT)", example = "MATERIAL") @RequestParam ItemType itemType,
             @Parameter(description = "폐기할 수량", example = "5") @RequestParam Long amount) {
         Company company = getCompany(userDetails);
-        warehouseService.discardByItemType(company.getId(), itemType, amount);
+        warehouseService.discardByItemType(company.getId(), itemType, amount,
+                company.getInputItemId(), company.getOutputItemId());
         return ApiResponse.success("아이템을 폐기했습니다.");
     }
 

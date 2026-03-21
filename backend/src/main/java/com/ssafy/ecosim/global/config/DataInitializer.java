@@ -41,19 +41,18 @@ public class DataInitializer implements ApplicationRunner {
                     .maxStackSize(100L)
                     .build(),
 
-            // ── 제품 (PRODUCT) ──────────────────────────────────────────
+            // ── 유통 자원 (MATERIAL) — 회사 타입에 따라 input/output 역할이 달라짐
             Item.builder()
                     .name("금괴")
-                    .type(ItemType.PRODUCT)
+                    .type(ItemType.MATERIAL)
                     .description("순도 높은 금괴. 드릴 제조에 사용된다.")
                     .maxStackSize(50L)
                     .build(),
 
-            // ── 장비 (EQUIPMENT) — 기존 ────────────────────────────────
             Item.builder()
                     .name("금 드릴")
-                    .type(ItemType.EQUIPMENT)
-                    .description("금을 채굴하는 데 사용되는 드릴. 소모품.")
+                    .type(ItemType.MATERIAL)
+                    .description("금을 채굴하는 데 사용되는 드릴.")
                     .maxStackSize(10L)
                     .build(),
 
