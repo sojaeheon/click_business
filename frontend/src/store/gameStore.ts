@@ -341,10 +341,10 @@ export const useGameStore = create<GameState>()(
 
       getIndustryItemNames: (indOverride?: string) => {
         const ind = indOverride || get().industry;
-        if (ind === "금광업") return { material: "광산 드릴", product: "금광석", reqMat: 2, resProd: 40, batchSize: 20 };
-        if (ind === "금 제련업" || ind === "제철업") return { material: "금광석", product: "금괴", reqMat: 12, resProd: 6, batchSize: 10 };
-        if (ind === "제조업") return { material: "금괴", product: "광산 드릴", reqMat: 20, resProd: 2, batchSize: 5 };
-        return { material: "재료", product: "생산품", reqMat: 1, resProd: 1, batchSize: 10 };
+        if (ind === "GOLD_MINING" || ind === "금광업") return { material: "광산 드릴", product: "금광석", reqMat: 2, resProd: 40, batchSize: 20 };
+        if (ind === "GOLD_SMELTING" || ind === "금 제련업" || ind === "제철업") return { material: "금광석", product: "금괴", reqMat: 12, resProd: 6, batchSize: 10 };
+        if (ind === "MANUFACTURING" || ind === "제조업") return { material: "금괴", product: "광산 드릴", reqMat: 20, resProd: 2, batchSize: 5 };
+        return { material: "재료", product: "생산품", reqMat: 1, resProd: 1, batchSize: 5 };
       },
 
       updateMoney: (amount) => {

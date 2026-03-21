@@ -27,7 +27,7 @@ function getSingleStackLevel(count: number, cap: number): number {
 function ProductStack({ stackLevel, industry }: { stackLevel: number; industry: string }) {
     if (stackLevel <= 0) return null;
 
-    if (industry === "금광업") {
+    if (industry === "GOLD_MINING" || industry === "금광업") {
         const rotations: [number, number, number][] = [
             [0, 0, 0],
             [0, Math.PI / 3, 0],
@@ -47,7 +47,7 @@ function ProductStack({ stackLevel, industry }: { stackLevel: number; industry: 
         );
     }
 
-    if (industry === "제조업") {
+    if (industry === "MANUFACTURING" || industry === "제조업") {
         // 드릴 차곡차곡 쌓기 (고정 위치·회전)
         const rotations: [number, number, number][] = [
             [0, 0, Math.PI / 2],
@@ -109,8 +109,8 @@ function FlyingProduct({ startPos, endPos, onArrive, industry }: {
 
     let url = "/models/props/Gold_Bar.gltf";
     let scale = 0.75;
-    if (industry === "금광업") { url = "/models/props/Gold_Nugget_Medium.gltf"; scale = 2.0; }
-    else if (industry === "제조업") { url = "/models/props/drill.glb"; scale = 0.3; }
+    if (industry === "GOLD_MINING" || industry === "금광업") { url = "/models/props/Gold_Nugget_Medium.gltf"; scale = 2.0; }
+    else if (industry === "MANUFACTURING" || industry === "제조업") { url = "/models/props/drill.glb"; scale = 0.3; }
 
     useFrame((_, delta) => {
         if (!ref.current || arrived.current) return;
@@ -148,7 +148,7 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
     // ── 스토어 연결 (프론트 전역 상태) ─────────────────────────────
     const wsState = useGameStore(s => s.workstationState);
     const setWsState = useGameStore(s => s.setWorkstationState);
-    const updateProduct = useGameStore(s => s.updateProduct);
+
     const usedSlots = useGameStore(s => s.getWarehouseUsage().usedSlots);
     const warehouseMaxSlots = useGameStore(s => s.warehouseMaxSlots);
     const industry = useGameStore(s => s.industry);
@@ -185,17 +185,17 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
     // 도구들은 <group scale={BELT_S} position={[0.75, TW * 0.12, 1]} rotation={[0, Math.PI, 0]}> 내부에 배치됩니다.
     // 회전(Math.PI)을 고려해 x는 0.75 - localX * BELT_S, z는 1 - localZ * BELT_S 로 계산합니다.
     const beltEndPos: [number, number, number] =
-        industry === "제조업" ? [
+        (industry === "MANUFACTURING" || industry === "제조업") ? [
             0.75 + 1.2 * BELT_S, // 머신 끝부분 (x)
             TW * 0.12 + 1.5,     // 높이
             1 - (-0.5) * BELT_S  // z
         ] :
-            industry === "금광업" ? [
-                0.75 - 3.5 * BELT_S, // rock.glb 의 로컬 x=3.5 
+            (industry === "GOLD_MINING" || industry === "금광업") ? [
+                0.75 - 3.5 * BELT_S, // rock.glb 의 로컬 x=3.5
                 TW * 0.12 + 1.2,
                 1 - (-0.3) * BELT_S  // rock.glb 의 로컬 z=-0.3
             ] :
-                [0.75 - 0.5 * BELT_S, TW * 0.12 + 0.8, 1 - 1.0 * BELT_S]; // 금제련(Machine1) кон베이어 끝
+                [0.75 - 0.5 * BELT_S, TW * 0.12 + 0.8, 1 - 1.0 * BELT_S]; // 금제련(Machine1) 컨베이어 끝
 
 
     // ── 로컬 프레임 업데이트 (생산 진행 상태 & 스택 증가) ──────────
@@ -280,7 +280,7 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
     //   금광업·금제련업 → 벨트/바위 위
     //   제조업         → machine1 위
     const toolHudPos: [number, number, number] =
-        industry === "제조업"
+        (industry === "MANUFACTURING" || industry === "제조업")
             ? [MACHINE_CONFIG.position[0] * BELT_S, 4.5, MACHINE_CONFIG.position[2] * BELT_S]
             : [0.75 * BELT_S, 3.5, 1 * BELT_S];
 
@@ -308,9 +308,9 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
                 <React.Suspense fallback={
                     <mesh><boxGeometry args={[BW, TW * 0.3, TW * 0.5]} /><meshStandardMaterial color="#555" wireframe /></mesh>
                 }>
-                    {industry === "금광업" ? (
+                    {(industry === "GOLD_MINING" || industry === "금광업") ? (
                         <EnvModel url="/models/props/rock.glb" scale={1.8} position={[3.5, 0, -0.3]} rotation={[0, 180, 0]} />
-                    ) : industry === "제조업" ? (
+                    ) : (industry === "MANUFACTURING" || industry === "제조업") ? (
                         <ManufacturingMachine isWorking={isWorking && !isCompleted && !cannotProduce} />
                     ) : (
                         /* @ts-ignore */
@@ -415,23 +415,18 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
                     e.stopPropagation();
                     if (wsState.storedCount > 0) {
                         try {
-                            // ✅ gameStore.updateProduct → warehouseItems.product 수량 증액 후 실제 추가량
-                            const added = updateProduct(wsState.storedCount);
-                            if (added > 0) {
-                                await WorkstationAPI.collect(1);
-                                // storedCount만 줄임 — producedCount는 이번 생산 누적값이므로 건드리지 않음
-                                setWsState({ storedCount: Math.max(0, wsState.storedCount - added) });
-                                useGameStore.getState().addAlert({
-                                    message: "수령 완료 ✅",
-                                    detail: `${added}개를 창고에 저장했습니다.`
-                                });
-                                useAlertStore.getState().openAlert(`${added}개를 창고에 저장했습니다.`, "수령 완료 ✅");
-                            } else {
-                                useGameStore.getState().addAlert({ message: "수령 불가", detail: "창고가 완전히 가득 찼습니다." });
-                                useAlertStore.getState().openAlert("창고에 더 이상 남은 공간이 없습니다.", "수령 불가");
-                            }
-                        } catch (err) {
-                            console.error("수령 실패:", err);
+                            await WorkstationAPI.collect(1);
+                            // 수령 성공 후 백엔드에서 창고 상태 동기화 (생산물 반영)
+                            await useGameStore.getState().fetchCompanyData(1);
+                            setWsState({ storedCount: 0, producedCount: 0, isWorking: false });
+                            useGameStore.getState().addAlert({
+                                message: "수령 완료 ✅",
+                                detail: `창고에 저장되었습니다.`
+                            });
+                            useAlertStore.getState().openAlert("창고에 저장되었습니다.", "수령 완료 ✅");
+                        } catch (err: any) {
+                            const msg = err?.response?.data?.message || err?.message || "수령에 실패했습니다.";
+                            useAlertStore.getState().openAlert(msg, "수령 실패");
                         }
                     }
                 }}
