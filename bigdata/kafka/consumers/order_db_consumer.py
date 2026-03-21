@@ -74,7 +74,7 @@ def insert_order(conn, data, payload):
             payload["price"],
             payload["quantity"],
             payload.get("remaining_quantity", payload["quantity"]),
-            payload.get("status", "OPEN"),
+            payload.get("status", "PENDING"),
             payload.get("is_virtual", False),
             to_datetime(payload.get("created_at")),
             to_datetime(payload.get("created_at"))
@@ -87,7 +87,7 @@ def cancel_order(conn, payload):
     with conn.cursor() as cur:
         cur.execute("""
             UPDATE market_order
-            SET status = 'CANCELLED',
+            SET status = 'CANCELED',
                 updated_at = NOW()
             WHERE market_order_id = %s
         """, (payload["order_id"],))
