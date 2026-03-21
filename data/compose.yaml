@@ -196,6 +196,28 @@ services:
     networks:
       - ecosim-network
 
+  # -----------------------------
+  # Analytics용 PostgreSQL
+  # -----------------------------
+  analytics-postgres:
+    image: postgres:17
+    container_name: analytics-postgres
+    restart: always
+    env_file:
+      - ./.env
+    environment:
+      POSTGRES_DB: ${ANALYTICS_POSTGRES_DB}
+      POSTGRES_USER: ${ANALYTICS_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${ANALYTICS_POSTGRES_PASSWORD}
+    ports:
+      - "${ANALYTICS_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - ./analytics_postgres_data:/var/lib/postgresql/data
+      - ../bigdata/sql/analytics_schema.sql:/docker-entrypoint-initdb.d/01_analytics_schema.sql:ro
+    networks:
+      - ecosim-network
+
+
 networks:
   ecosim-network:
     name: ecosim-network
