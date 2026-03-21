@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Package, Lock, Trash2, X, AlertTriangle } from "lucide-react";
-import { useGame, useGameStore, MAX_PER_SLOT } from "../../store/gameStore";
+import { useGameStore } from "../../store/gameStore";
 import { BackButton } from "../../app/components/ui/backbutton";
 import { useAlertStore } from "../../store/useAlertStore";
 import { WarehouseAPI } from "../../api/gameApi";
@@ -169,62 +169,52 @@ function DiscardPanel({ totalMaterial, totalProduct, materialName, productName, 
 // ── 메인 페이지 ────────────────────────────────────────────────────
 export function WarehousePage() {
   const closeBuildingPage = useGameStore(s => s.closeBuildingPage);
-  const warehouseItems = useGameStore(s => s.warehouseItems);
   const warehouseExpandTickets = useGameStore(s => s.warehouseExpandTickets);
-  const maxSlots = useGameStore(s => s.warehouseMaxSlots);
   const material = useGameStore(s => s.getIndustryItemNames().material);
   const product = useGameStore(s => s.getIndustryItemNames().product);
   const useWarehouseTicket = useGameStore(s => s.useWarehouseTicket);
-  const updateMaterial = useGameStore(s => s.updateMaterial);
-  const updateProduct = useGameStore(s => s.updateProduct);
-
-  const totalMaterial = warehouseItems.filter(i => i.type === "material").reduce((sum, i) => sum + i.quantity, 0);
-  const totalProduct = warehouseItems.filter(i => i.type === "product").reduce((sum, i) => sum + i.quantity, 0);
 
   const [slots, setSlots] = useState<SlotData[]>([]);
   const [showDiscard, setShowDiscard] = useState(false);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
 
-  useEffect(() => {
-    // maxSlots 이상의 예비 슬롯(자물쇠)칸을 화면에 보이도록, 6의 배수에 맞춰 동적 계산
-    const totalSlots = maxSlots + (6 - (maxSlots % 6 === 0 ? 6 : maxSlots % 6)) + 6;
-    const initialSlots: SlotData[] = Array(totalSlots).fill(null).map((_, i) => ({
+  const totalMaterial = slots.filter(s => s.item?.type === "material").reduce((sum, s) => sum + (s.item?.quantity ?? 0), 0);
+  const totalProduct = slots.filter(s => s.item?.type === "product").reduce((sum, s) => sum + (s.item?.quantity ?? 0), 0);
+
+  const buildSlots = (rawSlots: Awaited<ReturnType<typeof WarehouseAPI.getSlots>>) => {
+    const backendMaxSlots = rawSlots.length;
+    const totalDisplay = backendMaxSlots + (6 - (backendMaxSlots % 6 === 0 ? 6 : backendMaxSlots % 6)) + 6;
+    const displaySlots: SlotData[] = Array(totalDisplay).fill(null).map((_, i) => ({
       id: i,
       item: null,
-      locked: i >= maxSlots
+      locked: i >= backendMaxSlots,
     }));
-
-    let currentSlotIdx = 0;
-    const materials = warehouseItems.filter((i) => i.type === "material");
-    const products = warehouseItems.filter((i) => i.type === "product");
-
-    materials.forEach(item => {
-      let remaining = item.quantity;
-      while (remaining > 0) {
-        const amount = Math.min(remaining, MAX_PER_SLOT);
-        if (currentSlotIdx < maxSlots) {
-          initialSlots[currentSlotIdx].item = { type: "material", quantity: amount, name: material, id_: item.id };
-          currentSlotIdx++;
-        }
-        remaining -= amount;
+    rawSlots.forEach(slot => {
+      if (slot.slotIndex < displaySlots.length && slot.itemId != null) {
+        displaySlots[slot.slotIndex].item = {
+          type: slot.itemType === "MATERIAL" ? "material" : "product",
+          quantity: slot.quantity,
+          name: slot.itemName ?? "",
+          id_: `w_${slot.itemId}`,
+        };
       }
     });
+    return displaySlots;
+  };
 
-    products.forEach(item => {
-      let remaining = item.quantity;
-      while (remaining > 0) {
-        const amount = Math.min(remaining, MAX_PER_SLOT);
-        if (currentSlotIdx < maxSlots) {
-          initialSlots[currentSlotIdx].item = { type: "product", quantity: amount, name: product, id_: item.id };
-          currentSlotIdx++;
-        }
-        remaining -= amount;
-      }
-    });
+  const fetchSlots = async () => {
+    try {
+      const rawSlots = await WarehouseAPI.getSlots();
+      setSlots(buildSlots(rawSlots));
+    } catch (err) {
+      console.warn("창고 데이터 로드 실패", err);
+    }
+  };
 
-    setSlots(initialSlots);
-  }, [warehouseItems, maxSlots, material, product]);
+  useEffect(() => {
+    fetchSlots();
+  }, []);
 
   const handleUnlockSlot = (slotId: number) => {
     if (warehouseExpandTickets <= 0) {
@@ -267,8 +257,7 @@ export function WarehousePage() {
   const handleDiscard = async (type: "material" | "product", qty: number) => {
     try {
       await WarehouseAPI.discardItems(type, qty);
-      if (type === "material") updateMaterial(-qty);
-      else updateProduct(-qty);
+      await fetchSlots();
       useAlertStore.getState().openAlert(
         `${type === "material" ? material : product} ${qty.toLocaleString()}개를 폐기했습니다.`,
         "폐기 완료"

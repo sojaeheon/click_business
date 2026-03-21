@@ -342,6 +342,18 @@ export const WarehouseAPI = {
     await apiClient.delete('/warehouses/discard', { params: { itemType, amount: qty } });
   },
 
+  getSlots: async (): Promise<Array<{
+    slotIndex: number;
+    itemId: number | null;
+    itemName: string | null;
+    itemType: string | null;
+    quantity: number;
+    maxQuantity: number;
+  }>> => {
+    const res = await apiClient.get('/warehouses');
+    return res.data.data;
+  },
+
   getWarehouseItems: async (companyId: number) => {
     try {
       const res = await apiClient.get('/warehouses');
