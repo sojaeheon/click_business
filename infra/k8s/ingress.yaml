@@ -7,7 +7,7 @@ spec:
   rules:
   - http:
       paths:
-      # /api/v1/xxx → backend (rewrite 없이 그대로, 컨트롤러가 /api/v1/... 에 매핑됨)
+      # REST API
       - path: /api
         pathType: Prefix
         backend:
@@ -15,8 +15,23 @@ spec:
             name: backend-service
             port:
               number: 8000
-      # WebSocket /ws-ecosim → backend
+      # WebSocket
       - path: /ws-ecosim
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 8000
+      # OAuth2 (Google 로그인 흐름)
+      - path: /oauth2
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 8000
+      - path: /login
         pathType: Prefix
         backend:
           service:
