@@ -28,15 +28,13 @@ public class KafkaTradeEventPublisher implements TradeEventPublisher {
         TradeEventPayload payload = TradeEventPayload.builder()
                 .tradeId(null)                          // trade ID는 매칭엔진(DE)에서 부여
                 .itemId(event.getItemId())
-                .buyOrderId(event.getMakerOrderType().name().equals("BUY")
-                        ? event.getMakerOrderId() : event.getTakerOrderId())
-                .sellOrderId(event.getMakerOrderType().name().equals("SELL")
-                        ? event.getMakerOrderId() : event.getTakerOrderId())
-                .price(event.getMatchedPrice())
-                .quantity(event.getMatchedQuantity())
+                .buyOrderId(event.getBuyOrderId())
+                .sellOrderId(event.getSellOrderId())
+                .price(event.getPrice())
+                .quantity(event.getQuantity())
                 .buyRemainingQuantity(null)             // 매칭엔진(DE)에서 채우는 필드
                 .sellRemainingQuantity(null)
-                .executedAt(Instant.ofEpochMilli(event.getTimestamp()))
+                .executedAt(Instant.ofEpochMilli(event.getExecutedAt()))
                 .build();
 
         TradeEventEnvelope envelope = TradeEventEnvelope.builder()
@@ -46,14 +44,14 @@ public class KafkaTradeEventPublisher implements TradeEventPublisher {
                 .occurredAt(ZonedDateTime.now(KST))
                 .producer("matching-engine")
                 .companyId(null)                        // 체결은 양사 관여 → null
-                .aggregateId("trade_maker_" + event.getMakerOrderId())
+                .aggregateId("trade_buy_" + event.getBuyOrderId())
                 .payload(payload)
                 .build();
 
         tradeEventProducer.sendTradeExecutedEvent(envelope);
 
-        log.info("[Kafka] market.trade.executed published: maker={}, taker={}, item={}, price={}, qty={}",
-                event.getMakerOrderId(), event.getTakerOrderId(),
-                event.getItemId(), event.getMatchedPrice(), event.getMatchedQuantity());
+        log.info("[Kafka] market.trade.executed published: buy={}, sell={}, item={}, price={}, qty={}",
+                event.getBuyOrderId(), event.getSellOrderId(),
+                event.getItemId(), event.getPrice(), event.getQuantity());
     }
 }

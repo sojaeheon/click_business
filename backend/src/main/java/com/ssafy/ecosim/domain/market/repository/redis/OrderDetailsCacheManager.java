@@ -36,6 +36,7 @@ public class OrderDetailsCacheManager {
                 "remainingQuantity", String.valueOf(order.getRemainingQuantity()),
                 "totalQuantity", String.valueOf(order.getTotalQuantity()),
                 "status", order.getStatus().name(),
+                "companyId", String.valueOf(order.getCompanyId()),
                 "isVirtual", String.valueOf(order.getIsVirtual()));
         redisTemplate.opsForHash().putAll(key, fields);
         redisTemplate.expire(key, CACHE_TTL_HOURS, TimeUnit.HOURS);
@@ -61,6 +62,10 @@ public class OrderDetailsCacheManager {
             Long totalQty = Long.parseLong(String.valueOf(map.getOrDefault("totalQuantity", remainingQty.toString())));
             String isVirtualStr = String.valueOf(map.getOrDefault("isVirtual", "0"));
             Boolean isVirtual = "1".equals(isVirtualStr) || "true".equalsIgnoreCase(isVirtualStr);
+
+            String companyIdStr = String.valueOf(map.getOrDefault("companyId", "0"));
+            if (companyIdStr.startsWith("c")) companyIdStr = companyIdStr.substring(1);
+            Long companyId = Long.parseLong(companyIdStr);
             
             String statusStr = String.valueOf(map.get("status"));
             com.ssafy.ecosim.domain.market.entity.OrderStatus status;
@@ -74,7 +79,7 @@ public class OrderDetailsCacheManager {
             return MarketOrder.builder()
                     .id(parsedOrderId)
                     .itemId(itemId)
-                    .companyId(0L) // 조회 목적 전용 (companyId 불필요)
+                    .companyId(companyId)
                     .orderType(orderType)
                     .price(price)
                     .totalQuantity(totalQty)
