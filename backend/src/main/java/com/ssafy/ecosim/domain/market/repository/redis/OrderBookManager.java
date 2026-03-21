@@ -52,12 +52,10 @@ public class OrderBookManager {
         stringRedisTemplate.opsForZSet().add(getSellKey(itemId), String.valueOf(orderId), score);
     }
 
-    /**
-     * 매수 최우선 호가 세트를 가져옵니다.
-     */
     public Set<ZSetOperations.TypedTuple<String>> getTopBuys(Integer itemId, int count) {
-        return stringRedisTemplate.opsForZSet().reverseRangeWithScores(getBuyKey(itemId), 0, count - 1);
+        return stringRedisTemplate.opsForZSet().rangeWithScores(getBuyKey(itemId), 0, count - 1);
     }
+
 
     /**
      * 매도 최우선 호가 세트를 가져옵니다.
