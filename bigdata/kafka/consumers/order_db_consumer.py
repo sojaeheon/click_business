@@ -105,6 +105,7 @@ for message in consumer:
         data = message.value
         event_type = data.get("event_type")
         payload = data.get("payload")
+        print(json.dumps(data, indent=2, ensure_ascii=False))
 
         if not payload:
             continue

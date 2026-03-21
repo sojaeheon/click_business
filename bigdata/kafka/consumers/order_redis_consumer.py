@@ -147,7 +147,7 @@ def cancel_order(data, payload):
     if r.exists(order_key):
         r.hset(order_key, mapping={
             "status": "CANCELLED",
-            "cancelled_at": payload.get("cancelled_at", str(int(time.time())))
+            "cancelledAt": payload.get("cancelled_at", str(int(time.time())))
         })
 
     print(f"[CANCEL] Order 취소 완료: {order_id} -> {zset_key}")

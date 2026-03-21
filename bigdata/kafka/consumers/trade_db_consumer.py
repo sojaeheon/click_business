@@ -109,6 +109,7 @@ conn.autocommit = False
 print("Trade DB Consumer 시작...")
 
 for message in consumer:
+    print("메시지 받음!!!")
     try:
         data = message.value
         event_type = data.get("event_type")
