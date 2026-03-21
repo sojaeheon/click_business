@@ -9,14 +9,22 @@ def stageResults = [
 pipeline {
     agent any
 
+    parameters {
+        string(
+            name: 'DEPLOY_BRANCH',
+            defaultValue: 'develop',
+            description: '빌드/배포할 브랜치 (예: develop, fix/my-branch). 웹훅 자동 빌드 시에는 무시됩니다.'
+        )
+    }
+
     environment {
         DOCKER_HUB_ID = "${env.DOCKER_HUB_ID}"
         BACKEND_APP_NAME = 's14p21b109-backend'
         FRONTEND_APP_NAME = 's14p21b109-frontend'
-        
+
         BACKEND_IMAGE = "${DOCKER_HUB_ID}/${BACKEND_APP_NAME}:${env.BUILD_NUMBER}"
         FRONTEND_IMAGE = "${DOCKER_HUB_ID}/${FRONTEND_APP_NAME}:${env.BUILD_NUMBER}"
-        
+
         K8S_CREDENTIAL_ID = 'k8s-kubeconfig'
         DOCKER_HUB_CREDENTIAL_ID = 'docker-hub-credentials'
     }
@@ -24,10 +32,22 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
                 script {
-                    // changeset 대신 git diff로 직접 변경 파일 목록 추출
-                    // HEAD~1이 없는 경우(첫 커밋 등) fallback으로 마지막 커밋 파일 목록 사용
+                    // 수동 빌드(UserIdCause)면 파라미터 브랜치로, 웹훅이면 해당 브랜치로 체크아웃
+                    def branch = currentBuild.rawBuild.getCause(hudson.model.Cause.UserIdCause) != null
+                        ? params.DEPLOY_BRANCH
+                        : (env.gitlabSourceBranch ?: env.GIT_BRANCH ?: 'develop')
+
+                    echo "체크아웃 브랜치: ${branch}"
+                    checkout([
+                        $class: 'GitSCM',
+                        branches: [[name: "*/${branch}"]],
+                        extensions: [[$class: 'CleanBeforeCheckout']],
+                        userRemoteConfigs: scm.userRemoteConfigs
+                    ])
+                    env.BUILT_BRANCH = branch
+                }
+                script {
                     env.CHANGED_FILES = sh(
                         script: 'git diff --name-only HEAD~1 HEAD 2>/dev/null || git log --name-only --format="" -1',
                         returnStdout: true
