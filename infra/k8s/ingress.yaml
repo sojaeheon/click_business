@@ -23,7 +23,7 @@ spec:
             name: backend-service
             port:
               number: 8000
-      # OAuth2 (Google 로그인 흐름)
+      # OAuth2 인증 시작
       - path: /oauth2
         pathType: Prefix
         backend:
@@ -31,7 +31,8 @@ spec:
             name: backend-service
             port:
               number: 8000
-      - path: /login
+      # OAuth2 Google 콜백 (Spring Security가 처리)
+      - path: /login/oauth2
         pathType: Prefix
         backend:
           service:
