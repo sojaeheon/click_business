@@ -117,6 +117,12 @@ services:
       # consumer offset topic replication 설정
       # single broker이므로 1로 설정
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 29092"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
     networks:
       # ZooKeeper와 동일 네트워크
@@ -137,21 +143,47 @@ services:
       - ecosim-network
 
   # -----------------------------
-  # Kafka Consumer (Redis 적재용)
+  # Kafka Consumer
   # -----------------------------
-  market-consumer:
+  order-redis-consumer:
     build:
       context: ../bigdata
       dockerfile: dockerfile/Dockerfile.kafka
-    container_name: market-consumer
+    container_name: order-redis-consumer
     restart: always
     depends_on:
       - kafka
       - redis
     environment:
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      CONSUMER_TYPE: order_redis
+    networks:
+      - ecosim-network
+    
+  order-db-consumer:
+    build:
+      context: ../bigdata
+      dockerfile: dockerfile/Dockerfile.kafka
+    container_name: order-db-consumer
+    restart: always
+    depends_on:
+      - kafka
+      - postgres
+    environment:
+      CONSUMER_TYPE: order_db
+    networks:
+      - ecosim-network
+  
+  trade-db-consumer:
+    build:
+      context: ../bigdata
+      dockerfile: dockerfile/Dockerfile.kafka
+    container_name: trade-db-consumer
+    restart: always
+    depends_on:
+      - kafka
+      - postgres
+    environment:
+      CONSUMER_TYPE: trade_db
     networks:
       - ecosim-network
   
@@ -175,6 +207,10 @@ services:
       - "--kafka.server=kafka:29092"
     ports:
       - "9308:9308"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: always
     networks:
       - ecosim-network
 
