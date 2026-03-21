@@ -121,13 +121,13 @@ public class MarketMatchingService {
 
         // TradeEvent 발행
         TradeEventDto tradeEvent = TradeEventDto.builder()
-                .makerOrderId(sellOrder.getId()) // 가상의 Maker 설정 (매도자)
-                .takerOrderId(buyOrder.getId()) // 가상의 Taker 설정 (매수자)
+                .buyOrderId(buyOrder.getId())
+                .sellOrderId(sellOrder.getId())
                 .itemId(itemId)
                 .makerOrderType(OrderType.SELL)
-                .matchedPrice(matchedPrice)
-                .matchedQuantity(matchedQuantity)
-                .timestamp(System.currentTimeMillis())
+                .price(matchedPrice)
+                .quantity(matchedQuantity)
+                .executedAt(System.currentTimeMillis())
                 .build();
 
         try {

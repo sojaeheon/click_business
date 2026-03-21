@@ -65,12 +65,19 @@ public class BotOrderScheduler {
 
         // 1. 현재 시장가(Redis Ticker) 실시간 조회
         Long currentMarketPriceObj = getCurrentMarketPrice(itemId);
-        long currentMarketPrice = currentMarketPriceObj != null ? currentMarketPriceObj : 10000L;
+        // 이전에 저장된 시가가 없으면 DB에서 가져온 시가(dayOpenPrice)를 기본값으로 사용
+        long currentMarketPrice = currentMarketPriceObj != null ? currentMarketPriceObj : state.dayOpenPrice;
 
-        // 2. 메모리에 미리 계산된 현재 틱의 '목표 변동률' 가져와서 타겟가 계산 (이후 Tick Size 보정)
-        double currentTargetFluct = state.tickTargetFluctuations[state.currentTick];
-        double rawTargetPrice = currentMarketPrice * (1 + currentTargetFluct);
-        long currentTargetPrice = applyTickSize(rawTargetPrice);
+        // 2. 이번 틱의 '목표 변동 증분(Delta)' 계산
+        // 유저님 제안대로 누적치가 아닌 이번 1초 동안 이동해야 할 등락률만 추출하여 현재가에 적용합니다.
+        double currentTotalFluct = state.tickTargetFluctuations[state.currentTick];
+        double previousTotalFluct = (state.currentTick == 0) ? 0.0 : state.tickTargetFluctuations[state.currentTick - 1];
+        
+        // 시가 대비 누적 목표의 차이를 구함 (ex: 1.05 / 1.049... 형태의 비율로 현재가를 유도)
+        double deltaRatio = (1.0 + currentTotalFluct) / (1.0 + previousTotalFluct);
+        double theoreticalTarget = currentMarketPrice * deltaRatio;
+
+        long currentTargetPrice = applyTickSize(theoreticalTarget);
 
         // 3. 초당 생성할 가상 봇 갯수 랜덤 설정 (TPS)
         int botCount = ThreadLocalRandom.current().nextInt(MIN_TPS, MAX_TPS + 1);
@@ -191,8 +198,11 @@ public class BotOrderScheduler {
             currentMarketPrice = index.getOpenPrice().longValue();
             redisTemplate.opsForValue().set("market:price:" + itemId, String.valueOf(currentMarketPrice));
         } else {
-            currentMarketPrice = marketPriceObj != null ? marketPriceObj : 10000L;
+            currentMarketPrice = marketPriceObj != null ? marketPriceObj : (index.getOpenPrice() != null ? index.getOpenPrice().longValue() : 10000L);
         }
+
+        // 10분 사이클 동안 목표 계산의 기준이 될 시가 베이스 저장.
+        state.dayOpenPrice = currentMarketPrice;
 
         // DB 등락률(Decimal 5,2)을 변동률 값(0.01 = 1%)으로 변환 (게임적 재미를 위해 외부 지표의 10배 변동성 부여)
         state.targetOpenFluct = 0.0; // 시가는 전일 종가와 이어진다고 가정
@@ -268,6 +278,7 @@ public class BotOrderScheduler {
         double targetLowFluct;          // 저가 목표 변동률
         Double targetCloseFluct;        // 종가 목표 변동률 (데이터 유무 체크용)
         boolean isHighFirst;            // 고가를 먼저 찍는 패턴인지 여부
+        long dayOpenPrice;              // 사이클 시작 시점의 시장가 보관 (참고용)
 
         final double[] tickTargetFluctuations = new double[600]; // 초별 미리 계산된 타겟 변동률
     }

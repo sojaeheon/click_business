@@ -51,7 +51,7 @@ public class KafkaOrderEventPublisher implements OrderEventPublisher {
                 .eventVersion(1)
                 .occurredAt(ZonedDateTime.now(KST))
                 .producer(PRODUCER_NAME)
-                .companyId("c" + event.getCompanyId())
+                .companyId(String.valueOf(event.getCompanyId()))
                 .aggregateId("order")                       // 체결 전이므로 임시값
                 .payload(payload)
                 .build();
@@ -82,7 +82,7 @@ public class KafkaOrderEventPublisher implements OrderEventPublisher {
                 .eventVersion(1)
                 .occurredAt(ZonedDateTime.now(KST))
                 .producer(PRODUCER_NAME)
-                .companyId("c" + event.getCompanyId())
+                .companyId(String.valueOf(event.getCompanyId()))
                 .aggregateId("order_" + event.getOrderId())
                 .payload(payload)
                 .build();
