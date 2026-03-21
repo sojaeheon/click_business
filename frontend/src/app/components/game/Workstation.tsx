@@ -27,7 +27,7 @@ function getSingleStackLevel(count: number, cap: number): number {
 function ProductStack({ stackLevel, industry }: { stackLevel: number; industry: string }) {
     if (stackLevel <= 0) return null;
 
-    if (industry === "금광업") {
+    if (industry === "GOLD_MINING" || industry === "금광업") {
         const rotations: [number, number, number][] = [
             [0, 0, 0],
             [0, Math.PI / 3, 0],
@@ -47,7 +47,7 @@ function ProductStack({ stackLevel, industry }: { stackLevel: number; industry: 
         );
     }
 
-    if (industry === "제조업") {
+    if (industry === "MANUFACTURING" || industry === "제조업") {
         // 드릴 차곡차곡 쌓기 (고정 위치·회전)
         const rotations: [number, number, number][] = [
             [0, 0, Math.PI / 2],
@@ -109,8 +109,8 @@ function FlyingProduct({ startPos, endPos, onArrive, industry }: {
 
     let url = "/models/props/Gold_Bar.gltf";
     let scale = 0.75;
-    if (industry === "금광업") { url = "/models/props/Gold_Nugget_Medium.gltf"; scale = 2.0; }
-    else if (industry === "제조업") { url = "/models/props/drill.glb"; scale = 0.3; }
+    if (industry === "GOLD_MINING" || industry === "금광업") { url = "/models/props/Gold_Nugget_Medium.gltf"; scale = 2.0; }
+    else if (industry === "MANUFACTURING" || industry === "제조업") { url = "/models/props/drill.glb"; scale = 0.3; }
 
     useFrame((_, delta) => {
         if (!ref.current || arrived.current) return;
@@ -185,17 +185,17 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
     // 도구들은 <group scale={BELT_S} position={[0.75, TW * 0.12, 1]} rotation={[0, Math.PI, 0]}> 내부에 배치됩니다.
     // 회전(Math.PI)을 고려해 x는 0.75 - localX * BELT_S, z는 1 - localZ * BELT_S 로 계산합니다.
     const beltEndPos: [number, number, number] =
-        industry === "제조업" ? [
+        (industry === "MANUFACTURING" || industry === "제조업") ? [
             0.75 + 1.2 * BELT_S, // 머신 끝부분 (x)
             TW * 0.12 + 1.5,     // 높이
             1 - (-0.5) * BELT_S  // z
         ] :
-            industry === "금광업" ? [
-                0.75 - 3.5 * BELT_S, // rock.glb 의 로컬 x=3.5 
+            (industry === "GOLD_MINING" || industry === "금광업") ? [
+                0.75 - 3.5 * BELT_S, // rock.glb 의 로컬 x=3.5
                 TW * 0.12 + 1.2,
                 1 - (-0.3) * BELT_S  // rock.glb 의 로컬 z=-0.3
             ] :
-                [0.75 - 0.5 * BELT_S, TW * 0.12 + 0.8, 1 - 1.0 * BELT_S]; // 금제련(Machine1) кон베이어 끝
+                [0.75 - 0.5 * BELT_S, TW * 0.12 + 0.8, 1 - 1.0 * BELT_S]; // 금제련(Machine1) 컨베이어 끝
 
 
     // ── 로컬 프레임 업데이트 (생산 진행 상태 & 스택 증가) ──────────
@@ -280,7 +280,7 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
     //   금광업·금제련업 → 벨트/바위 위
     //   제조업         → machine1 위
     const toolHudPos: [number, number, number] =
-        industry === "제조업"
+        (industry === "MANUFACTURING" || industry === "제조업")
             ? [MACHINE_CONFIG.position[0] * BELT_S, 4.5, MACHINE_CONFIG.position[2] * BELT_S]
             : [0.75 * BELT_S, 3.5, 1 * BELT_S];
 
@@ -308,9 +308,9 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
                 <React.Suspense fallback={
                     <mesh><boxGeometry args={[BW, TW * 0.3, TW * 0.5]} /><meshStandardMaterial color="#555" wireframe /></mesh>
                 }>
-                    {industry === "금광업" ? (
+                    {(industry === "GOLD_MINING" || industry === "금광업") ? (
                         <EnvModel url="/models/props/rock.glb" scale={1.8} position={[3.5, 0, -0.3]} rotation={[0, 180, 0]} />
-                    ) : industry === "제조업" ? (
+                    ) : (industry === "MANUFACTURING" || industry === "제조업") ? (
                         <ManufacturingMachine isWorking={isWorking && !isCompleted && !cannotProduce} />
                     ) : (
                         /* @ts-ignore */
