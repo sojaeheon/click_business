@@ -34,29 +34,29 @@ export const CompanyAPI = {
     }
   },
   getStatus: async () => {
-    // ✅ 내 회사 조회 (GET /api/v1/companies/me)
+    // ✅ 내 회사 게임 상태 조회 (GET /api/v1/companies/me/status)
+    // money(현금), capital(총자산) 포함된 GameStatusResponse 반환
     try {
-      const res = await apiClient.get('/companies/me');
+      const res = await apiClient.get('/companies/me/status');
       const company = res.data?.data;
       if (!company) throw new Error("API 연동 실패 (데이터 누락)");
       return {
         data: {
-          name: company.company_name ?? company.name,
-          industry_type: company.industry_type, // 서버 데이터 우선
-          cash: company.cash ?? 5000000,          // TODO: 백엔드 추가 필요
-          total_asset: company.total_asset ?? 12000000,  // TODO: 백엔드 추가 필요
-          slots: company.slots ?? undefined, // 서버에서 slots를 반환하지 않으면 gameStore 기본값을 유지
+          name: company.companyName,
+          industry_type: company.industry,
+          cash: company.money,
+          total_asset: company.capital,
+          slots: undefined, // slots 정보는 별도 API에서 관리
         }
       };
     } catch (err) {
       console.warn("API 연동 실패! CompanyAPI.getStatus 목업 데이터 사용", err);
-      await mockDelay();
       return {
         data: {
-          name: undefined,         // store에 있는 기존 로컬 정보 유지
-          industry_type: undefined, // store에 있는 기존 로컬 정보 유지
-          cash: 5000000,
-          total_asset: 12000000,
+          name: undefined,
+          industry_type: undefined,
+          cash: undefined,
+          total_asset: undefined,
           slots: undefined
         }
       };
@@ -80,6 +80,9 @@ export const CompanyAPI = {
   },
 };
 
+// 내 작업장 ID 세션 캐시 (한 번 조회 후 재사용)
+let _cachedWorkstationId: number | null = null;
+
 // 💡 작업장(Workstation) 백엔드 연동 전 임시 테스트용 목업 상태
 let mockWorkIsWorking = false;
 let mockWorkProgress = 0;      // 0 ~ 100 퍼센트
@@ -90,6 +93,15 @@ let mockWorkStartedAt = 0;     // 작업 시작 timestamp(ms)
 let mockWorkTotalMs = 0;       // 총 소요 예상 시간(ms)
 
 export const WorkstationAPI = {
+  // 내 작업장 ID를 가져오는 헬퍼 (세션 중 최초 1회만 API 호출)
+  getMyId: async (): Promise<number> => {
+    if (_cachedWorkstationId !== null) return _cachedWorkstationId;
+    const res = await apiClient.get('/workstations/my');
+    const id = res.data.data.workstationId as number;
+    _cachedWorkstationId = id;
+    return id;
+  },
+
   create: async (data: { companyId: number; name?: string; type?: string }) => {
     try {
       const res = await apiClient.post('/workstations/create', data);
