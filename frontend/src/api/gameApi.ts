@@ -96,10 +96,23 @@ export const WorkstationAPI = {
   // 내 작업장 ID를 가져오는 헬퍼 (세션 중 최초 1회만 API 호출)
   getMyId: async (): Promise<number> => {
     if (_cachedWorkstationId !== null) return _cachedWorkstationId;
-    const res = await apiClient.get('/workstations/my');
-    const id = res.data.data.workstationId as number;
-    _cachedWorkstationId = id;
-    return id;
+    try {
+      const res = await apiClient.get('/workstations/my');
+      const id = res.data.data.workstationId as number;
+      _cachedWorkstationId = id;
+      return id;
+    } catch (err: any) {
+      // 공장이 없으면 자동 생성 후 재시도
+      const msg = err?.response?.data?.message ?? '';
+      if (msg.includes('공장이 존재하지 않습니다') || err?.response?.status === 404) {
+        await apiClient.post('/workstations/create');
+        const retry = await apiClient.get('/workstations/my');
+        const id = retry.data.data.workstationId as number;
+        _cachedWorkstationId = id;
+        return id;
+      }
+      throw err;
+    }
   },
 
   create: async (data: { companyId: number; name?: string; type?: string }) => {
@@ -111,11 +124,12 @@ export const WorkstationAPI = {
       return { data: { success: true } };
     }
   },
-  getStatus: async (workstationId: number = 1) => {
-    // ✅ 실제 API 연결: GET /api/v1/workstations/{workstationId}
+  getStatus: async () => {
+    // ✅ 실제 API 연결: GET /api/v1/workstations/my
     try {
-      const res = await apiClient.get(`/workstations/${workstationId}`);
+      const res = await apiClient.get('/workstations/my');
       const data = res.data.data;
+      if (data.workstationId) _cachedWorkstationId = data.workstationId;
       return {
         data: {
           isWorking: data.isActive,
@@ -158,8 +172,10 @@ export const WorkstationAPI = {
 
     try {
       // ✅ 실제 연동 /api/v1/workstations/{workstation_id}/reserve (예약 및 가동)
-      await apiClient.post(`/workstations/1/reserve`, { quantity: data.quantity });
-      await apiClient.post(`/workstations/1/toggle`);
+      // reserve API에는 재료 수량(reserveQty)을 전달해야 함 (제품 수량 data.quantity 아님)
+      const wsId = await WorkstationAPI.getMyId();
+      await apiClient.post(`/workstations/${wsId}/reserve`, { quantity: reserveQty });
+      await apiClient.post(`/workstations/${wsId}/toggle`);
       return { data: { success: true, message: "작업이 시작되었습니다." } };
     } catch (err) {
       console.warn("API 연동 실패! WorkstationAPI.start 목업 데이터 사용", err);
@@ -217,9 +233,9 @@ export const WorkstationAPI = {
   },
   collect: async (companyId: number) => {
     // ✅ 실제 API 연결: POST /api/v1/workstations/{workstationId}/harvest
-    const workstationId = 1; // 임시
     try {
-      await apiClient.post(`/workstations/${workstationId}/harvest`);
+      const wsId = await WorkstationAPI.getMyId();
+      await apiClient.post(`/workstations/${wsId}/harvest`);
       return { data: { success: true, message: "수령 완료" } };
     } catch (err) {
       console.warn("API 연동 실패! WorkstationAPI.collect 목업 데이터 사용", err);
@@ -408,7 +424,7 @@ export const InventoryAPI = {
   getInventory: async (companyId: number) => {
     // ✅ 실제 API 연동: GET /api/v1/inventory/
     try {
-      const res = await apiClient.get('/inventory/'); // 백엔드 경로 수정
+      const res = await apiClient.get('/inventory'); // 백엔드 경로 수정
       return {
         data: res.data.data
           .filter((slot: any) => slot.itemId != null) // 실제 아이템이 들어있는 슬롯만 프론트엔드 인벤토리에 담기
