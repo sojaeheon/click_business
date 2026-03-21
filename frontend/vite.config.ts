@@ -18,10 +18,13 @@ export default defineConfig({
   assetsInclude: ['**/*.svg', '**/*.csv'],
   server: {
     proxy: {
-      '/api/v1': {
+      '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
-        secure: false,
+      },
+      '/ws-ecosim': {
+        target: 'ws://localhost:8000',
+        ws: true,
       }
     }
   }

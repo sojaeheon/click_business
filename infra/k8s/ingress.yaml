@@ -1,25 +1,40 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: app-ingress
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
+  name: backend-ingress
 spec:
   ingressClassName: nginx
   rules:
   - http:
       paths:
-      # /api/xxx → backend-service:8000/xxx (prefix 제거)
-      - path: /api(/|$)(.*)
-        pathType: ImplementationSpecific
+      # /api/v1/xxx → backend (rewrite 없이 그대로, 컨트롤러가 /api/v1/... 에 매핑됨)
+      - path: /api
+        pathType: Prefix
         backend:
           service:
             name: backend-service
             port:
               number: 8000
-      # / → frontend-service:80
-      - path: /()(.*)
-        pathType: ImplementationSpecific
+      # WebSocket /ws-ecosim → backend
+      - path: /ws-ecosim
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frontend-ingress
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
         backend:
           service:
             name: frontend-service
