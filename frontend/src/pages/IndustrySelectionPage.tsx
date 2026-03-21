@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGameStore } from "../store/gameStore";
 import { useAlertStore } from "../store/useAlertStore";
 import { preloadGameModels } from "../app/components/game/preload";
-import { CompanyAPI } from "../api/gameApi";
+import { CompanyAPI, WorkstationAPI } from "../api/gameApi";
 import { Canvas } from '@react-three/fiber';
 import { useGLTF, OrbitControls, Environment } from '@react-three/drei';
 
@@ -135,10 +135,12 @@ export const IndustrySelectionPage = () => {
     if (selectedIndustry === '제조업') mappedIndustry = 'MANUFACTURING';
 
     try {
-      await CompanyAPI.create({
+      const created = await CompanyAPI.create({
         companyName: companyName.trim(),
         industryType: mappedIndustry,
       });
+      // ✅ 공장 생성 (백엔드에서 회사 생성 시 공장 자동생성이 제거되었으므로 여기서 바로 호출)
+      await WorkstationAPI.create({ companyId: 1 });
     } catch (e) {
       console.warn("회사 생성 API 실패, 목업으로 진행:", e);
     } finally {

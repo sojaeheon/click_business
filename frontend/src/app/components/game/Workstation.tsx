@@ -418,7 +418,10 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
                     if (wsState.storedCount > 0) {
                         try {
                             if (wsState.storedCount > 0) {
-                                await WorkstationAPI.collect(useGameStore.getState().workstationId || 1);
+                                const wid = useGameStore.getState().workstationId || 1;
+                                // 💡 백엔드 분리 정책: collect 전에 process 를 통해 실시간 생산량 강제 반영
+                                await WorkstationAPI.process(wid);
+                                await WorkstationAPI.collect(wid);
                                 await useGameStore.getState().fetchCompanyData(1);
                                 
                                 const added = wsState.storedCount; // 방금 수확한 개수

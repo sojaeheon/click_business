@@ -9,7 +9,7 @@ export function ControlGuideModal({ forceOpen = false, onForceClose }: {
   const [hideForever, setHideForever] = useState(false);
 
   useEffect(() => {
-    const hide = localStorage.getItem("hideControlGuide");
+    const hide = sessionStorage.getItem("hideControlGuide");
     if (!hide) {
       setIsOpen(true);
     }
@@ -21,7 +21,7 @@ export function ControlGuideModal({ forceOpen = false, onForceClose }: {
 
   const handleClose = () => {
     if (hideForever) {
-      localStorage.setItem("hideControlGuide", "true");
+      sessionStorage.setItem("hideControlGuide", "true");
     }
     setIsOpen(false);
     onForceClose?.();

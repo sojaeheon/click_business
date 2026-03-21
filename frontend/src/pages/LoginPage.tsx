@@ -14,7 +14,7 @@ export const LoginPage = () => {
   const handleLogin = () => {
     setIsLoading(true);
     // 💡 백엔드 연동: 구글 OAuth2 로그인 요청
-    localStorage.removeItem('isGuest');
+    sessionStorage.removeItem('isGuest');
     window.location.href = authApi.getLoginUrl();
   };
 
@@ -23,9 +23,9 @@ const handleGuestMode = async () => {
     try {
       const { data } = await authApi.createGuest();
       // 기존 잔여 게임 데이터가 존재할 수 있으므로 삭제 (state 초기화 용도)
-      localStorage.removeItem('game-storage');
-      localStorage.setItem('accessToken', data.data.accessToken);
-      localStorage.setItem('isGuest', 'true');
+      sessionStorage.removeItem('game-storage');
+      sessionStorage.setItem('accessToken', data.data.accessToken);
+      sessionStorage.setItem('isGuest', 'true');
       
       // Zustand의 in-memory 상태(persist)까지 강제 초기화하기 위해 강제 리로드(새로고침) 이동을 수행
       window.location.href = '/industry-selection';

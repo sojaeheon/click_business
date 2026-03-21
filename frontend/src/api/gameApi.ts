@@ -3,7 +3,7 @@ import { WORKER_DEFINITIONS } from '../constants/workers';
 
 // 💡 헬퍼 함수: 가짜 로딩 시간(0.5초)을 만들어주는 함수입니다.
 const mockDelay = (ms = 500) => new Promise(resolve => setTimeout(resolve, ms));
-const isGuestMode = () => localStorage.getItem('isGuest') === 'true';
+const isGuestMode = () => sessionStorage.getItem('isGuest') === 'true';
 
 export const AuthAPI = {
   getLoginUrl: () => {
@@ -170,14 +170,8 @@ export const MarketAPI = {
 
 export const BankAPI = {
   getSummary: async (companyId: number) => {
-    try {
-      const res = await apiClient.get('/bank/summary');
-      return { data: res.data.data };
-    } catch (err) {
-      console.warn("API 연동 실패! BankAPI.getSummary 목업 데이터 사용", err);
-      await mockDelay();
-      return { data: { loanRate: 5.5, depositRate: 2.3, currentLoan: isGuestMode() ? 0 : 1000000, currentDeposit: isGuestMode() ? 0 : 500000 } };
-    }
+    const res = await apiClient.get('/bank/summary');
+    return { data: res.data.data };
   },
   processLoan: (data: { companyId: number; type: 'BORROW' | 'REPAY' | 'DEPOSIT' | 'WITHDRAW'; amount: number }) => apiClient.post('/bank/loans', data)
 };
@@ -200,22 +194,8 @@ export const MinigameAPI = {
 
 export const RankingAPI = {
   getTopRanks: async () => {
-    try {
-      const res = await apiClient.get('/ranking/preview');
-      return { data: res.data.data };
-    } catch (err) {
-      console.warn("API 연동 실패! RankingAPI.getTopRanks 목업 데이터 사용", err);
-      await mockDelay();
-      return {
-        data: [
-          { rank: 1, companyName: "삼성제철", score: 99999 },
-          { rank: 2, companyName: "현대광업", score: 88888 },
-          { rank: 3, companyName: "딸깍 컴퍼니", score: 77777 },
-          { rank: 4, companyName: "SSAFY 광물", score: 66666 },
-          { rank: 5, companyName: "개미구멍", score: 55555 },
-        ]
-      };
-    }
+    const res = await apiClient.get('/ranking/preview');
+    return { data: res.data.data };
   },
 };
 
@@ -275,8 +255,7 @@ export const InventoryAPI = {
     };
   },
   unlockSlot: async (data: { ticketSlotIndex: number }) => {
-    // TODO: 백엔드에 /inventory/expand API가 아직 없으므로 모의 처리
-    console.warn("백엔드 미구현: 인벤토리 확장 API 호출 무시됨");
+    await apiClient.post('/inventory/expand', null, { params: { ticketSlotIndex: data.ticketSlotIndex } });
     return { data: { success: true } };
   },
   moveSlot: async (data: { fromIdx: number; toIdx: number }) => {

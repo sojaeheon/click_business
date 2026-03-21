@@ -29,7 +29,7 @@ export default function App() {
 
   // ─── 조작 가이드 모달 상태 (App 레벨에서 관리 → pointer-events 문제 해결) ───
   const [showGuide, setShowGuide] = useState(false);
-  const [autoGuide, setAutoGuide] = useState(() => !localStorage.getItem("hideControlGuide"));
+  const [autoGuide, setAutoGuide] = useState(() => !sessionStorage.getItem("hideControlGuide"));
 
   // ──────────────────────────────────────────────────────────
   // 1. 초기 데이터 불러오기
@@ -38,7 +38,7 @@ export default function App() {
     const initGame = async () => {
       try {
         // App.tsx 마운트 시, 게스트 모드 진입 직후의 캐시 삭제를 지키기 위해 강제 fetch전에 토큰 유무를 검사
-        const token = localStorage.getItem('accessToken');
+        const token = sessionStorage.getItem('accessToken');
         if (token) {
           // 회사 데이터 불러오기 요청
           await fetchCompanyData(1);
