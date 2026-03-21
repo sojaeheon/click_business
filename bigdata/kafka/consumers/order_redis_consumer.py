@@ -146,13 +146,8 @@ def cancel_order(data, payload):
     # HASH 상태 업데이트
     if r.exists(order_key):
         r.hset(order_key, mapping={
-<<<<<<< HEAD:bigdata/kafka/consumers/order_redis_consumer.py
             "status": "CANCELLED",
             "cancelled_at": payload.get("cancelled_at", str(int(time.time())))
-=======
-            "status": "CANCELED",
-            "cancelledAt": str(int(time.time() * 1000))
->>>>>>> develop:bigdata/kafka/consumers/order_topic_redis_consumer.py
         })
 
     print(f"[CANCEL] Order 취소 완료: {order_id} -> {zset_key}")
