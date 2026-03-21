@@ -623,9 +623,10 @@ export function GameScene({
           const totalMsNeeded = Math.ceil((ratio * 60000) / speedMult); // ms (비례 단축)
 
 
-          // ✅ 재료 창고에서 차감 (updateMaterial 음수 = 차감)
-          const deducted = store.updateMaterial(-materialNeeded);
-          if (Math.abs(deducted) < materialNeeded) {
+          // ✅ 사전 갯수 체크 (로컬)
+          const matIdx = store.warehouseItems.findIndex(i => i.type === "material");
+          const currentMat = matIdx >= 0 ? store.warehouseItems[matIdx].quantity : 0;
+          if (currentMat < materialNeeded) {
             useAlertStore.getState().openAlert("재료가 부족합니다.", "경고");
             return;
           }
@@ -633,7 +634,12 @@ export function GameScene({
           // 로딩 상태 시작
           setWorkstationState({ isStarting: true });
 
-          await WorkstationAPI.start({ companyId: 1, recipeId: 1, quantity: qty, workerId: 1 });
+          // 백엔드 통신 (✅ store의 실제 workstationId 사용, 없으면 1로 폴백)
+          const wsId = useGameStore.getState().workstationId || 1;
+          await WorkstationAPI.start({ companyId: 1, recipeId: 1, quantity: qty, workerId: 1, workstationId: wsId });
+          
+          // 백엔드 상태(재료 차감) 로컬 스토어에 동기화
+          await store.fetchCompanyData(1);
 
           // ✅ Workstation 컴포넌트에 목표 개수 & 예상 시간 전역상태 등록 및 로딩 종료
           setWorkstationState({

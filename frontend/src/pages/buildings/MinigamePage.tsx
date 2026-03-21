@@ -197,7 +197,24 @@ export function MinigamePage() {
         // 랜덤 보상 뽑기 (확률 가중치 로직 적용)
         const randomReward = pickReward();
         setRewardItem(randomReward);
-        useGameStore.getState().addInventoryItem(randomReward);
+        
+        // ✨ 백엔드 DB 연동 강제 삽입 (디버깅 용)
+        const getDbItemId = (type: string, level?: number) => {
+          if (type.startsWith("worker_lv")) return 1000 + (level || 1);
+          if (type === "ticket_inventory") return 1011;
+          if (type === "ticket_warehouse") return 1012;
+          return 1001; // fallback to lv1 worker
+        };
+        const dbItemId = getDbItemId(randomReward.type, randomReward.level);
+        
+        import("../../api/gameApi").then(({ InventoryAPI }) => {
+          InventoryAPI.addTestItem({ itemId: dbItemId, amount: randomReward.quantity || 1 })
+            .then(() => useGameStore.getState().fetchCompanyData(1))
+            .catch((err: any) => {
+               console.error("아이템 강제 저장 통신 실패:", err);
+               useGameStore.getState().fetchCompanyData(1);
+            });
+        });
 
         MinigameAPI.claimReward({ companyId: 1, clicks: TOTAL_CLICKS, isFever }).catch(console.error);
       }

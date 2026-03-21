@@ -1,7 +1,7 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+
 // 🚨 gameApi.ts에 정의된 정확한 이름인 대문자 CompanyAPI로 가져옵니다.
-import { CompanyAPI, WarehouseAPI, InventoryAPI, BankAPI } from "../api/gameApi";
+import { CompanyAPI, WarehouseAPI, InventoryAPI, BankAPI, WorkstationAPI } from "../api/gameApi";
 import { WORKER_DEFINITIONS, getWorkerDefByLevel } from "../constants/workers";
 import { useAlertStore } from "./useAlertStore";
 
@@ -43,10 +43,11 @@ export interface InventoryItem {
   icon: string;
   quantity: number;
   level?: number;
+  slotIndex?: number;
 }
 
 // ─── 미니게임 보상 가중치 풀 ──────────────────────────────────────────────
-// ⚠️ 백엔드 /v1/minigame/reward-pool API 결과로 대체 예정
+
 // 없으면 아래 프론트 기본값 사용 (weight sum = 100)
 type RewardEntry = { item: Omit<InventoryItem, "id">; weight: number };
 
@@ -109,6 +110,7 @@ export interface GameState {
   warehouseItems: WarehouseItem[];
   hrData: HRData;
   isLoading: boolean;
+  workstationId: number;  // ✅ 실제 DB workstation ID (하드코딩 1 제거)
 
   // 장착 일꾼 ID & 새로운 일꾼 알람
   equippedWorkerId: string | null;
@@ -116,7 +118,7 @@ export interface GameState {
   setEquippedWorkerId: (id: string | null) => void;
   setHasNewWorker: (v: boolean) => void;
 
-  // 작업장 로컬 상태 캐시 (백엔드 연동 전 임시)
+  // 작업장 로컬 상태 캐시
   workstationState: {
     isStarting?: boolean;
     isWorking: boolean;
@@ -166,7 +168,6 @@ export interface GameState {
 // 3. 상태 관리소 (persist 미들웨어 적용)
 // ─────────────────────────────────────────────────────────────────────────
 export const useGameStore = create<GameState>()(
-  persist(
     (set, get) => ({
       companyName: "",
       industry: "금광업",
@@ -186,6 +187,7 @@ export const useGameStore = create<GameState>()(
       warehouseItems: [],
       hrData: { currentLevel: 1, expectedLevel: 2, successRate: 70, materialCurrent: 1, materialMax: 2 },
       isLoading: false,
+      workstationId: 0,  // ✅ 실제 DB workstation ID (0 = 아직 불러옴)
       // 인벤토리 아이템 (기본 캐릭터 lv1 일꾼 1개 지급)
       inventoryItems: [
         { id: "inv_default_1", type: "worker_lv1", name: "초보 일꾼", icon: "⛏️", quantity: 1, level: 1 },
@@ -456,12 +458,13 @@ export const useGameStore = create<GameState>()(
       fetchCompanyData: async (companyId: number) => {
         set({ isLoading: true });
         try {
-          // 백엔드 API 종합 호출 (fallback 포함)
-          const [companyRes, warehouseRes, inventoryRes, bankRes] = await Promise.all([
+          // 백엔드 API 종합 호출 (workstationId도 함께 초기화)
+          const [companyRes, warehouseRes, inventoryRes, bankRes, workstationIdRes] = await Promise.all([
             CompanyAPI.getStatus(),
             WarehouseAPI.getWarehouseItems(companyId),
             InventoryAPI.getInventory(companyId),
-            BankAPI.getSummary(companyId)
+            BankAPI.getSummary(companyId),
+            WorkstationAPI.getMyId().catch(() => ({ data: 1 })), // 에러시 1로 폴백
           ]);
 
           const realData = companyRes.data;
@@ -470,19 +473,7 @@ export const useGameStore = create<GameState>()(
           // 관련 UI(InventoryModal)에서 type.startsWith("ticket_")로 구분한다
           const allItems: InventoryItem[] = inventoryRes.data.map((item: any) => item);
 
-          // 기본 캐릭터 보장 (인벤토리가 완전히 비어있는 후)
-          const hasWorker = allItems.some(i => i.type?.startsWith("worker_"));
-          if (!hasWorker) {
-            allItems.push({
-              id: "inv_default_1",
-              type: "worker_lv1",
-              name: "초보 일꾼",
-              icon: "⛏️",
-              quantity: 1,
-              level: 1,
-            });
-          }
-
+          // ✅ 더미 아이템 삽입 제거: 이제 실제 DB에 있는 데이터만 보여줌 (빈 DB일 경우 400 에러 혼동 방지)
           const finalIndustry = realData?.industry_type ?? get().industry;
           const { material, product } = get().getIndustryItemNames(finalIndustry);
 
@@ -511,7 +502,8 @@ export const useGameStore = create<GameState>()(
               currentLoan: bankRes.data.currentLoan,
               currentDeposit: bankRes.data.currentDeposit,
             },
-            debt: bankRes.data.currentLoan, // 은행의 대출금액과 동기화
+            debt: bankRes.data.currentLoan,
+            workstationId: workstationIdRes.data ?? 0,  // ✅ 실제 DB ID 저장
             isLoading: false
           });
         } catch (error) {
@@ -519,30 +511,7 @@ export const useGameStore = create<GameState>()(
           set({ isLoading: false });
         }
       }
-    }),
-    {
-      name: "game-storage",
-      partialize: (state) => ({
-        companyName: state.companyName,
-        industry: state.industry,
-        money: state.money,
-        currency: state.currency,
-        capital: state.capital,
-        debt: state.debt,
-        warehouseMaxSlots: state.warehouseMaxSlots,
-        inventoryMax: state.inventoryMax,
-        inventoryPurchaseCount: state.inventoryPurchaseCount,
-        bankData: state.bankData,
-        warehouseItems: state.warehouseItems,
-        inventoryItems: state.inventoryItems,
-        warehouseExpandTickets: state.warehouseExpandTickets,
-        inventoryExpandTickets: state.inventoryExpandTickets,
-        equippedWorkerId: state.equippedWorkerId,
-        hasNewWorker: state.hasNewWorker,
-        hrData: state.hrData,
-      }),
-    }
-  )
+    })
 );
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ import { getPropsImage } from "../../constants/workers";
 
 interface SlotData {
   id: number;
+  dbSlotIndex: number; // ✅ 실제 DB의 slotIndex (스왓 API에 이걸 보내야 함)
   item: null | {
     type: "material" | "product";
     quantity: number;
@@ -192,84 +193,81 @@ export function WarehousePage() {
     const totalSlots = maxSlots + (6 - (maxSlots % 6 === 0 ? 6 : maxSlots % 6)) + 6;
     const initialSlots: SlotData[] = Array(totalSlots).fill(null).map((_, i) => ({
       id: i,
+      dbSlotIndex: i, // 기본값: UI와 DB 인덱스가 같다고 가정
       item: null,
       locked: i >= maxSlots
     }));
 
-    let currentSlotIdx = 0;
-    const materials = warehouseItems.filter((i) => i.type === "material");
-    const products = warehouseItems.filter((i) => i.type === "product");
-
-    materials.forEach(item => {
-      let remaining = item.quantity;
-      while (remaining > 0) {
-        const amount = Math.min(remaining, MAX_PER_SLOT);
-        if (currentSlotIdx < maxSlots) {
-          initialSlots[currentSlotIdx].item = { type: "material", quantity: amount, name: material, id_: item.id };
-          currentSlotIdx++;
-        }
-        remaining -= amount;
-      }
-    });
-
-    products.forEach(item => {
-      let remaining = item.quantity;
-      while (remaining > 0) {
-        const amount = Math.min(remaining, MAX_PER_SLOT);
-        if (currentSlotIdx < maxSlots) {
-          initialSlots[currentSlotIdx].item = { type: "product", quantity: amount, name: product, id_: item.id };
-          currentSlotIdx++;
-        }
-        remaining -= amount;
+    // ✅ warehouseItems의 실제 slotIndex를 사용해 정확한 슬롯에 배치
+    warehouseItems.forEach(item => {
+      // slotIndex가 존재하면 해당 DB 슬롯에 직접 잘라넣음
+      if ((item as any).slotIndex !== undefined && (item as any).slotIndex < totalSlots) {
+        const si = (item as any).slotIndex as number;
+        initialSlots[si].dbSlotIndex = si;
+        initialSlots[si].item = {
+          type: item.type as "material" | "product",
+          quantity: item.quantity,
+          name: item.name ?? "",
+          id_: item.id,
+        };
       }
     });
 
     setSlots(initialSlots);
   }, [warehouseItems, maxSlots, material, product]);
 
-  const handleUnlockSlot = (slotId: number) => {
+  const handleUnlockSlot = async (slotId: number) => {
     if (warehouseExpandTickets <= 0) {
       useAlertStore.getState().openAlert("창고 확장권이 부족합니다. 미니게임에서 획득할 수 있습니다.", "확장 불가");
       return;
     }
-    const success = useWarehouseTicket();
-    if (success) {
-      setSlots(prev => prev.map(s => s.id === slotId ? { ...s, locked: false } : s));
+    
+    const ticketItem = useGameStore.getState().inventoryItems.find((i: any) => i.type === "ticket_warehouse");
+    if (!ticketItem || ticketItem.slotIndex === undefined) {
+      useAlertStore.getState().openAlert("창고 확장권의 슬롯 정보를 찾을 수 없습니다.", "에러");
+      return;
+    }
+
+    try {
+      await WarehouseAPI.unlockSlot({ ticketSlotIndex: ticketItem.slotIndex });
+      await useGameStore.getState().fetchCompanyData(1);
       useAlertStore.getState().openAlert("창고 슬롯이 확장되었습니다!", "확장 완료");
+    } catch (e) {
+      useAlertStore.getState().openAlert("슬롯 확장에 실패했습니다.", "API 오류");
     }
   };
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
-    e.dataTransfer.setData("text/plain", index.toString());
+    // ✅ UI 인덱스가 아니라 실제 DB slotIndex를 전송
+    e.dataTransfer.setData("text/plain", slots[index].dbSlotIndex.toString());
     setDraggingIndex(index);
   };
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
-  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
+  const handleDrop = async (e: React.DragEvent, targetIndex: number) => {
     e.preventDefault();
     setDragOverIndex(null);
     setDraggingIndex(null);
-    const sourceIndexStr = e.dataTransfer.getData("text/plain");
-    if (!sourceIndexStr) return;
-    const sourceIndex = parseInt(sourceIndexStr, 10);
-    if (sourceIndex === targetIndex) return;
-    setSlots((prev) => {
-      const newSlots = [...prev];
-      const sourceSlot = newSlots[sourceIndex];
-      const targetSlot = newSlots[targetIndex];
-      if (targetSlot.locked) return prev;
-      const tempItem = sourceSlot.item;
-      sourceSlot.item = targetSlot.item;
-      targetSlot.item = tempItem;
-      return newSlots;
-    });
+    const sourceDbIdxStr = e.dataTransfer.getData("text/plain");
+    if (!sourceDbIdxStr) return;
+    const sourceDbIdx = parseInt(sourceDbIdxStr, 10);
+    const targetDbIdx = slots[targetIndex].dbSlotIndex;
+    if (sourceDbIdx === targetDbIdx) return;
+
+    if (slots[targetIndex].locked) return;
+
+    try {
+      await WarehouseAPI.moveSlot({ fromIdx: sourceDbIdx, toIdx: targetDbIdx }); // ✅ DB slotIndex 전송
+      await useGameStore.getState().fetchCompanyData(1);
+    } catch (err) {
+      useAlertStore.getState().openAlert("아이템 이동에 실패했습니다.", "오류");
+    }
   };
 
   // 폐기 처리
   const handleDiscard = async (type: "material" | "product", qty: number) => {
     try {
       await WarehouseAPI.discardItems(type, qty);
-      if (type === "material") updateMaterial(-qty);
-      else updateProduct(-qty);
+      await useGameStore.getState().fetchCompanyData(1);
       useAlertStore.getState().openAlert(
         `${type === "material" ? material : product} ${qty.toLocaleString()}개를 폐기했습니다.`,
         "폐기 완료"
@@ -286,6 +284,16 @@ export function WarehousePage() {
   const visibleCount = Math.max(15, Math.ceil(localUnlocked / 3) * 3 + (localUnlocked % 3 === 0 && localUnlocked >= 15 ? 3 : 0));
   const hasAnyItem = totalMaterial > 0 || totalProduct > 0;
 
+  const handleGetTestItems = async () => {
+    try {
+      await WarehouseAPI.addTestItem({ itemId: 1, amount: 100 });
+      await useGameStore.getState().fetchCompanyData(1);
+      useAlertStore.getState().openAlert("테스트 원자재 100개가 창고에 지급되었습니다!", "성공");
+    } catch {
+      useAlertStore.getState().openAlert("테스트 자원 지급에 실패했습니다.", "오류");
+    }
+  };
+
   return (
     <div
       className="absolute inset-0 z-40 bg-[#f5f0e8] flex flex-col pt-8"
@@ -297,7 +305,18 @@ export function WarehousePage() {
         backgroundColor: '#cee7be'
       }}
     >
-      <BackButton onClick={closeBuildingPage} className="absolute top-6 left-6" />
+      <div className="absolute top-6 left-6 flex items-center gap-4 z-10">
+        <BackButton onClick={closeBuildingPage} />
+        {/* ✅ 테스트용 자원 지급 버튼 추가 */}
+        <button
+          onClick={handleGetTestItems}
+          className="flex-1 max-w-[120px] bg-[#8b4513] hover:bg-[#a0522d] text-white font-black py-2 rounded-xl border-4 border-[#5f2c09] shadow-[0_4px_0_#3e1c05] hover:shadow-none hover:translate-y-1 hover:border-[#3e1c05] transition-all flex items-center justify-center gap-1.5"
+        >
+          <span className="text-xl">🛠️</span>
+          <span className="text-sm">테스트 지급</span>
+        </button>
+      </div>
+
 
       {/* 우측 상단 인디케이터 */}
       <div className="absolute top-6 right-6 flex gap-4 items-center z-10">
@@ -363,7 +382,8 @@ export function WarehousePage() {
               return (
                 <div
                   key={slot.id}
-                  draggable={!slot.locked && hasItem}
+                  style={{ aspectRatio: "1/1" }}
+                  draggable={!slot.locked && slot.item !== null}
                   onDragStart={(e) => handleDragStart(e, idx)}
                   onDragOver={handleDragOver}
                   onDragEnter={() => !slot.locked && setDragOverIndex(idx)}

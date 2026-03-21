@@ -166,22 +166,13 @@ export function MarketPage() {
         qty: quantity
       });
 
-      // 스토어 업데이트
-      if (mode === "buy") {
-        const added = updateMaterial(quantity);
-        if (added < quantity) {
-          useAlertStore.getState().openAlert(`창고 공간이 부족하여 ${added}개만 담았습니다. (차액 환급 필요 시 확인 요망)`, "창고 가득 참");
-          updateMoney((quantity - added) * price); // 환불
-        }
-      } else {
-        updateProduct(-quantity);
-        updateMoney(totalAmount);
-      }
+      // 스토어 업데이트: 백엔드에서 잔고/창고 물품을 정확히 차감하므로 프론트는 무조건 서버 데이터를 그대로 땡겨옴!
+      await useGameStore.getState().fetchCompanyData(1);
 
       setShowPopup(true);
       useGameStore.getState().addAlert({
-        message: mode === "buy" ? "구매 주문 완료" : "판매 주문 완료",
-        detail: `${mode === "buy" ? material : product} ${quantity}개 / 총 ₩${totalAmount.toLocaleString()}`
+        message: mode === "buy" ? "구매 주문 등록 (미수령)" : "판매 주문 등록 (미수령)",
+        detail: "주문이 시장에 등록되었습니다. 체결 내역에서 수령해주세요!"
       });
 
       setTimeout(() => {
@@ -497,8 +488,9 @@ export function MarketPage() {
                                     e.stopPropagation();
                                     try {
                                       await MarketAPI.collectTrade(trade.tradeHistoryId);
+                                      // 수령 후 지갑 상태 등 모두 동기화 (창고 및 현금 갱신)
+                                      await useGameStore.getState().fetchCompanyData(1);
                                       useGameStore.getState().addAlert({ message: "체결 결과 수령 완료", detail: `${trade.executionQuantity}개가 정산되었습니다.` });
-                                      // 여기에 store 동기화 로직을 보강하면 완벽합니다 (갱신)
                                     } catch (err) {
                                       useAlertStore.getState().openAlert("수령에 실패했습니다.", "통신 오류");
                                     }

@@ -417,23 +417,22 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
                     e.stopPropagation();
                     if (wsState.storedCount > 0) {
                         try {
-                            // ✅ gameStore.updateProduct → warehouseItems.product 수량 증액 후 실제 추가량
-                            const added = updateProduct(wsState.storedCount);
-                            if (added > 0) {
-                                await WorkstationAPI.collect(1);
-                                // storedCount만 줄임 — producedCount는 이번 생산 누적값이므로 건드리지 않음
-                                setWsState({ storedCount: Math.max(0, wsState.storedCount - added) });
+                            if (wsState.storedCount > 0) {
+                                await WorkstationAPI.collect(useGameStore.getState().workstationId || 1);
+                                await useGameStore.getState().fetchCompanyData(1);
+                                
+                                const added = wsState.storedCount; // 방금 수확한 개수
+                                setWsState({ storedCount: 0 }); // 수령했으므로 0으로 초기화
+                                
                                 useGameStore.getState().addAlert({
                                     message: "수령 완료 ✅",
                                     detail: `${added}개를 창고에 저장했습니다.`
                                 });
                                 useAlertStore.getState().openAlert(`${added}개를 창고에 저장했습니다.`, "수령 완료 ✅");
-                            } else {
-                                useGameStore.getState().addAlert({ message: "수령 불가", detail: "창고가 완전히 가득 찼습니다." });
-                                useAlertStore.getState().openAlert("창고에 더 이상 남은 공간이 없습니다.", "수령 불가");
                             }
-                        } catch (err) {
+                        } catch (err: any) {
                             console.error("수령 실패:", err);
+                            useAlertStore.getState().openAlert(err?.response?.data?.message || "창고에 잔여 공간이 부족하거나 서버 에러가 났습니다.", "수령 불가");
                         }
                     }
                 }}
