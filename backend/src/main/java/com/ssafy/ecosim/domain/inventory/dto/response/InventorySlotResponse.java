@@ -27,6 +27,9 @@ public class InventorySlotResponse {
     @Schema(description = "최대 적재 수량 (빈 슬롯이면 null)", example = "10")
     private final Long maxQuantity;
 
+    @Schema(description = "일꾼 레벨 (일꾼 아이템만, 빈 슬롯 또는 비일꾼 아이템이면 null)", example = "2")
+    private final Integer workerLevel;
+
     public InventorySlotResponse(InventorySlot slot) {
         this.slotIndex = slot.getSlotIndex();
         if (slot.getItem() != null) {
@@ -35,12 +38,14 @@ public class InventorySlotResponse {
             this.itemType = slot.getItem().getType();
             this.quantity = slot.getQuantity();
             this.maxQuantity = slot.getItem().getMaxStackSize();
+            this.workerLevel = slot.getItem().getWorkerLevel();
         } else {
             this.itemId = null;
             this.itemName = null;
             this.itemType = null;
             this.quantity = 0L;
             this.maxQuantity = null;
+            this.workerLevel = null;
         }
     }
 }
