@@ -51,6 +51,7 @@ public class InventoryService {
             slots.add(new InventorySlot(saved, i));
         }
         inventorySlotRepository.saveAll(slots);
+        saved.getSlots().addAll(slots); // 동일 트랜잭션 내 1차 캐시에도 반영
 
         // 초보 일꾼 1개 기본 제공
         Item beginnerWorker = itemRepository.findByName("초보 일꾼")
