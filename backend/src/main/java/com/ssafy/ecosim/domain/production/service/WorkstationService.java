@@ -306,6 +306,15 @@ public class WorkstationService {
                 return builder.build();
         }
 
+        public Double getWorkerSpeedMultiplierByItemId(Long itemId) {
+                Item item = itemRepository.findById(itemId)
+                                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 아이템입니다."));
+                if (item.getWorkerLevel() == null)
+                        throw new IllegalArgumentException("해당 아이템은 일꾼이 아닙니다.");
+                return getWorkerSpeedMultiplier(item.getWorkerLevel());
+        }
+
+
         private Workstation findWorkstation(Long companyId, Long workstationId) {
                 return workstationRepository.findByCompanyIdAndId(companyId, workstationId)
                                 .orElseThrow(() -> new IllegalArgumentException("작업장을 찾을 수 없습니다."));
