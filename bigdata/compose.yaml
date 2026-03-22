@@ -33,6 +33,33 @@ services:
     networks:
       - ecosim-network
 
+  spark-market-news:
+    build:
+      context: .
+      dockerfile: ./spark/Dockerfile.spark
+    container_name: spark-market-news
+    depends_on:
+      - spark-master
+      - spark-worker
+      - namenode
+      - datanode
+    restart: unless-stopped
+    volumes:
+      - ./spark/jobs:/opt/spark-apps
+    command: >
+      /bin/bash -lc '
+      until (echo > /dev/tcp/spark-master/7077) >/dev/null 2>&1; do sleep 2; done;
+      until (echo > /dev/tcp/namenode/9000) >/dev/null 2>&1; do sleep 2; done;
+      /opt/spark/bin/spark-submit
+      --master spark://spark-master:7077
+      /opt/spark-apps/market_news_streaming.py
+      --trigger-interval "1 minute"
+      --window-minutes 1
+      --checkpoint-path /tmp/checkpoints/market-news-stream
+      '
+    networks:
+      - ecosim-network
+
   # -----------------------------
   # HDFS NameNode
   # 파일 시스템 메타데이터 관리

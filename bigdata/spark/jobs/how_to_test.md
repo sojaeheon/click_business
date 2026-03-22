@@ -75,3 +75,39 @@ cd /opt/spark-apps
 # 테스트 코드 실행
 spark-submit --master spark://spark-master:7077 /opt/spark-apps/kafka_test.py
 ```
+
+### Market News 집계
+```bash
+# market 뉴스 후보 생성 배치 잡 실행
+spark-submit \
+  --master spark://spark-master:7077 \
+  /opt/spark-apps/market_news_signals.py \
+  --window-minutes 1 \
+  --reference-time 2026-03-22T14:30:00+09:00
+```
+
+```bash
+# 기본값(1분 윈도우)으로 배치 실행
+spark-submit \
+  --master spark://spark-master:7077 \
+  /opt/spark-apps/market_news_signals.py
+```
+
+```bash
+# 1분마다 자동 집계되는 Structured Streaming 잡 실행
+spark-submit \
+  --master spark://spark-master:7077 \
+  /opt/spark-apps/market_news_streaming.py \
+  --trigger-interval "1 minute" \
+  --window-minutes 1 \
+  --checkpoint-path /tmp/checkpoints/market-news-stream
+```
+
+```bash
+# 컨테이너 안에 직접 들어가지 않고 자동 실행
+cd /home/eunsu/S14P21B109/bigdata
+docker compose up -d spark-master spark-worker namenode datanode spark-market-news
+
+# 로그 확인
+docker logs -f spark-market-news
+```
