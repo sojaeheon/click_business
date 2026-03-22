@@ -42,8 +42,8 @@ public class MarketMatchingService {
             Set<ZSetOperations.TypedTuple<String>> topBuys = orderBookManager.getTopBuys(itemId, 1);
             Set<ZSetOperations.TypedTuple<String>> topSells = orderBookManager.getTopSells(itemId, 1);
 
-            log.debug("Top Buys: {}", topBuys); //
-            log.debug("Top Sells: {}", topSells); //
+            // log.debug("Top Buys: {}", topBuys); //
+            // log.debug("Top Sells: {}", topSells); //
 
             if (topBuys == null || topBuys.isEmpty() || topSells == null || topSells.isEmpty()) {
                 break; // 매수 또는 매도 한쪽이라도 주문이 없으면 종료
@@ -61,27 +61,27 @@ public class MarketMatchingService {
 
             if (buyOrder == null || sellOrder == null) {
                 // 캐시가 유실된 경우 (있어서는 안 될 일이지만 안전장치)
-                log.warn("Order cache missing - Buy: {}, Sell: {}", buyOrder == null, sellOrder == null); //
+                // log.warn("Order cache missing - Buy: {}, Sell: {}", buyOrder == null, sellOrder == null); //
                 if (buyOrder == null) {
                     orderBookManager.removeOrder(itemId, "BUY", buyOrderId);
-                    log.info("Removed missing buy order {} from orderbook", buyOrderId); //
+                    // log.info("Removed missing buy order {} from orderbook", buyOrderId); //
                 }
                 if (sellOrder == null) {
                     orderBookManager.removeOrder(itemId, "SELL", sellOrderId);
-                    log.info("Removed missing sell order {} from orderbook", sellOrderId);
+                    // log.info("Removed missing sell order {} from orderbook", sellOrderId);
                 }
                 continue;
             }
 
             // 3. 매칭 검사 (매수 최고가 >= 매도 최저가)
             if (buyOrder.getPrice() < sellOrder.getPrice()) {
-                log.info("Top buy price {} < top sell price {}. Cannot match further.", buyOrder.getPrice(),
-                        sellOrder.getPrice()); //
+                // log.info("Top buy price {} < top sell price {}. Cannot match further.", buyOrder.getPrice(),
+                //         sellOrder.getPrice()); //
                 break; // 가격이 맞지 않으면 더 이상 매칭 불가
             }
 
             // 4. 체결 실행
-            log.info("Executing trade for Buy {} and Sell {}", buyOrder.getId(), sellOrder.getId()); //
+            // log.info("Executing trade for Buy {} and Sell {}", buyOrder.getId(), sellOrder.getId()); //
             executeTrade(itemId, buyOrder, sellOrder);
         }
         log.info("=== Matching finished for item: {} ===", itemId); //
@@ -93,14 +93,14 @@ public class MarketMatchingService {
         long matchedPrice = sellOrder.getPrice();
         long matchedQuantity = Math.min(buyOrder.getRemainingQuantity(), sellOrder.getRemainingQuantity());
 
-        log.info("Matching Execution: Item={}, Price={}, Qty={}, Buyer={}, Seller={}",
-                itemId, matchedPrice, matchedQuantity, buyOrder.getId(), sellOrder.getId());
+        // log.info("Matching Execution: Item={}, Price={}, Qty={}, Buyer={}, Seller={}",
+        //         itemId, matchedPrice, matchedQuantity, buyOrder.getId(), sellOrder.getId());
 
         // Redis 잔량 업데이트
         buyOrder.executeTrade(matchedQuantity);
         sellOrder.executeTrade(matchedQuantity);
-        log.debug("Updated Buy Order Remaining Qty: {}", buyOrder.getRemainingQuantity()); //
-        log.debug("Updated Sell Order Remaining Qty: {}", sellOrder.getRemainingQuantity()); //
+        // log.debug("Updated Buy Order Remaining Qty: {}", buyOrder.getRemainingQuantity()); //
+        // log.debug("Updated Sell Order Remaining Qty: {}", sellOrder.getRemainingQuantity()); //
 
         // Redis 상세 캐시 업데이트 또는 삭제
         updateOrRemoveCache(buyOrder);
@@ -109,11 +109,11 @@ public class MarketMatchingService {
         // Redis 호가창 업데이트 (잔량이 0이면 제거)
         if (buyOrder.getStatus() == OrderStatus.COMPLETED) {
             orderBookManager.removeOrder(itemId, "BUY", buyOrder.getId());
-            log.info("Buy order {} completed and removed from orderbook", buyOrder.getId()); //
+            // log.info("Buy order {} completed and removed from orderbook", buyOrder.getId()); //
         }
         if (sellOrder.getStatus() == OrderStatus.COMPLETED) {
             orderBookManager.removeOrder(itemId, "SELL", sellOrder.getId());
-            log.info("Sell order {} completed and removed from orderbook", sellOrder.getId()); //
+            // log.info("Sell order {} completed and removed from orderbook", sellOrder.getId()); //
         }
 
         // Redis 시장가 갱신
@@ -132,9 +132,9 @@ public class MarketMatchingService {
 
         try {
             tradeEventPublisher.publishTradeEvent(tradeEvent);
-            log.info("Published trade event for Buy {} and Sell {}", buyOrder.getId(), sellOrder.getId());
+            // log.info("Published trade event for Buy {} and Sell {}", buyOrder.getId(), sellOrder.getId());
         } catch (Exception e) {
-            log.error("Failed to publish trade event for Buy {} and Sell {}", buyOrder.getId(), sellOrder.getId(), e);
+            // log.error("Failed to publish trade event for Buy {} and Sell {}", buyOrder.getId(), sellOrder.getId(), e);
         }
 
         // 실시간 알림 발송
@@ -166,10 +166,10 @@ public class MarketMatchingService {
     private void updateOrRemoveCache(MarketOrder order) {
         if (order.getStatus() == OrderStatus.COMPLETED) {
             orderDetailsCacheManager.removeOrderCache(order.getId());
-            log.debug("Removed order {} from cache", order.getId()); //
+            // log.debug("Removed order {} from cache", order.getId()); //
         } else {
             orderDetailsCacheManager.saveOrderCache(order);
-            log.debug("Updated order {} in cache", order.getId()); //
+            // log.debug("Updated order {} in cache", order.getId()); //
         }
     }
 }
