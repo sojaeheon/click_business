@@ -217,9 +217,9 @@ export function WarehousePage() {
       await useGameStore.getState().fetchCompanyData(1);
       const items = useGameStore.getState().warehouseItems;
       const maxSlots = useGameStore.getState().warehouseMaxSlots || 6;
-      const totalDisplay = maxSlots + 6; 
+      const totalDisplay = maxSlots + 6;
       const displaySlots: SlotData[] = Array(totalDisplay).fill(null).map((_, i) => ({
-        id: i, dbSlotIndex: i, item: null, locked: i >= maxSlots 
+        id: i, dbSlotIndex: i, item: null, locked: i >= maxSlots
       }));
       items.forEach(item => {
         const si = (item as any).slotIndex;
@@ -323,30 +323,7 @@ export function WarehousePage() {
   const localPercent = localUnlocked > 0 ? Math.min((localUsed / localUnlocked) * 100, 100) : 0;
   const visibleCount = Math.max(15, Math.ceil(localUnlocked / 3) * 3 + (localUnlocked % 3 === 0 && localUnlocked >= 15 ? 3 : 0));
   const hasAnyItem = totalMaterial > 0 || totalProduct > 0;
-  const industry = useGameStore(s => s.industry);
 
-  const handleGetTestItems = async () => {
-    try {
-      let itemId = 3; // 금광업 (MINING) -> 금 드릴
-      let addAmount = 10; // 금 드릴은 10개가 1슬롯 최대
-
-      if (industry === "금 제련업" || industry === "SMELTING") { 
-        itemId = 1; // 금광석
-        addAmount = 50; // 금광석 최대적재량 고려
-      } else if (industry === "제조업" || industry === "MANUFACTURING") { 
-        itemId = 2; // 금괴
-        addAmount = 50; 
-      }
-
-      await WarehouseAPI.addTestItem({ itemId, amount: addAmount });
-      await fetchSlots(); // 👈 추가된 부분: 로컬 슬롯 상태도 새로고침
-      await useGameStore.getState().fetchCompanyData(1);
-      useAlertStore.getState().openAlert(`테스트 자재 ${addAmount}개가 창고에 지급되었습니다!`, "성공");
-    } catch (e: any) {
-      console.error("Test item fail:", e);
-      useAlertStore.getState().openAlert(e?.response?.data?.message || "창고 빈 슬롯 부족 혹은 통신 오류로 실패했습니다.", "오류");
-    }
-  };
 
   return (
     <div
@@ -361,14 +338,6 @@ export function WarehousePage() {
     >
       <div className="absolute top-6 left-6 flex items-center gap-4 z-10">
         <BackButton onClick={closeBuildingPage} />
-        {/* ✅ 테스트용 자원 지급 버튼 추가 */}
-        <button
-          onClick={handleGetTestItems}
-          className="flex-1 max-w-[120px] bg-[#8b4513] hover:bg-[#a0522d] text-white font-black py-2 rounded-xl border-4 border-[#5f2c09] shadow-[0_4px_0_#3e1c05] hover:shadow-none hover:translate-y-1 hover:border-[#3e1c05] transition-all flex items-center justify-center gap-1.5"
-        >
-          <span className="text-xl">🛠️</span>
-          <span className="text-sm">테스트 지급</span>
-        </button>
       </div>
 
 

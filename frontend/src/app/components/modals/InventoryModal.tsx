@@ -87,7 +87,7 @@ export function InventoryModal() {
 
   const handlePurchaseConfirm = () => {
     setShowPurchaseConfirm(false);
-    useAlertStore.getState().openAlert("현금 확장 기능은 현재 백엔드 서버 개편 중으로 사용이 제한됩니다.", "점검 중");
+    useAlertStore.getState().openAlert("아직 오픈되지 않은 기능입니다. 백엔드 통신이 연결되면 다시 시도해주세요.", "기능 미구현");
   };
 
   const handleDeleteItem = async () => {
@@ -311,7 +311,7 @@ export function InventoryModal() {
           <div className="relative bg-white rounded-2xl border-4 border-red-200 shadow-2xl p-6 w-[350px] animate-fade-in">
             <h3 className="text-lg font-black text-gray-800 mb-3">아이템 폐기</h3>
             <p className="text-sm text-gray-600 mb-1">
-              <span className="font-bold text-red-600">{confirmDelete.name}</span>을(를) 정말 버리시겠습니까?
+              <span className="font-bold text-red-600">{confirmDelete?.name}</span>을(를) 정말 버리시겠습니까?
             </p>
             <p className="text-xs text-gray-400 mb-5">이 작업은 되돌릴 수 없습니다.</p>
             <div className="flex gap-3">
