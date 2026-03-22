@@ -1,5 +1,5 @@
 #!/bin/bash
-# start.sh
+# start_kafka.sh
 case "$CONSUMER_TYPE" in
   order_redis)
     python -u ./consumers/order_redis_consumer.py

@@ -11,9 +11,9 @@ RUN pip install --no-cache-dir -r market_consumer_requirements.txt
 # 소스 코드 전체 복사
 COPY kafka/consumers /app/consumers
 
-# start.sh 복사 및 실행 권한 부여
-COPY kafka/scripts/start.sh /app/start.sh
-RUN chmod +x /app/start.sh
+# start_kafka.sh 복사 및 실행 권한 부여
+COPY kafka/scripts/start_kafka.sh /app/start_kafka.sh
+RUN chmod +x /app/start_kafka.sh
 
-# 컨테이너 시작 시 start.sh 실행
-CMD ["./start.sh"]
+# 컨테이너 시작 시 start_kafka.sh 실행
+CMD ["./start_kafka.sh"]
