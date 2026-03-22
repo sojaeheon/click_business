@@ -5,7 +5,7 @@ import { useGame } from "../../../store/gameStore";
 import { useAlertStore } from "../../../store/useAlertStore";
 import { getWorkerIcon, WorkerCard } from "../ui/WorkerCard";
 import { useGameStore } from "../../../store/gameStore";
-import { getWorkerDefByLevel, IndustryKey } from "../../../constants/workers";
+import { getWorkerDefByLevel, WORKER_LEVEL_IMAGES, IndustryKey } from "../../../constants/workers";
 import { WarehouseAPI } from "../../../api/gameApi";
 
 // 다른 곳에서도 쓸 수 있게 export 해줍니다.
@@ -29,7 +29,7 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
   // 장착 일꾼 데이터 전역 연동
   const { equippedWorkerId, setEquippedWorkerId, hasNewWorker, setHasNewWorker } = useGameStore();
   const slots = useGameStore(s => s.inventoryItems);
-  
+
   const equippedItem = slots.find(i => i.id === equippedWorkerId);
   const equippedWorker = equippedItem ? { id: equippedItem.id, name: equippedItem.name, level: equippedItem.level || 1 } : null;
 
@@ -67,7 +67,7 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
         .filter((i: any) => i.type === "material")
         .reduce((sum: number, i: any) => sum + (i.quantity || 0), 0);
       setLiveMatStock(total);
-    }).catch(() => {});
+    }).catch(() => { });
   }, [data.type]);
 
   if (data.type === "workstation") {
@@ -156,17 +156,19 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                 }
               }}
               className={`relative w-[88px] h-[88px] flex flex-col items-center justify-center rounded-2xl shadow-inner border-[3px] transition-all overflow-hidden group flex-shrink-0 ${equippedWorker
-                  ? "bg-gradient-to-br from-blue-100 to-indigo-50 border-blue-300"
-                  : data.isWorking
-                    ? "bg-slate-100 border-slate-300 opacity-50 cursor-not-allowed grayscale"
-                    : "bg-slate-50 border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 cursor-pointer"
+                ? "bg-gradient-to-br from-blue-100 to-indigo-50 border-blue-300"
+                : data.isWorking
+                  ? "bg-slate-100 border-slate-300 opacity-50 cursor-not-allowed grayscale"
+                  : "bg-slate-50 border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 cursor-pointer"
                 }`}
             >
               {equippedWorker ? (
                 <>
-                  <span className="text-4xl drop-shadow-md group-hover:scale-110 transition-transform">
-                    {getWorkerIcon(equippedWorker.name)}
-                  </span>
+                  <img
+                    src={WORKER_LEVEL_IMAGES[equippedWorker.level] ?? WORKER_LEVEL_IMAGES[1]}
+                    alt={equippedWorker.name}
+                    className="w-14 h-14 object-contain drop-shadow-md group-hover:scale-110 transition-transform"
+                  />
                   <span className="absolute bottom-1 bg-blue-600/90 text-white font-black px-2 py-0.5 rounded text-[10px] shadow-sm">
                     Lv.{equippedWorker.level}
                   </span>
@@ -184,9 +186,9 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                   </span>
                 </div>
               )}
-              {/* ✨ NEW 뱃지 표시 */}
-              {hasNewWorker && !data.isWorking && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full shadow-md animate-bounce pointer-events-none">
+              {/* ✨ NEW 뱃지 표시: 장착된 일꾼이 없을 때만 */}
+              {hasNewWorker && !data.isWorking && !equippedWorker && (
+                <span className="absolute top-1 right-1 bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full shadow-md animate-bounce pointer-events-none">
                   NEW!
                 </span>
               )}
@@ -254,9 +256,9 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                 ].map((btn, i) => (
                   <button
                     key={i}
-                    onClick={(e) => { 
-                      e.stopPropagation(); 
-                      setQty(q => Math.max(1, q + btn.val)); 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setQty(q => Math.max(1, q + btn.val));
                     }}
                     className="flex-1 px-1 py-2 rounded-lg text-xs font-black border-2 border-b-4 transition-all cursor-pointer select-none bg-indigo-50 text-indigo-500 border-indigo-200 border-b-indigo-300 hover:bg-indigo-100 active:translate-y-1 active:border-b-2"
                   >
@@ -342,18 +344,37 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
               {!slots || slots.length === 0 ? (
                 <div className="text-center text-slate-400 mt-10">인벤토리가 비어 있습니다.</div>
               ) : (
-                slots.filter(item => item.type.startsWith("worker_")).map((item) => (
-                  <div key={item.id} className="w-full">
-                    <WorkerCard
-                      item={item}
-                      isSmall={false}
-                      onClick={() => {
-                        setEquippedWorkerId(item.id);
-                        setIsInventoryOpen(false);
-                      }}
-                    />
-                  </div>
-                ))
+                slots.filter(item => item.type.startsWith("worker_")).map((item) => {
+                  const isEquipped = item.id === equippedWorkerId;
+                  return (
+                    <div key={item.id} className="w-full relative">
+                      <WorkerCard
+                        item={item}
+                        isSmall={false}
+                        onClick={() => {
+                          if (isEquipped) {
+                            // 이미 장착 중인 일꾼 클릭 → 장착 해제
+                            setEquippedWorkerId(null);
+                          } else {
+                            setEquippedWorkerId(item.id);
+                          }
+                          setIsInventoryOpen(false);
+                        }}
+                      />
+                      {/* 장착중 배지 (프리미엄 다크 글래스) */}
+                      {isEquipped && (
+                        <div className="absolute inset-0 bg-black/50 border border-white/20 rounded-2xl flex flex-col items-center justify-center pointer-events-none z-10 backdrop-blur-[3px]">
+                          <div className="flex items-center px-5 py-1.5 bg-white/15 rounded-full shadow-[0_4px_12px_rgba(0,0,0,0.5)] border border-white/30 mb-2 backdrop-blur-md">
+                            <span className="text-white font-black text-sm tracking-widest drop-shadow-md">장착중</span>
+                          </div>
+                          <p className="text-[11px] text-white/80 font-bold bg-black/60 px-3 py-1 rounded-full border border-white/10 shadow-inner drop-shadow-sm">
+                            다시 클릭하면 해제
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
             <style dangerouslySetInnerHTML={{

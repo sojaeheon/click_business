@@ -10,7 +10,7 @@ export const apiClient = axios.create({
 
 // ── Request Interceptor: accessToken 헤더 주입 ──────────────
 apiClient.interceptors.request.use((config: any) => {
-    const token = localStorage.getItem('accessToken');
+    const token = sessionStorage.getItem('accessToken');
     if (token) config.headers.Authorization = `Bearer ${token}`;
     return config;
 });
@@ -45,7 +45,7 @@ apiClient.interceptors.response.use(
                     { withCredentials: true }
                 );
                 const newToken = data.access;
-                localStorage.setItem('accessToken', newToken);
+                sessionStorage.setItem('accessToken', newToken);
 
                 // 대기 중인 요청들에 새 토큰 전달
                 refreshQueue.forEach((cb) => cb(newToken));
@@ -55,7 +55,7 @@ apiClient.interceptors.response.use(
                 return apiClient(originalRequest);
             } catch {
                 // 재발급 실패 → 강제 로그아웃
-                localStorage.removeItem('accessToken');
+                sessionStorage.removeItem('accessToken');
                 refreshQueue = [];
                 window.location.href = '/';
                 return Promise.reject(error);

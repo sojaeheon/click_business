@@ -1,15 +1,19 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { Lock, ShoppingBag, HelpCircle, X, Trash2 } from "lucide-react";
+import { Lock, ShoppingBag, HelpCircle, X, Trash2, ShoppingCart } from "lucide-react";
 import { useGameStore } from "../../../store/gameStore";
 import { useAlertStore } from "../../../store/useAlertStore";
 import type { InventoryItem } from "../../../store/gameStore";
+import { WORKER_LEVEL_IMAGES } from "../../../constants/workers";
+import { InventoryAPI } from "../../../api/gameApi";
 
 export function InventoryModal() {
-  const { inventoryItems, inventoryExpandTickets, inventoryMax, useInventoryTicket, removeInventoryItem } = useGameStore();
+  const { inventoryItems, inventoryExpandTickets, inventoryMax, money } = useGameStore();
+  const inventoryPurchaseCount = useGameStore(s => s.inventoryPurchaseCount);
 
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<InventoryItem | null>(null);
+  const [showPurchaseConfirm, setShowPurchaseConfirm] = useState(false);
 
   // localItems: inventoryItems와 동기화 (모달 열릴 때 최신 상태 반영)
   const [localItems, setLocalItems] = useState(() => [...inventoryItems]);
@@ -22,9 +26,18 @@ export function InventoryModal() {
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
+  // 다음 슬롯 구매 가격 계산: 슬롯 번호 기준 (유저마다 동일, 한 줄=3칸 마다 2배)
+  // Row 1 (1-3): 무료(기본), Row 2 (4-6): 30만원, Row 3 (7-9): 60만원, Row 4 (10-12): 120만원...
+  const nextSlotCost = useMemo(() => {
+    const nextSlot = inventoryMax + 1; // 구매할 슬롯 번호
+    const rowIndex = Math.ceil(nextSlot / 3); // 1-indexed 행 번호
+    const basePrice = 300000;
+    return rowIndex <= 1 ? 0 : basePrice * Math.pow(2, rowIndex - 2);
+  }, [inventoryMax]);
+
   const handleDragStart = (e: React.DragEvent, index: number) => {
     const isLocked = index >= inventoryMax;  // ← inventoryMax 사용
-    const item = localItems[index];
+    const item = localItems.find((itm) => itm.slotIndex === index);
     if (isLocked || !item) {
       e.preventDefault();
       return;
@@ -36,42 +49,58 @@ export function InventoryModal() {
     e.preventDefault();
   };
 
-  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
+  const handleDrop = async (e: React.DragEvent, targetIndex: number) => {
     e.preventDefault();
     if (draggingIndex === null || draggingIndex === targetIndex) return;
-    const isLocked = targetIndex >= inventoryMax;  // ← inventoryMax 사용
+    const isLocked = targetIndex >= inventoryMax;
     if (isLocked) return;
 
-    const newItems = [...localItems];
-    const temp = newItems[draggingIndex];
-    newItems[draggingIndex] = newItems[targetIndex];
-    newItems[targetIndex] = temp;
-
-    setLocalItems(newItems);
+    try {
+      await InventoryAPI.moveSlot({ fromIdx: draggingIndex, toIdx: targetIndex });
+      await useGameStore.getState().fetchCompanyData(1);
+    } catch {
+      useAlertStore.getState().openAlert("슬롯 이동에 실패했습니다.", "오류");
+    }
     setDraggingIndex(null);
     setDragOverIndex(null);
   };
 
-  const handleUnlockSlot = () => {
+  const handleUnlockSlot = async () => {
     if (inventoryExpandTickets <= 0) {
       useAlertStore.getState().openAlert("확장권이 부족합니다.", "경고");
       return;
     }
-    const success = useInventoryTicket();
-    // useInventoryTicket()이 gameStore의 inventoryMax를 +1 하므로
-    // 로컬 state 별도 관리 불필요 — 자동으로 반영됨
-    if (success) {
+    const ticketItem = inventoryItems.find((i: any) => i.type === "ticket_inventory");
+    if (!ticketItem || ticketItem.slotIndex === undefined) {
+      useAlertStore.getState().openAlert("확장권 아이템의 슬롯 정보를 찾을 수 없습니다.", "에러");
+      return;
+    }
+
+    try {
+      await InventoryAPI.unlockSlot({ ticketSlotIndex: ticketItem.slotIndex });
+      await useGameStore.getState().fetchCompanyData(1);
       useAlertStore.getState().openAlert("인벤토리 슬롯이 확장되었습니다.", "안내");
+    } catch (e) {
+      useAlertStore.getState().openAlert("인벤토리 확장에 실패했습니다.", "오류");
     }
   };
 
-  const handleDeleteItem = () => {
-    if (confirmDelete) {
-      removeInventoryItem(confirmDelete.id);
-      setLocalItems((prev) => prev.filter((item) => item?.id !== confirmDelete.id));
-      if (selectedSlot === confirmDelete.id) setSelectedSlot(null);
-      useAlertStore.getState().openAlert(`${confirmDelete.name}을(를) 버렸습니다.`, "아이템 폐기");
-      setConfirmDelete(null);
+  const handlePurchaseConfirm = () => {
+    setShowPurchaseConfirm(false);
+    useAlertStore.getState().openAlert("현금 확장 기능은 현재 백엔드 서버 개편 중으로 사용이 제한됩니다.", "점검 중");
+  };
+
+  const handleDeleteItem = async () => {
+    if (confirmDelete && confirmDelete.slotIndex !== undefined) {
+      try {
+        await InventoryAPI.decreaseItem({ slotIndex: confirmDelete.slotIndex, amount: confirmDelete.quantity });
+        await useGameStore.getState().fetchCompanyData(1);
+        if (selectedSlot === confirmDelete.id) setSelectedSlot(null);
+        useAlertStore.getState().openAlert(`${confirmDelete.name}을(를) 버렸습니다.`, "아이템 폐기");
+        setConfirmDelete(null);
+      } catch {
+        useAlertStore.getState().openAlert("아이템 버리기에 실패했습니다.", "오류");
+      }
     }
   };
 
@@ -124,13 +153,15 @@ export function InventoryModal() {
               {slotsToDisplay.map((_, idx) => {
                 const isLocked = idx >= inventoryMax;
                 const isExpandable = isLocked && idx === inventoryMax;
-                const item = localItems[idx];
+                // 실제 백엔드 DB의 slotIndex를 가진 아이템을 찾아서 해당 칸에 렌더링
+                const item = localItems.find((itm) => itm.slotIndex === idx);
                 const isSelected = item && selectedSlot === item.id;
                 const hasTickets = inventoryExpandTickets > 0;
                 const isDragOver = dragOverIndex === idx;
+                const canAffordPurchase = money >= nextSlotCost;
 
                 return (
-                  <button
+                  <div
                     key={'slot-' + idx}
                     draggable={!isLocked && !!item}
                     onDragStart={(e) => handleDragStart(e, idx)}
@@ -140,7 +171,7 @@ export function InventoryModal() {
                     onDrop={(e) => handleDrop(e, idx)}
                     onClick={() => {
                       if (hasTickets && isExpandable) handleUnlockSlot();
-                      else if (isLocked) useAlertStore.getState().openAlert("확장권이 없습니다. 미니게임에서 획득할 수 있습니다.", "슬롯 잠금");
+                      else if (isLocked) useAlertStore.getState().openAlert("확장권이 없습니다. 미니게임에서 획득하거나 구매할 수 있습니다.", "슬롯 잠금");
                       else if (item) setSelectedSlot(selectedSlot === item.id ? null : item.id);
                     }}
                     className={`relative rounded-[20px] flex flex-col items-center justify-center transition-all duration-300 min-h-[140px] transform group
@@ -170,9 +201,19 @@ export function InventoryModal() {
                           </span>
                         )}
                       </div>
-                    ) : item ? (
+                      ) : item ? (
                       <div className="flex flex-col items-center z-10 p-2 pointer-events-none">
-                        <span className="text-4xl mb-2 drop-shadow-md group-hover:scale-110 transition-transform">{item.icon}</span>
+                        {item.type?.startsWith("worker_") ? (
+                          <img
+                            src={WORKER_LEVEL_IMAGES[item.level ?? 1] ?? WORKER_LEVEL_IMAGES[1]}
+                            alt={item.name}
+                            className="w-12 h-12 object-contain mb-1 drop-shadow-md group-hover:scale-110 transition-transform"
+                          />
+                        ) : item.type?.startsWith("ticket_") ? (
+                          <span className="text-3xl mb-1 drop-shadow-md group-hover:scale-110 transition-transform">🎫</span>
+                        ) : (
+                          <span className="text-4xl mb-2 drop-shadow-md group-hover:scale-110 transition-transform">{item.icon}</span>
+                        )}
                         <div className={`px-3 py-1 rounded-full shadow-sm truncate max-w-[100px] text-xs
                           ${isSelected ? "bg-indigo-500 text-white font-black" : "bg-white border text-gray-700 font-bold"}`}>
                           {item.type.startsWith("ticket_") ? item.name : `Lv.${item.level} ${item.name}`}
@@ -191,6 +232,24 @@ export function InventoryModal() {
                       </div>
                     )}
 
+                    {/* 🛒 구매하기 버튼 (잠긴 슬롯 첫 번째에만 표시) */}
+                    {isExpandable && (
+                      <button
+                        className={`absolute bottom-3 left-3 w-7 h-7 rounded-full flex items-center justify-center z-20 cursor-pointer transition-all border transform
+                          ${canAffordPurchase
+                            ? "text-blue-600 bg-blue-50 hover:bg-blue-600 hover:text-white hover:scale-110 border-blue-200"
+                            : "text-gray-400 bg-gray-100 border-gray-200 cursor-not-allowed"
+                          }`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowPurchaseConfirm(true);
+                        }}
+                        title={`${nextSlotCost.toLocaleString()}원으로 슬롯 구매`}
+                      >
+                        <ShoppingCart className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+
                     {/* 🗑️ 휴지통 버튼 */}
                     {!isLocked && item && (
                       <button
@@ -204,13 +263,46 @@ export function InventoryModal() {
                         <Trash2 className="w-4 h-4 text-red-500" />
                       </button>
                     )}
-                  </button>
+                  </div>
                 );
               })}
             </div>
           </div>
         </div>
       </div>
+
+      {/* 슬롯 구매 확인 모달 */}
+      {showPurchaseConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowPurchaseConfirm(false)} />
+          <div className="relative bg-white rounded-2xl border-4 border-blue-200 shadow-2xl p-6 w-[360px] animate-fade-in">
+            <h3 className="text-lg font-black text-gray-800 mb-3 flex items-center gap-2">
+              <ShoppingCart className="w-5 h-5 text-blue-500" />
+              슬롯 구매
+            </h3>
+            <p className="text-sm text-gray-600 mb-1">
+              <span className="font-black text-blue-600">{nextSlotCost.toLocaleString()}원</span>에 슬롯을 구매하시겠습니까?
+            </p>
+            <p className="text-xs text-gray-400 mb-5">현재 보유 금액: <span className={`font-bold ${money >= nextSlotCost ? "text-emerald-600" : "text-rose-500"}`}>{money.toLocaleString()}원</span></p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowPurchaseConfirm(false)}
+                className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                onClick={handlePurchaseConfirm}
+                disabled={money < nextSlotCost}
+                className="flex-1 py-3 bg-blue-500 text-white rounded-xl font-bold hover:bg-blue-600 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 삭제 확인 모달 */}
       {confirmDelete && (
@@ -264,6 +356,7 @@ export function InventoryModal() {
                   <li className="flex gap-2"><span className="text-amber-500">•</span> 자물쇠 슬롯을 클릭하면 슬롯이 해제됩니다.</li>
                   <li className="flex gap-2"><span className="text-blue-500">•</span> 아이템을 드래그하여 슬롯 위치를 변경할 수 있습니다.</li>
                   <li className="flex gap-2"><span className="text-red-500">•</span> 슬롯에 마우스를 올리면 🗑️ 버튼으로 아이템을 버릴 수 있습니다.</li>
+                  <li className="flex gap-2"><span className="text-blue-500">•</span> <strong className="text-blue-600">구매하기</strong> 버튼으로 돈을 내고 슬롯을 하나 살 수 있습니다. (칸이 늘수록 가격이 2배)</li>
                 </ul>
               </div>
             </div>

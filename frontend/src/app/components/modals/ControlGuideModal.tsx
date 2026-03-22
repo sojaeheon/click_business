@@ -9,7 +9,7 @@ export function ControlGuideModal({ forceOpen = false, onForceClose }: {
   const [hideForever, setHideForever] = useState(false);
 
   useEffect(() => {
-    const hide = localStorage.getItem("hideControlGuide");
+    const hide = sessionStorage.getItem("hideControlGuide");
     if (!hide) {
       setIsOpen(true);
     }
@@ -21,11 +21,23 @@ export function ControlGuideModal({ forceOpen = false, onForceClose }: {
 
   const handleClose = () => {
     if (hideForever) {
-      localStorage.setItem("hideControlGuide", "true");
+      sessionStorage.setItem("hideControlGuide", "true");
     }
     setIsOpen(false);
     onForceClose?.();
   };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        handleClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, hideForever, onForceClose]);
 
   if (!isOpen) return null;
 

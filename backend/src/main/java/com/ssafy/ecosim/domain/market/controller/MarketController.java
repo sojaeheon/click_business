@@ -40,7 +40,7 @@ public class MarketController {
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
-    @Operation(summary = "내 체결 내역 조회", description = "내 회사의 특정 아이템 체결 내역 최신 30건을 반환합니다. isCollected로 수령 여부를 확인할 수 있습니다.")
+    @Operation(summary = "내 체결 내역 조회", description = "내 회사의 특정 아이템 체결 내역 최신 30건을 반환합니다.")
     @GetMapping("/trades")
     public ResponseEntity<ApiResponse<List<TradeHistoryDto>>> getMyTrades(
             @AuthenticationPrincipal UserDetails userDetails,
@@ -51,6 +51,15 @@ public class MarketController {
                 .orElseThrow(() -> new IllegalArgumentException("소속 회사를 찾을 수 없습니다."));
 
         List<TradeHistoryDto> response = orderBookService.getMyTrades(company.getId(), itemId);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @Operation(summary = "실시간 차트 데이터 조회", description = "특정 아이템의 최근 체결 가격 목록(최대 100건)을 반환합니다. 실시간 차트의 초기 데이터로 사용됩니다.")
+    @GetMapping("/chart")
+    public ResponseEntity<ApiResponse<com.ssafy.ecosim.domain.market.dto.response.ChartDataResponseDto>> getChartData(
+            @Parameter(description = "조회할 아이템 ID", example = "1") @RequestParam("item_id") Integer itemId) {
+        
+        com.ssafy.ecosim.domain.market.dto.response.ChartDataResponseDto response = orderBookService.getChartData(itemId);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 }

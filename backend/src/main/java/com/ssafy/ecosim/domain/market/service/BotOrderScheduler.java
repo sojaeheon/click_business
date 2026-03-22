@@ -97,17 +97,18 @@ public class BotOrderScheduler {
 
             // 4. 주문 가격 결정 (방향 및 시장 상황 인식 배치)
             long orderPrice;
+            long tickSize = 100L;
             if (isSweeperBot) {
-                // 스윕 봇: ±0.1% 소폭 스프레드
-                double spreadRatio = 1.0 + ThreadLocalRandom.current().nextDouble(-0.001, 0.001);
-                orderPrice = applyTickSize(currentTargetPrice * spreadRatio);
+                // 스윕 봇: 목표가 주변 -1 ~ +1 틱에 무작위 배치하여 한 호가에 뭉침 방지
+                long tickOffset = ThreadLocalRandom.current().nextLong(-1, 2) * tickSize;
+                orderPrice = currentTargetPrice + tickOffset;
             } else {
-                // 유동성 봇: 타겟가 바깥 1~3 Tick 위치에 호가 배치 (벽 방해 없음)
-                long tickSize = 100L;
-                long tickOffset = ThreadLocalRandom.current().nextLong(1, 4) * tickSize; // 1~3 Tick 이격
+                // 유동성 봇: 타겟가 바깥 1~10 Tick 위치에 풍부하게 호가 깊이 형성
+                long tickOffset = ThreadLocalRandom.current().nextLong(1, 11) * tickSize;
                 // 가격 오르는 중 → SELL 유동성 봇은 타겟가보다 위에 / 내리는 중 → BUY 유동성 봇은 타겟가보다 아래에
                 orderPrice = priceGoingUp ? currentTargetPrice + tickOffset : currentTargetPrice - tickOffset;
             }
+            orderPrice = Math.max(tickSize, orderPrice); // 최소 1틱(100원) 방어
 
             // 5. 수량: 스윕 봇은 잔량 기반 균등 분배, 유동성 봇은 소량
             long orderQty = calculateSweepQtyPerBot(itemId, currentMarketPrice, currentTargetPrice, botCount, type, i);
@@ -128,8 +129,14 @@ public class BotOrderScheduler {
             eventPublisher.publishOrderEvent(botEvent);
         }
 
+        // 전역 시계 동기화 (ID 1번 아이템 기준으로 Redis에 현재 틱 저장) - 증가 전에 먼저 저장
+        if (itemId == 1L) {
+            redisTemplate.opsForValue().set("game:simulation:tick", String.valueOf(state.currentTick));
+        }
+        
         // 사이클 증가
         state.currentTick++;
+
         if (state.currentTick >= CYCLE_SECONDS) {
             state.currentTick = 0;
         }
@@ -203,6 +210,11 @@ public class BotOrderScheduler {
 
         // 10분 사이클 동안 목표 계산의 기준이 될 시가 베이스 저장.
         state.dayOpenPrice = currentMarketPrice;
+        
+        // 시가를 Redis에 저장하여 OrderBookService에서 변동률 계산 시 사용
+        redisTemplate.opsForValue().set("market:price:open:" + itemId, String.valueOf(currentMarketPrice));
+        // 새 사이클 시작 시 이전 차트 데이터 초기화
+        orderBookManager.clearChartData(itemId.intValue());
 
         // DB 등락률(Decimal 5,2)을 변동률 값(0.01 = 1%)으로 변환 (게임적 재미를 위해 외부 지표의 10배 변동성 부여)
         state.targetOpenFluct = 0.0; // 시가는 전일 종가와 이어진다고 가정
@@ -215,6 +227,11 @@ public class BotOrderScheduler {
 
         log.info("[Virtual Index Cycle] Item: {} | Date: {} | Base Price: {} | Fluct (H/L/C): {} / {} / {}",
                 itemId, state.lastSimulatedDate, currentMarketPrice, state.targetHighFluct, state.targetLowFluct, state.targetCloseFluct);
+
+        // 전역 시계 동기화 (ID 1번 아이템 기준으로 Redis에 현재 날짜 저장)
+        if (itemId == 1L) {
+            redisTemplate.opsForValue().set("game:simulation:date", state.lastSimulatedDate.toString());
+        }
 
         // 장 시작 시점에, 하루치 600틱에 대한 '타겟 변동률'을 미리 계산하여 배열에 저장
         for (int i = 0; i < CYCLE_SECONDS; i++) {

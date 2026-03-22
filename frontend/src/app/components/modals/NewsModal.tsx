@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ArrowLeft, Newspaper, TrendingUp, ChevronRight } from "lucide-react";
 import { useGame } from "../../../store/gameStore";
 import type { NewsItem } from "../../../store/gameStore";
+
+// ... [NewsDetail & NewsList component remain identical] ...
+// (TargetContent can cover the rest using Replace content effectively)
 
 // 뉴스 상세 페이지 뷰
 function NewsDetail({ news, onBack }: { news: NewsItem; onBack: () => void }) {
@@ -143,9 +146,13 @@ function NewsList({ onSelect }: { onSelect: (news: NewsItem) => void }) {
   );
 }
 
-// 메인 NewsModal
 export function NewsModal() {
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
+  const { state } = useGame();
+
+  useEffect(() => {
+    state.fetchNews();
+  }, []);
 
   // 뉴스 모달 전체 레이아웃
   return (

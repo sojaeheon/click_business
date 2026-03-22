@@ -1,22 +1,46 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Mail, Volume2, LogOut, UserX } from "lucide-react";
 import { useAlertStore } from "../../../store/useAlertStore";
-
-// 💡 [백엔드 연동] 실제 구현 시 로그인된 유저 정보를 props 또는 context에서 받아오세요.
-const MOCK_USER = {
-  email: "user@gmail.com",
-  loginMethod: "소셜 연동", // "소셜 연동" | "게스트 모드"
-};
+import { UserAPI, AuthAPI } from "../../../api/gameApi";
 
 export function SettingsModal() {
   const [volume, setVolume] = useState(70);
   const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
+  const [userProfile, setUserProfile] = useState<{ email: string; loginMethod: string }>({
+    email: "로딩 중...",
+    loginMethod: sessionStorage.getItem('isGuest') === 'true' ? "게스트 모드" : "소셜 연동",
+  });
 
-  const handleLogout = () => {
-    // 💡 [백엔드 연동] POST /api/v1/auth/logout
+  useEffect(() => {
+    const fetchUser = async () => {
+      if (userProfile.loginMethod === "게스트 모드") {
+        setUserProfile(prev => ({ ...prev, email: "게스트 사용자" }));
+        return;
+      }
+      try {
+        const res = await UserAPI.getMe();
+        setUserProfile(prev => ({
+          ...prev,
+          email: res.data?.data?.email || "이메일 정보 없음",
+        }));
+      } catch (err) {
+        setUserProfile(prev => ({ ...prev, email: "정보를 불러올 수 없습니다" }));
+      }
+    };
+    fetchUser();
+  }, [userProfile.loginMethod]);
+
+  const handleLogout = async () => {
     if (window.confirm("로그아웃 하시겠습니까?")) {
-      useAlertStore.getState().openAlert("로그아웃 되었습니다. (로그인 페이지로 이동 예정)", "알림");
-      // navigate("/")
+      try {
+        await AuthAPI.logout();
+      } catch (err) {
+        console.warn("로그아웃 API 실패(무시)", err);
+      }
+      sessionStorage.removeItem("accessToken");
+      sessionStorage.removeItem("isGuest");
+      useAlertStore.getState().openAlert("로그아웃 되었습니다. (새로고침 시 메인화면으로 이동합니다)", "알림");
+      window.location.href = "/";
     }
   };
 
@@ -36,7 +60,7 @@ export function SettingsModal() {
         <div className="space-y-2">
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-500 w-28 flex-shrink-0">로그인 한 계정 :</span>
-            <span className="text-gray-800 font-medium">{MOCK_USER.email}</span>
+            <span className="text-gray-800 font-medium">{userProfile.email}</span>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-500 w-28 flex-shrink-0">로그인 방식 :</span>
@@ -44,7 +68,7 @@ export function SettingsModal() {
               {["소셜 연동", "게스트 모드"].map((method) => (
                 <span
                   key={method}
-                  className={`text-xs px-3 py-1 rounded-full border ${MOCK_USER.loginMethod === method
+                  className={`text-xs px-3 py-1 rounded-full border ${userProfile.loginMethod === method
                     ? "bg-gray-800 text-white border-gray-800"
                     : "bg-gray-100 text-gray-400 border-gray-200"
                     }`}

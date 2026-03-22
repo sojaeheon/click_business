@@ -19,7 +19,7 @@ import java.util.*;
 public class OrderBookService {
 
     private static final int ORDER_BOOK_DEPTH = 10; // 호가창 표시 가격 단계 수
-    private static final int SCAN_LIMIT = 200; // Redis ZSet 스캔 상한 (price level로 묶기 위해 여유 있게)
+    private static final int SCAN_LIMIT = 500; // Redis ZSet 스캔 상한 (price level로 묶기 위해 여유 있게)
     private static final int RECENT_TRADES_COUNT = 30;
 
     private final OrderBookManager orderBookManager;
@@ -33,13 +33,23 @@ public class OrderBookService {
      */
     public OrderBookResponseDto getOrderBook(Integer itemId) {
         Long currentPrice = orderBookManager.getMarketPrice(itemId);
+        Long openPrice = orderBookManager.getOpenPrice(itemId);
+        
+        Long changePrice = null;
+        Double changeRate = null;
+        
+        if (currentPrice != null && openPrice != null && openPrice != 0) {
+            changePrice = currentPrice - openPrice;
+            changeRate = Math.round((double) changePrice / openPrice * 1000.0) / 10.0;
+        }
+
         List<OrderBookEntryDto> buyOrders = aggregateOrders(
                 orderBookManager.getTopBuys(itemId, SCAN_LIMIT),
                 true);
         List<OrderBookEntryDto> sellOrders = aggregateOrders(
                 orderBookManager.getTopSells(itemId, SCAN_LIMIT),
                 false);
-        return new OrderBookResponseDto(itemId, currentPrice, buyOrders, sellOrders);
+        return new OrderBookResponseDto(itemId, currentPrice, changePrice, changeRate, buyOrders, sellOrders);
     }
 
     /**
@@ -52,6 +62,26 @@ public class OrderBookService {
                 .stream()
                 .map(TradeHistoryDto::new)
                 .toList();
+    }
+
+    /**
+     * 특정 아이템의 실시간 차트 데이터(최근 100건)를 반환합니다.
+     */
+    public com.ssafy.ecosim.domain.market.dto.response.ChartDataResponseDto getChartData(Integer itemId) {
+        List<String> rawData = orderBookManager.getChartData(itemId);
+        List<com.ssafy.ecosim.domain.market.dto.response.ChartDataResponseDto.ChartPointDto> points = new ArrayList<>();
+        
+        for (String row : rawData) {
+            String[] parts = row.split(":");
+            if (parts.length == 2) {
+                try {
+                    points.add(new com.ssafy.ecosim.domain.market.dto.response.ChartDataResponseDto.ChartPointDto(
+                            Long.parseLong(parts[0]), Long.parseLong(parts[1])
+                    ));
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+        return new com.ssafy.ecosim.domain.market.dto.response.ChartDataResponseDto(itemId, points);
     }
 
     // ─────────────────────────────────────────────────────────────────
