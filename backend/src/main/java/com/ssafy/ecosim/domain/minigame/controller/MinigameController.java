@@ -31,7 +31,7 @@ public class MinigameController {
     public ApiResponse<MinigameClaimResponse> claimReward(
             @AuthenticationPrincipal UserDetails userDetails) {
         Company company = getCompany(userDetails);
-        MinigameClaimResponse response = minigameService.claimReward(company.getId());
+        MinigameClaimResponse response = minigameService.claimReward(company);
         return ApiResponse.success(response);
     }
 

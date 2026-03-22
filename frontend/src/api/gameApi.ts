@@ -155,6 +155,24 @@ export const WorkstationAPI = {
     } catch (err) {
       throw err;
     }
+  },
+  equipWorker: async (slotIndex: number) => {
+    try {
+      const wsId = await WorkstationAPI.getMyId();
+      await apiClient.post(`/workstations/${wsId}/equip-worker?slotIndex=${slotIndex}`);
+      return { data: { success: true } };
+    } catch (err) {
+      throw err;
+    }
+  },
+  unequipWorker: async () => {
+    try {
+      const wsId = await WorkstationAPI.getMyId();
+      await apiClient.post(`/workstations/${wsId}/unequip-worker`);
+      return { data: { success: true } };
+    } catch (err) {
+      throw err;
+    }
   }
 };
 
@@ -311,12 +329,14 @@ export const InventoryAPI = {
         data: allSlots
           .filter((slot: any) => slot.itemId != null) // 실제 아이템이 들어있는 슬롯만 프론트엔드 인벤토리에 담기
           .map((slot: any) => ({
-            id: slot.itemId ? `inv_${slot.itemId}_${slot.slotIndex}` : `inv_slot_${slot.slotIndex * 1000}`, // 고유 임시 id 보장
+            id: `inv_${slot.slotId}`, // ✅ slot_id를 고유 ID로 사용
+            slotId: slot.slotId,      // 백엔드 PK
             name: slot.itemName || undefined,
-            level: slot.itemType === 'EQUIPMENT' ? Math.max(1, slot.quantity) : 1, // 장비는 quantity 등 화면 요구에 맞춤
-            locked: false, // 백엔드에 아직 locked 컬럼 미지원
+            level: slot.workerLevel || 1,
+            locked: false,
             quantity: slot.quantity,
             slotIndex: slot.slotIndex,
+            equipped: slot.equipped,  // ✅ 장착 상태 포함
             type: slot.itemType === 'TICKET' ? `ticket_${slot.itemName?.includes("창고") ? "warehouse" : "inventory"}` : `worker_${slot.itemName?.replace(/ /g, "_")}`
           })),
         maxSlots: allSlots.length
@@ -346,19 +366,27 @@ export const InventoryAPI = {
     await apiClient.post('/inventory/expand', null, { params: { ticketSlotIndex: data.ticketSlotIndex } });
     return { data: { success: true } };
   },
-  moveSlot: async (data: { fromIdx: number; toIdx: number }) => {
-    await apiClient.post('/inventory/swap', { fromSlot: data.fromIdx, toSlot: data.toIdx });
-    return { data: { success: true } };
-  },
-  addTestItem: async (data: { itemId: number, amount: number }) => {
-    await apiClient.post('/inventory/add', null, { params: { itemId: data.itemId, amount: data.amount } });
-    return { data: { success: true } };
-  },
-  decreaseItem: async (data: { slotIndex: number, amount: number }) => {
-    await apiClient.delete('/inventory/decrease', { data });
-    return { data: { success: true } };
-  }
-};
+      moveSlot: async (data: { fromIdx: number; toIdx: number }) => {
+        await apiClient.post('/inventory/swap', { fromSlot: data.fromIdx, toSlot: data.toIdx });
+        return { data: { success: true } };
+      },
+        addTestItem: async (data: { itemId: number, amount: number }) => {
+          await apiClient.post('/inventory/add', null, { params: { itemId: data.itemId, amount: data.amount } });
+          return { data: { success: true } };
+        },
+          decreaseItem: async (data: { slotIndex: number, amount: number }) => {
+            await apiClient.delete('/inventory/decrease', { data });
+            return { data: { success: true } };
+          },
+          equipWorker: async (slotIndex: number) => {
+            await apiClient.post('/inventory/equip', null, { params: { slotIndex } });
+            return { data: { success: true } };
+          },
+          unequipWorker: async () => {
+            await apiClient.post('/inventory/unequip');
+            return { data: { success: true } };
+          }
+  };
 
 // ==================== Notifications ====================
 export const NotificationAPI = {

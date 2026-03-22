@@ -36,7 +36,7 @@ export function InventoryModal() {
   }, [inventoryMax]);
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
-    const isLocked = index >= inventoryMax;  // ← inventoryMax 사용
+    const isLocked = index >= inventoryMax;
     const item = localItems.find((itm) => itm.slotIndex === index);
     if (isLocked || !item) {
       e.preventDefault();
@@ -56,10 +56,29 @@ export function InventoryModal() {
     if (isLocked) return;
 
     try {
+      // ✅ 출발 아이템이 장착 중인지 확인
+      const fromItem = localItems.find(i => i.slotIndex === draggingIndex);
+      if (fromItem?.equipped) {
+        useAlertStore.getState().openAlert("장착 중인 아이템은 슬롯을 변경할 수 없습니다. 장착 해제 후 다시 시도해주세요.", "알림");
+        setDraggingIndex(null);
+        setDragOverIndex(null);
+        return;
+      }
+
+      // ✅ 대상 슬롯에 이미 아이템이 있고 그 아이템이 장착 중인 경우도 체크
+      const targetItem = localItems.find(i => i.slotIndex === targetIndex);
+      if (targetItem?.equipped) {
+        useAlertStore.getState().openAlert("장착 중인 슬롯으로는 이동할 수 없습니다. 장착 해제 후 다시 시도해주세요.", "알림");
+        setDraggingIndex(null);
+        setDragOverIndex(null);
+        return;
+      }
+
       await InventoryAPI.moveSlot({ fromIdx: draggingIndex, toIdx: targetIndex });
       await useGameStore.getState().fetchCompanyData(1);
-    } catch {
-      useAlertStore.getState().openAlert("슬롯 이동에 실패했습니다.", "오류");
+    } catch (e: any) {
+      const msg = e?.response?.data?.message || "슬롯 이동에 실패했습니다.";
+      useAlertStore.getState().openAlert(msg, "오류");
     }
     setDraggingIndex(null);
     setDragOverIndex(null);
@@ -98,9 +117,29 @@ export function InventoryModal() {
         if (selectedSlot === confirmDelete.id) setSelectedSlot(null);
         useAlertStore.getState().openAlert(`${confirmDelete.name}을(를) 버렸습니다.`, "아이템 폐기");
         setConfirmDelete(null);
-      } catch {
-        useAlertStore.getState().openAlert("아이템 버리기에 실패했습니다.", "오류");
+      } catch (e: any) {
+        const msg = e?.response?.data?.message || "아이템 버리기에 실패했습니다.";
+        useAlertStore.getState().openAlert(msg, "오류");
+        setConfirmDelete(null);
       }
+    }
+  };
+
+  const handleEquipWorker = async (slotIndex: number) => {
+    try {
+      await useGameStore.getState().equipWorker(slotIndex);
+      useAlertStore.getState().openAlert("일꾼이 장착되었습니다.", "안내");
+    } catch (e: any) {
+      useAlertStore.getState().openAlert("일꾼 장착에 실패했습니다.", "오류");
+    }
+  };
+
+  const handleUnequipWorker = async () => {
+    try {
+      await useGameStore.getState().unequipWorker();
+      useAlertStore.getState().openAlert("일꾼 장착이 해제되었습니다.", "안내");
+    } catch (e: any) {
+      useAlertStore.getState().openAlert("일꾼 해제에 실패했습니다.", "오류");
     }
   };
 
@@ -221,6 +260,10 @@ export function InventoryModal() {
                         {item.type.startsWith("ticket_") && (
                           <span className="absolute top-2 right-3 font-black text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded-full text-[10px]">x{item.quantity}</span>
                         )}
+                        {/* ✅ 장착 뱃지 표시 */}
+                        {item.equipped && (
+                          <span className="absolute top-2 right-3 font-black text-white bg-emerald-500 px-2 py-0.5 rounded-full text-[10px] shadow-sm animate-bounce">E</span>
+                        )}
                       </div>
                     ) : (
                       <span className="text-xs text-gray-400 font-bold opacity-0 group-hover:opacity-100 transition-opacity">빈 슬롯</span>
@@ -250,8 +293,8 @@ export function InventoryModal() {
                       </button>
                     )}
 
-                    {/* 🗑️ 휴지통 버튼 */}
-                    {!isLocked && item && (
+                    {/* 🗑️ 휴지통 버튼 (장착 중이면 숨김 혹은 비활성화) */}
+                    {!isLocked && item && !item.equipped && (
                       <button
                         className="absolute top-2 right-2 w-8 h-8 bg-red-50 border border-red-200 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-100 cursor-pointer z-20"
                         onClick={(e) => {
@@ -262,6 +305,23 @@ export function InventoryModal() {
                       >
                         <Trash2 className="w-4 h-4 text-red-500" />
                       </button>
+                    )}
+
+                    {/* ✅ 장착/해제 버튼 (일꾼 아이템이 활성화된 경우) */}
+                    {!isLocked && item && item.type.startsWith("worker_") && isSelected && (
+                       <button
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           if (item.equipped) handleUnequipWorker();
+                           else handleEquipWorker(item.slotIndex!);
+                         }}
+                         className={`absolute -bottom-2 px-4 py-1.5 rounded-full text-[10px] font-black shadow-xl transform transition-all hover:scale-110 active:scale-95 z-30
+                           ${item.equipped 
+                             ? "bg-rose-500 text-white hover:bg-rose-600" 
+                             : "bg-emerald-500 text-white hover:bg-emerald-600"}`}
+                       >
+                         {item.equipped ? "장착 해제" : "일꾼 장착"}
+                       </button>
                     )}
                   </div>
                 );

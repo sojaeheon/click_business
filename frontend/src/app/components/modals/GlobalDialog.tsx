@@ -351,12 +351,19 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                       <WorkerCard
                         item={item}
                         isSmall={false}
-                        onClick={() => {
-                          if (isEquipped) {
-                            // 이미 장착 중인 일꾼 클릭 → 장착 해제
-                            setEquippedWorkerId(null);
-                          } else {
-                            setEquippedWorkerId(item.id);
+                        onClick={async () => {
+                          try {
+                            if (isEquipped) {
+                              await useGameStore.getState().unequipWorker();
+                              useAlertStore.getState().openAlert("일꾼 장착이 해제되었습니다.", "안내");
+                            } else {
+                              if (item.slotIndex !== undefined) {
+                                await useGameStore.getState().equipWorker(item.slotIndex);
+                                useAlertStore.getState().openAlert(`${item.name}이(가) 배치되었습니다.`, "배치 완료");
+                              }
+                            }
+                          } catch (e: any) {
+                            useAlertStore.getState().openAlert("장착 상태 변경에 실패했습니다.", "오류");
                           }
                           setIsInventoryOpen(false);
                         }}

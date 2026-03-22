@@ -9,6 +9,9 @@ import lombok.Getter;
 @Getter
 public class InventorySlotResponse {
 
+    @Schema(description = "슬롯 고유 ID (PK)", example = "100")
+    private final Long slotId;
+
     @Schema(description = "슬롯 인덱스 (0부터 시작)", example = "0")
     private final Integer slotIndex;
 
@@ -30,8 +33,13 @@ public class InventorySlotResponse {
     @Schema(description = "일꾼 레벨 (일꾼 아이템만, 빈 슬롯 또는 비일꾼 아이템이면 null)", example = "2")
     private final Integer workerLevel;
 
+    @Schema(description = "장착 여부", example = "true")
+    private final boolean equipped;
+
     public InventorySlotResponse(InventorySlot slot) {
+        this.slotId = slot.getId();
         this.slotIndex = slot.getSlotIndex();
+        this.equipped = slot.isEquipped();
         if (slot.getItem() != null) {
             this.itemId = slot.getItem().getId();
             this.itemName = slot.getItem().getName();
