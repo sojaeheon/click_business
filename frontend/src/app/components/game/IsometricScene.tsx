@@ -177,7 +177,7 @@ function PlayerCharacter({
             return;
           }
         }
-        
+
         // 1-2. 작업장 상호작용 (요청에 따라 스페이스바에서 상호작용 해제)
         // if (lastInWorkstation.current && !isWorking_ref.current) {
         //   onOpenWorkstationModal?.();
@@ -379,7 +379,7 @@ function PlayerCharacter({
     const prevInWorkstation = lastInWorkstation.current;
     lastInWorkstation.current = inWorkstation;
     onInWorkstation?.(inWorkstation);
-    
+
     // 작업장 진입함(오직 false -> true 순간) & 작업 중이 아닐 때 자동으로 모달 오픈
     if (!prevInWorkstation && inWorkstation && !isWorkstationWorking) {
       onOpenWorkstationModal?.();
@@ -623,22 +623,12 @@ export function GameScene({
           const totalMsNeeded = Math.ceil((ratio * 60000) / speedMult); // ms (비례 단축)
 
 
-          // ✅ 사전 갯수 체크 (로컬)
-          const matIdx = store.warehouseItems.findIndex(i => i.type === "material");
-          const currentMat = matIdx >= 0 ? store.warehouseItems[matIdx].quantity : 0;
-          if (currentMat < materialNeeded) {
-            useAlertStore.getState().openAlert("재료가 부족합니다.", "경고");
-            return;
-          }
-
           // 로딩 상태 시작
           setWorkstationState({ isStarting: true });
 
-          // 백엔드 통신 (✅ store의 실제 workstationId 사용, 없으면 1로 폴백)
-          const wsId = useGameStore.getState().workstationId || 1;
-          await WorkstationAPI.start({ companyId: 1, recipeId: 1, quantity: qty, workerId: 1, workstationId: wsId });
-          
-          // 백엔드 상태(재료 차감) 로컬 스토어에 동기화
+          await WorkstationAPI.start({ companyId: 1, recipeId: 1, quantity: qty, workerId: 1 });
+
+          // ✅ 작업 시작 후 백엔드에서 창고 상태 동기화 (재료 차감 반영)
           await store.fetchCompanyData(1);
 
           // ✅ Workstation 컴포넌트에 목표 개수 & 예상 시간 전역상태 등록 및 로딩 종료

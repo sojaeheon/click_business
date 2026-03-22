@@ -7,7 +7,7 @@ import { WORKER_LEVEL_IMAGES } from "../../../constants/workers";
 import { InventoryAPI } from "../../../api/gameApi";
 
 export function InventoryModal() {
-  const { inventoryItems, inventoryExpandTickets, inventoryMax, useInventoryTicket, removeInventoryItem, purchaseInventorySlot, money } = useGameStore();
+  const { inventoryItems, inventoryExpandTickets, inventoryMax, money } = useGameStore();
   const inventoryPurchaseCount = useGameStore(s => s.inventoryPurchaseCount);
 
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
@@ -86,13 +86,8 @@ export function InventoryModal() {
   };
 
   const handlePurchaseConfirm = () => {
-    const result = purchaseInventorySlot();
     setShowPurchaseConfirm(false);
-    if (result.success) {
-      useAlertStore.getState().openAlert(`${result.cost.toLocaleString()}원을 지불하고 슬롯을 확장했습니다.`, "슬롯 구매 완료");
-    } else {
-      useAlertStore.getState().openAlert(`잔액이 부족합니다. 필요 금액: ${result.cost.toLocaleString()}원`, "잔액 부족");
-    }
+    useAlertStore.getState().openAlert("현금 확장 기능은 현재 백엔드 서버 개편 중으로 사용이 제한됩니다.", "점검 중");
   };
 
   const handleDeleteItem = async () => {

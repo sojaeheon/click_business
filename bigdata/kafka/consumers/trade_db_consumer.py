@@ -46,6 +46,22 @@ def to_datetime(iso_time_str):
         return datetime.utcnow()
 
 # -----------------------------
+# order 존재 확인 (retry)
+# -----------------------------
+def wait_for_order(cur, order_id, retries=5, delay=0.2):
+    for i in range(retries):
+        cur.execute("""
+            SELECT 1 FROM market_order WHERE market_order_id = %s
+        """, (order_id,))
+        if cur.fetchone():
+            return True
+
+        print(f"[RETRY] order 확인 중 ({i+1}/{retries}) → {order_id}")
+        time.sleep(delay)
+
+    return False
+
+# -----------------------------
 # 체결 저장 (핵심)
 # -----------------------------
 def insert_trade(conn, data, payload):
@@ -57,6 +73,13 @@ def insert_trade(conn, data, payload):
 
         buy_order_id = payload["buy_order_id"]
         sell_order_id = payload["sell_order_id"]
+
+        # -----------------------------
+        # order 존재 확인
+        # -----------------------------
+        if not wait_for_order(cur, buy_order_id) or not wait_for_order(cur, sell_order_id):
+            print(f"[SKIP] order 없음 → buy={buy_order_id}, sell={sell_order_id}")
+            return False
 
         # -----------------------------
         # BUY row
@@ -100,6 +123,8 @@ def insert_trade(conn, data, payload):
             executed_at
         ))
 
+        return True
+
 # -----------------------------
 # 메인 루프
 # -----------------------------
@@ -115,10 +140,14 @@ for message in consumer:
         payload = data.get("payload")
 
         if not payload:
+            print("[WARN] payload 없음")
             continue
 
         if event_type == "market.trade.executed":
-            insert_trade(conn, data, payload)
+            success = insert_trade(conn, data, payload)
+            if not success:
+                conn.rollback()
+                continue
         else:
             print(f"[INFO] 알 수 없는 이벤트: {event_type}")
             continue
@@ -129,7 +158,7 @@ for message in consumer:
         # Kafka commit
         consumer.commit()
 
-        print(f"[SUCCESS] trade 저장 완료: {payload.get('trade_id')}")
+        print(f"[SUCCESS] trade 저장 완료 → buy={payload.get('buy_order_id')}, sell={payload.get('sell_order_id')}")
 
     except Exception as e:
         print(f"[ERROR] {e}")

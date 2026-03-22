@@ -78,9 +78,9 @@ export interface WorkerDefinition {
    * ⚠️ 백엔드 API /v1/workers/{workerType}/speedMultiplier 응답으로 대체 예정
    *    없으면 아래 프론트 default 값 사용 */
   speedMultiplier: {
-    "금광업": number;
-    "금 제련업": number;
-    "제조업": number;
+    "GOLD_MINING": number;
+    "GOLD_SMELTING": number;
+    "MANUFACTURING": number;
   };
 }
 
@@ -91,7 +91,7 @@ export const WORKER_DEFINITIONS: WorkerDefinition[] = [
     displayName: "초보 일꾼",
     icon: WORKER_LEVEL_ICONS[1],
     modelPath: WORKER_LEVEL_MODELS[1],
-    speedMultiplier: { "금광업": 1.0, "금 제련업": 1.0, "제조업": 1.0 },
+    speedMultiplier: { "GOLD_MINING": 1.0, "GOLD_SMELTING": 1.0, "MANUFACTURING": 1.0 },
   },
   {
     id: "worker_lv2",
@@ -99,7 +99,7 @@ export const WORKER_DEFINITIONS: WorkerDefinition[] = [
     displayName: "견습 일꾼",
     icon: WORKER_LEVEL_ICONS[2],
     modelPath: WORKER_LEVEL_MODELS[2],
-    speedMultiplier: { "금광업": 1.15, "금 제련업": 1.15, "제조업": 1.15 },
+    speedMultiplier: { "GOLD_MINING": 1.15, "GOLD_SMELTING": 1.15, "MANUFACTURING": 1.15 },
   },
   {
     id: "worker_lv3",
@@ -107,7 +107,7 @@ export const WORKER_DEFINITIONS: WorkerDefinition[] = [
     displayName: "숙련 일꾼",
     icon: WORKER_LEVEL_ICONS[3],
     modelPath: WORKER_LEVEL_MODELS[3],
-    speedMultiplier: { "금광업": 1.35, "금 제련업": 1.35, "제조업": 1.35 },
+    speedMultiplier: { "GOLD_MINING": 1.35, "GOLD_SMELTING": 1.35, "MANUFACTURING": 1.35 },
   },
   {
     id: "worker_lv4",
@@ -115,7 +115,7 @@ export const WORKER_DEFINITIONS: WorkerDefinition[] = [
     displayName: "마스터 일꾼",
     icon: WORKER_LEVEL_ICONS[4],
     modelPath: WORKER_LEVEL_MODELS[4],
-    speedMultiplier: { "금광업": 1.6, "금 제련업": 1.6, "제조업": 1.6 },
+    speedMultiplier: { "GOLD_MINING": 1.6, "GOLD_SMELTING": 1.6, "MANUFACTURING": 1.6 },
   },
   {
     id: "worker_lv5",
@@ -123,7 +123,7 @@ export const WORKER_DEFINITIONS: WorkerDefinition[] = [
     displayName: "에픽 일꾼",
     icon: WORKER_LEVEL_ICONS[5],
     modelPath: WORKER_LEVEL_MODELS[5],
-    speedMultiplier: { "금광업": 2.0, "금 제련업": 2.0, "제조업": 2.0 },
+    speedMultiplier: { "GOLD_MINING": 2.0, "GOLD_SMELTING": 2.0, "MANUFACTURING": 2.0 },
   },
   {
     id: "worker_lv6",
@@ -131,7 +131,7 @@ export const WORKER_DEFINITIONS: WorkerDefinition[] = [
     displayName: "레전드 일꾼",
     icon: WORKER_LEVEL_ICONS[6],
     modelPath: WORKER_LEVEL_MODELS[6],
-    speedMultiplier: { "금광업": 3.0, "금 제련업": 3.0, "제조업": 3.0 },
+    speedMultiplier: { "GOLD_MINING": 3.0, "GOLD_SMELTING": 3.0, "MANUFACTURING": 3.0 },
   },
 ];
 
@@ -150,11 +150,12 @@ export function getWorkerDef(nameOrId: string): WorkerDefinition {
   return found ?? WORKER_DEFINITIONS[0];
 }
 
-// 산업별 기본 생산 비율 (백엔드 recipe API로 대체 예정)
+// 산업별 기본 생산 비율 (프론트 게임 밸런스 기준)
+// GOLD_MINING: 드릴 2개 → 금광석 40개 / GOLD_SMELTING: 금광석 12개 → 금괴 6개 / MANUFACTURING: 금괴 20개 → 드릴 2개
 export const INDUSTRY_PRODUCTION = {
-  "금광업": { reqMat: 2, resProd: 40, durationMs: 60000 },
-  "금 제련업": { reqMat: 12, resProd: 6, durationMs: 60000 },
-  "제조업": { reqMat: 20, resProd: 2, durationMs: 60000 },
+  "GOLD_MINING": { reqMat: 2, resProd: 40, durationMs: 60000 },
+  "GOLD_SMELTING": { reqMat: 12, resProd: 6, durationMs: 60000 },
+  "MANUFACTURING": { reqMat: 20, resProd: 2, durationMs: 60000 },
 } as const;
 
 export type IndustryKey = keyof typeof INDUSTRY_PRODUCTION;

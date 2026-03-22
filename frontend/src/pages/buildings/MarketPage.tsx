@@ -28,10 +28,9 @@ function SpinningModel({ url, scale = 1, yOffset = 0 }: { url: string, scale?: n
 }
 
 export function MarketPage() {
-  const closeBuildingPage = useGameStore(state => state.closeBuildingPage); 
-  const updateMoney = useGameStore(state => state.updateMoney);
-  const updateMaterial = useGameStore(state => state.updateMaterial);
-  const updateProduct = useGameStore(state => state.updateProduct);
+  const closeBuildingPage = useGameStore(state => state.closeBuildingPage);
+  const fetchCompanyData = useGameStore(state => state.fetchCompanyData);
+  const money = useGameStore(state => state.money);
   const industry = useGameStore(state => state.industry);
   const material = useGameStore(state => state.getIndustryItemNames().material);
   const product = useGameStore(state => state.getIndustryItemNames().product);
@@ -42,13 +41,13 @@ export function MarketPage() {
   let matScale = 2;
   let prodScale = 2;
 
-  if (industry === "금광업") {
+  if (industry === "GOLD_MINING") {
     matUrl = "/models/props/drill.glb"; matScale = 2.5;
     prodUrl = "/models/props/Gold_Nuggets.gltf"; prodScale = 4;
-  } else if (industry === "금 제련업" || industry === "제철업") {
+  } else if (industry === "GOLD_SMELTING") {
     matUrl = "/models/props/Gold_Nuggets.gltf"; matScale = 4;
     prodUrl = "/models/props/Gold_Bar.gltf"; prodScale = 3;
-  } else if (industry === "제조업") {
+  } else if (industry === "MANUFACTURING") {
     matUrl = "/models/props/Gold_Bar.gltf"; matScale = 3;
     prodUrl = "/models/props/drill.glb"; prodScale = 2.5;
   }
@@ -69,9 +68,9 @@ export function MarketPage() {
 
   // 🏷️ 아이템 ID 매핑 헬퍼
   const getItemId = (m: MarketMode): number => {
-    if (industry === "금광업") return m === "buy" ? 3 : 1;
-    if (industry === "금 제련업" || industry === "제철업") return m === "buy" ? 1 : 2;
-    if (industry === "제조업") return m === "buy" ? 2 : 3;
+    if (industry === "GOLD_MINING") return m === "buy" ? 3 : 1;
+    if (industry === "GOLD_SMELTING") return m === "buy" ? 1 : 2;
+    if (industry === "MANUFACTURING") return m === "buy" ? 2 : 3;
     return 1;
   };
 
@@ -115,9 +114,9 @@ export function MarketPage() {
         // [2] 체결 내역 조회 (탭이 history 일 때만)
         if (panelTab === "history") {
           const tradeRes = await MarketAPI.getTrades(itemId);
-          const tradeData = tradeRes.data; // ApiResponse 객체
-
-          if (tradeData && tradeData.status === "SUCCESS" && Array.isArray(tradeData.data)) {
+          // ApiResponse: { success: boolean, message: string, data: [...] }
+          const tradeData = tradeRes.data;
+          if (tradeData?.success && Array.isArray(tradeData.data)) {
             setTradeHistory(tradeData.data);
           } else {
             setTradeHistory([]);
@@ -140,10 +139,9 @@ export function MarketPage() {
   const handleConfirm = async () => {
     if (quantity <= 0 || price <= 0 || !mode) return;
 
-    // 지갑 및 창고 체크
+    // 로컬 프리체크 (UX용, 실제 검증은 백엔드에서 수행)
     if (mode === "buy") {
-      const isPaid = updateMoney(-totalAmount);
-      if (!isPaid) {
+      if (money < totalAmount) {
         useAlertStore.getState().openAlert("잔액이 부족합니다.", "안내");
         return;
       }
@@ -159,6 +157,8 @@ export function MarketPage() {
     setIsProcessing(true);
     try {
       // ✅ 실제 API 호출
+      // BUY: 백엔드가 즉시 현금 차감
+      // SELL: 백엔드가 즉시 창고에서 아이템 차감
       await MarketAPI.createOrder({
         itemId: itemId,
         type: mode === "buy" ? "BUY" : "SELL",
@@ -166,7 +166,7 @@ export function MarketPage() {
         qty: quantity
       });
 
-      // 스토어 업데이트: 백엔드에서 잔고/창고 물품을 정확히 차감하므로 프론트는 무조건 서버 데이터를 그대로 땡겨옴!
+      // 스토어 업데이트: 백엔드에서 잔고/창고 물품을 정확히 차감하므로 서버 데이터를 그대로 땡겨옴
       await useGameStore.getState().fetchCompanyData(1);
 
       setShowPopup(true);
@@ -183,10 +183,8 @@ export function MarketPage() {
       }, 2000);
     } catch (e: any) {
       console.error(e);
-      // 백엔드 오류 메시지 추출 또는 에러 자체 메시지 연결
       const errorDetail = e.response?.data?.message || e.message || "서버 통신 중 알 수 없는 오류가 발생했습니다.";
-      const errorMsg = `사유: ${errorDetail}`;
-      useAlertStore.getState().openAlert(errorMsg, "주문 오류");
+      useAlertStore.getState().openAlert(`사유: ${errorDetail}`, "주문 오류");
     } finally {
       setIsProcessing(false);
     }
@@ -483,16 +481,20 @@ export function MarketPage() {
                             <div className="flex justify-between items-center mt-1">
                               <span className="text-slate-600 font-bold text-sm">수량: {trade.executionQuantity?.toLocaleString() || 0}개</span>
                               {!trade.isCollected && (
-                                <button 
+                                <button
                                   onClick={async (e) => {
                                     e.stopPropagation();
                                     try {
                                       await MarketAPI.collectTrade(trade.tradeHistoryId);
                                       // 수령 후 지갑 상태 등 모두 동기화 (창고 및 현금 갱신)
                                       await useGameStore.getState().fetchCompanyData(1);
-                                      useGameStore.getState().addAlert({ message: "체결 결과 수령 완료", detail: `${trade.executionQuantity}개가 정산되었습니다.` });
-                                    } catch (err) {
-                                      useAlertStore.getState().openAlert("수령에 실패했습니다.", "통신 오류");
+                                      useGameStore.getState().addAlert({
+                                        message: "체결 결과 수령 완료",
+                                        detail: `${trade.executionQuantity}개가 정산되었습니다.`
+                                      });
+                                    } catch (err: any) {
+                                      const msg = err.response?.data?.message || err.message || "수령에 실패했습니다.";
+                                      useAlertStore.getState().openAlert(msg, "수령 오류");
                                     }
                                   }}
                                   className="px-2 py-0.5 bg-yellow-500 text-white text-[11px] font-black rounded-lg hover:bg-yellow-600 transition-colors"

@@ -145,15 +145,6 @@ export interface GameState {
   addAlert: (alertData: Omit<Alert, 'id' | 'timeAgo' | 'read'>) => void;
   markAllAlertsAsRead: () => void;
 
-  // 인베토리 아이템 관리
-  addInventoryItem: (item: Omit<InventoryItem, 'id'>) => void;
-  removeInventoryItem: (id: string) => void;
-  // ★ 강화 결과 반영 (같은 레벨 2개 소모 → 결과 레벨 1개 생성)
-  upgradeWorkerLevel: (workerName: string, oldLevel: number, newLevel: number) => void;
-  // 확장권 사용
-  useWarehouseTicket: () => boolean;    // 성공 시 true
-  useInventoryTicket: () => boolean;
-  purchaseInventorySlot: () => { success: boolean; cost: number }; // 돈으로 슬롯 구매
   // 은행 데이터 동기화
   updateBankData: (data: Partial<BankData>) => void;
   updateDebt: (amount: number) => void; // 양수 = 부칄 증가, 음수 = 부칄 감소
@@ -235,119 +226,7 @@ export const useGameStore = create<GameState>()(
 
       setCompanyInfo: (name, industry) => set({ companyName: name, industry }),
 
-      // 인벤토리 아이템 추가
-      // ✅ 확장권(ticket_*)도 아이템으로 슬롯에 들어감 — 별도 숫자 카운터로 빼지 않음
-      addInventoryItem: (item) => set(state => {
-        // 슬롯 초과 확인: 확장권/일꾼 모두 슬롯 사용
-        if (state.inventoryItems.length >= state.inventoryMax) {
-          useAlertStore.getState().openAlert("인벤토리가 꽉 찼습니다. 슬롯을 확장해주세요.", "인벤토리 초과");
-          return state; // 추가 거부
-        }
-        const newItem = { ...item, id: "inv_" + Date.now() + "_" + Math.random().toString(36).slice(2) };
-        const newItems = [...state.inventoryItems, newItem];
-        // 확장권 카운터는 inventoryItems에서 파생 계산
-        const wTickets = newItems.filter(i => i.type === "ticket_warehouse").reduce((a, i) => a + (i.quantity || 1), 0);
-        const iTickets = newItems.filter(i => i.type === "ticket_inventory").reduce((a, i) => a + (i.quantity || 1), 0);
-        return {
-          inventoryItems: newItems,
-          warehouseExpandTickets: wTickets,
-          inventoryExpandTickets: iTickets,
-          hasNewWorker: item.type?.startsWith("worker_") ? true : state.hasNewWorker,
-        };
-      }),
-      removeInventoryItem: (id) => set(state => ({
-        inventoryItems: state.inventoryItems.filter(i => i.id !== id)
-      })),
 
-      // ★ 강화 결과 반영: 같은 이름+레벨 캐릭터 2개 소모 → 결과 레벨 캐릭터 1개 생성
-      //   newLevel=0이면 파괴 (소모만 하고 생성 안 함)
-      upgradeWorkerLevel: (workerName, oldLevel, newLevel) => set(state => {
-        let items = [...state.inventoryItems];
-
-        // 1) 같은 일꾼 2개 소모 (stay 시에도 어차피 2개 소모하고 1개를 돌려주는 방식)
-        let consumed = 0;
-        items = items.map(item => {
-          if (consumed >= 2) return item;
-          // 장착 중인 캐릭터는 소모 대상에서 배제
-          if (item.id === state.equippedWorkerId) return item;
-
-          if (item.name === workerName && (item.level || 1) === oldLevel) {
-            const qty = item.quantity || 1;
-            const take = Math.min(qty, 2 - consumed);
-            consumed += take;
-            return { ...item, quantity: qty - take };
-          }
-          return item;
-        }).filter(i => (i.quantity || 0) > 0);
-
-        // 2) 결과 캐릭터 생성 (newLevel > 0일 때만, stay면 oldLevel과 같음)
-        if (newLevel > 0) {
-          const newDef = getWorkerDefByLevel(newLevel);
-          items.push({
-            id: "inv_" + Date.now() + "_" + Math.random().toString(36).slice(2),
-            type: `worker_lv${newLevel}` as InventoryItemType,
-            name: newDef.displayName, // "초보 일꾼" -> "견습 일꾼" 등 올바른 이름으로 덮어씀
-            icon: newDef.icon,
-            quantity: 1,
-            level: newLevel,
-          });
-        }
-
-        return { inventoryItems: items };
-      }),
-
-      // 확장권 사용 — 삼엔드 스토어 수치 + 확장권 상담
-      useWarehouseTicket: () => {
-        const s = get();
-        const ticketItem = s.inventoryItems.find(i => i.type === "ticket_warehouse" && (i.quantity || 1) > 0);
-        if (!ticketItem) return false;
-        set(state => {
-          const newItems = state.inventoryItems.map(i => {
-            if (i.id !== ticketItem.id) return i;
-            return { ...i, quantity: (i.quantity || 1) - 1 };
-          }).filter(i => (i.quantity ?? 1) > 0);
-          return {
-            inventoryItems: newItems,
-            warehouseExpandTickets: newItems.filter(i => i.type === "ticket_warehouse").reduce((a, i) => a + (i.quantity || 1), 0),
-            warehouseMaxSlots: state.warehouseMaxSlots + 1,
-          };
-        });
-        return true;
-      },
-      useInventoryTicket: () => {
-        const s = get();
-        const ticketItem = s.inventoryItems.find(i => i.type === "ticket_inventory" && (i.quantity || 1) > 0);
-        if (!ticketItem) return false;
-        set(state => {
-          const newItems = state.inventoryItems.map(i => {
-            if (i.id !== ticketItem.id) return i;
-            return { ...i, quantity: (i.quantity || 1) - 1 };
-          }).filter(i => (i.quantity ?? 1) > 0);
-          return {
-            inventoryItems: newItems,
-            inventoryExpandTickets: newItems.filter(i => i.type === "ticket_inventory").reduce((a, i) => a + (i.quantity || 1), 0),
-            inventoryMax: state.inventoryMax + 1,
-          };
-        });
-        return true;
-      },
-
-      // 돈으로 인벤토리 슬롯 구매 (슬롯 번호 기준, 유저 무관하게 동일 가격)
-      // Row 1 (1-3): 무료, Row 2 (4-6): 30만원, Row 3 (7-9): 60만원, Row4+: 2배씩 증가
-      purchaseInventorySlot: () => {
-        const s = get();
-        const nextSlot = s.inventoryMax + 1;
-        const rowIndex = Math.ceil(nextSlot / 3); // 1-indexed 행 번호
-        const basePrice = 300000;
-        const cost = rowIndex <= 1 ? 0 : basePrice * Math.pow(2, rowIndex - 2);
-        if (s.money < cost) return { success: false, cost };
-        set(state => ({
-          money: state.money - cost,
-          inventoryMax: state.inventoryMax + 1,
-          inventoryPurchaseCount: state.inventoryPurchaseCount + 1,
-        }));
-        return { success: true, cost };
-      },
 
       // 은행 데이터 통합 동기화
       updateBankData: (data) => set(state => ({ bankData: { ...state.bankData, ...data } })),
@@ -357,21 +236,18 @@ export const useGameStore = create<GameState>()(
       })),
 
       getWarehouseUsage: () => {
-        const items = get().warehouseItems;
-        let usedSlots = 0;
-        items.forEach(item => {
-          usedSlots += Math.ceil(item.quantity / MAX_PER_SLOT);
-        });
+        // 백엔드에서 빈 슬롯을 걸러낸(item이 존재하는) 슬롯 배열의 길이를 사용합니다.
+        const usedSlots = get().warehouseItems.length;
         const percent = Math.min((usedSlots / get().warehouseMaxSlots) * 100, 100);
         return { usedSlots, percent };
       },
 
       getIndustryItemNames: (indOverride?: string) => {
         const ind = indOverride || get().industry;
-        if (ind === "금광업") return { material: "광산 드릴", product: "금광석", reqMat: 2, resProd: 40, batchSize: 20 };
-        if (ind === "금 제련업" || ind === "제철업") return { material: "금광석", product: "금괴", reqMat: 12, resProd: 6, batchSize: 10 };
-        if (ind === "제조업") return { material: "금괴", product: "광산 드릴", reqMat: 20, resProd: 2, batchSize: 5 };
-        return { material: "재료", product: "생산품", reqMat: 1, resProd: 1, batchSize: 10 };
+        if (ind === "GOLD_MINING" || ind === "금광업") return { material: "광산 드릴", product: "금광석", reqMat: 2, resProd: 40, batchSize: 20 };
+        if (ind === "GOLD_SMELTING" || ind === "금 제련업" || ind === "제철업") return { material: "금광석", product: "금괴", reqMat: 12, resProd: 6, batchSize: 10 };
+        if (ind === "MANUFACTURING" || ind === "제조업") return { material: "금괴", product: "광산 드릴", reqMat: 20, resProd: 2, batchSize: 5 };
+        return { material: "재료", product: "생산품", reqMat: 1, resProd: 1, batchSize: 5 };
       },
 
       updateMoney: (amount) => {
@@ -458,10 +334,10 @@ export const useGameStore = create<GameState>()(
           // 백엔드 API 종합 호출 (workstationId도 함께 초기화)
           const [companyRes, warehouseRes, inventoryRes, bankRes, workstationIdRes] = await Promise.all([
             CompanyAPI.getStatus(),
-            WarehouseAPI.getWarehouseItems().catch(() => ({ data: [] })),
-            InventoryAPI.getInventory().catch(() => ({ data: [] })),
+            WarehouseAPI.getWarehouseItems(1).catch(() => ({ data: [], maxSlots: undefined })),
+            InventoryAPI.getInventory(companyId).catch(() => ({ data: [], maxSlots: undefined })),
             BankAPI.getSummary(companyId).catch(() => ({ data: { loanRate: 0, depositRate: 0, currentLoan: 0, currentDeposit: 0 } })),
-            WorkstationAPI.getMyId().catch(() => ({ data: 1 })), // 에러시 1로 폴백
+            WorkstationAPI.getMyId().catch(() => 1), // 에러시 1로 폴백
           ]);
 
           const realData = companyRes.data;
@@ -479,14 +355,17 @@ export const useGameStore = create<GameState>()(
             name: item.type === "material" ? material : item.type === "product" ? product : item.name
           }));
 
+          // 백엔드가 maxSlots를 제공하면 가장 우선 적용 (과거 캐시 문제 해결)
+          const warehouseMaxSlotsFromApi = (warehouseRes as any).maxSlots;
+          const inventoryMaxSlotsFromApi = (inventoryRes as any).maxSlots;
+          
           set({
             money: realData?.cash ?? get().money,
             capital: realData?.total_asset ?? get().capital,
             companyName: realData?.name ?? get().companyName,
             industry: finalIndustry,
-            // 과거 캐시에 의해 프론트엔드 슬롯이 각각 10, 50으로 고정된 유저들을 위한 강제 보정 로직
-            warehouseMaxSlots: realData?.slots?.warehouse_slots ?? (get().warehouseMaxSlots === 10 ? 6 : get().warehouseMaxSlots),
-            inventoryMax: realData?.slots?.inventory_slots ?? (get().inventoryMax === 50 ? 4 : get().inventoryMax),
+            warehouseMaxSlots: warehouseMaxSlotsFromApi ?? realData?.slots?.warehouse_slots ?? (get().warehouseMaxSlots === 10 ? 6 : get().warehouseMaxSlots),
+            inventoryMax: inventoryMaxSlotsFromApi ?? realData?.slots?.inventory_slots ?? (get().inventoryMax === 50 ? 4 : get().inventoryMax),
             warehouseItems: fixedWarehouseItems,
             inventoryItems: allItems,
             // 티켓은 inventoryItems 안에 아이템으로 저장됨. 개수 정보는 UI에서 type로 필터링
@@ -500,7 +379,7 @@ export const useGameStore = create<GameState>()(
               currentDeposit: bankRes.data.currentDeposit,
             },
             debt: bankRes.data.currentLoan,
-            workstationId: workstationIdRes.data ?? 0,  // ✅ 실제 DB ID 저장
+            workstationId: typeof workstationIdRes === "number" ? workstationIdRes : (workstationIdRes as any)?.data ?? 0,  // ✅ 실제 DB ID 저장
             isLoading: false
           });
         } catch (error) {

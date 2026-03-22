@@ -109,14 +109,9 @@ export function HRPage() {
     setLastResult(res);
     setPhase("result");
 
-    // ★ Zustand 스토어에 결과 반영
-    // stay 포함 모든 결과에서 호출 → 재료 2개 소모 후 결과 레벨 1개 반환
-    if (selected) {
-      const upgradeWorkerLevel = useGameStore.getState().upgradeWorkerLevel;
-      if (upgradeWorkerLevel) {
-        upgradeWorkerLevel(selected.name, lv, res.result === "reset" ? 0 : res.newLevel);
-      }
-    }
+    // ★ 서버와 동기화
+    // 백엔드 API에서 아이템을 소모하고 결과를 저장했을 것이므로, 프론트엔드는 서버 데이터를 그대로 땡겨옴
+    await useGameStore.getState().fetchCompanyData(1);
 
     // 유저 피드백: "강화 성공 시에도 기존 캐릭터 화면을 그대로 유지하고, 다음 레벨은 유저가 직접 변경하게 해달라"
     // 따라서 setSelected를 통한 자동 레벨업 추적이나 팝업 강제종료를 수행하지 않습니다.

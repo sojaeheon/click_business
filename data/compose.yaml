@@ -172,7 +172,26 @@ services:
       CONSUMER_TYPE: order_db
     networks:
       - ecosim-network
-  
+    
+  order-hdfs-consumer:
+    build:
+      context: ../bigdata
+      dockerfile: dockerfile/Dockerfile.kafka
+    container_name: order-hdfs-consumer
+    restart: always
+    depends_on:
+      - kafka
+    env_file:
+      - .env
+    environment:
+      CONSUMER_TYPE: order_hdfs
+      KAFKA_TOPIC: market.order.events
+      KAFKA_GROUP_ID: order-hdfs-consumer
+      HDFS_BASE_PATH: /raw/kafka
+      HDFS_FLUSH_INTERVAL_SEC: 1
+    networks:
+      - ecosim-network
+
   trade-db-consumer:
     build:
       context: ../bigdata
@@ -184,6 +203,25 @@ services:
       - postgres
     environment:
       CONSUMER_TYPE: trade_db
+    networks:
+      - ecosim-network
+
+  trade-hdfs-consumer:
+    build:
+      context: ../bigdata
+      dockerfile: dockerfile/Dockerfile.kafka
+    container_name: trade-hdfs-consumer
+    restart: always
+    depends_on:
+      - kafka
+    env_file:
+      - .env
+    environment:
+      CONSUMER_TYPE: trade_hdfs
+      KAFKA_TOPIC: market.trade.events
+      KAFKA_GROUP_ID: trade-hdfs-consumer
+      HDFS_BASE_PATH: /raw/kafka
+      HDFS_FLUSH_INTERVAL_SEC: 1
     networks:
       - ecosim-network
   
@@ -231,6 +269,28 @@ services:
       - "3001:3000"
     networks:
       - ecosim-network
+
+  # -----------------------------
+  # Analytics용 PostgreSQL
+  # -----------------------------
+  analytics-postgres:
+    image: postgres:17
+    container_name: analytics-postgres
+    restart: always
+    env_file:
+      - ./.env
+    environment:
+      POSTGRES_DB: ${ANALYTICS_POSTGRES_DB}
+      POSTGRES_USER: ${ANALYTICS_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${ANALYTICS_POSTGRES_PASSWORD}
+    ports:
+      - "${ANALYTICS_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - ./analytics_postgres_data:/var/lib/postgresql/data
+      - ../bigdata/sql/analytics_schema.sql:/docker-entrypoint-initdb.d/01_analytics_schema.sql:ro
+    networks:
+      - ecosim-network
+
 
 networks:
   ecosim-network:

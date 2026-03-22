@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Package, Lock, Trash2, X, AlertTriangle } from "lucide-react";
-import { useGame, useGameStore, MAX_PER_SLOT } from "../../store/gameStore";
+import { useGameStore } from "../../store/gameStore";
 import { BackButton } from "../../app/components/ui/backbutton";
 import { useAlertStore } from "../../store/useAlertStore";
 import { WarehouseAPI } from "../../api/gameApi";
@@ -171,57 +171,83 @@ function DiscardPanel({ totalMaterial, totalProduct, materialName, productName, 
 // ── 메인 페이지 ────────────────────────────────────────────────────
 export function WarehousePage() {
   const closeBuildingPage = useGameStore(s => s.closeBuildingPage);
-  const warehouseItems = useGameStore(s => s.warehouseItems);
   const warehouseExpandTickets = useGameStore(s => s.warehouseExpandTickets);
-  const maxSlots = useGameStore(s => s.warehouseMaxSlots);
   const material = useGameStore(s => s.getIndustryItemNames().material);
   const product = useGameStore(s => s.getIndustryItemNames().product);
-  const useWarehouseTicket = useGameStore(s => s.useWarehouseTicket);
-  const updateMaterial = useGameStore(s => s.updateMaterial);
-  const updateProduct = useGameStore(s => s.updateProduct);
-
-  const totalMaterial = warehouseItems.filter(i => i.type === "material").reduce((sum, i) => sum + i.quantity, 0);
-  const totalProduct = warehouseItems.filter(i => i.type === "product").reduce((sum, i) => sum + i.quantity, 0);
-
   const [slots, setSlots] = useState<SlotData[]>([]);
   const [showDiscard, setShowDiscard] = useState(false);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
 
-  useEffect(() => {
-    // maxSlots 이상의 예비 슬롯(자물쇠)칸을 화면에 보이도록, 6의 배수에 맞춰 동적 계산
-    const totalSlots = maxSlots + (6 - (maxSlots % 6 === 0 ? 6 : maxSlots % 6)) + 6;
-    const initialSlots: SlotData[] = Array(totalSlots).fill(null).map((_, i) => ({
+  const totalMaterial = slots.filter(s => s.item?.type === "material").reduce((sum, s) => sum + (s.item?.quantity ?? 0), 0);
+  const totalProduct = slots.filter(s => s.item?.type === "product").reduce((sum, s) => sum + (s.item?.quantity ?? 0), 0);
+
+  const buildSlots = (rawSlots: Awaited<ReturnType<typeof WarehouseAPI.getSlots>>) => {
+    const backendMaxSlots = rawSlots.length;
+    const totalDisplay = backendMaxSlots + (6 - (backendMaxSlots % 6 === 0 ? 6 : backendMaxSlots % 6)) + 6;
+    const displaySlots: SlotData[] = Array(totalDisplay).fill(null).map((_, i) => ({
       id: i,
       dbSlotIndex: i, // 기본값: UI와 DB 인덱스가 같다고 가정
       item: null,
-      locked: i >= maxSlots
+      locked: i >= backendMaxSlots,
     }));
-
     // ✅ warehouseItems의 실제 slotIndex를 사용해 정확한 슬롯에 배치
-    warehouseItems.forEach(item => {
+    rawSlots.forEach((slot: any) => {
       // slotIndex가 존재하면 해당 DB 슬롯에 직접 잘라넣음
-      if ((item as any).slotIndex !== undefined && (item as any).slotIndex < totalSlots) {
-        const si = (item as any).slotIndex as number;
-        initialSlots[si].dbSlotIndex = si;
-        initialSlots[si].item = {
-          type: item.type as "material" | "product",
-          quantity: item.quantity,
-          name: item.name ?? "",
-          id_: item.id,
-        };
+      if (slot.slotIndex !== undefined && slot.slotIndex < totalDisplay) {
+        const si = slot.slotIndex as number;
+        displaySlots[si].dbSlotIndex = si;
+        if (slot.itemId != null) {
+          displaySlots[si].item = {
+            type: slot.itemType === "MATERIAL" ? "material" : "product",
+            quantity: slot.quantity,
+            name: slot.itemName ?? "",
+            id_: `w_${slot.itemId}`,
+          };
+        }
       }
     });
 
-    setSlots(initialSlots);
-  }, [warehouseItems, maxSlots, material, product]);
+    return displaySlots;
+  };
+
+  const fetchSlots = async () => {
+    try {
+      const res = await WarehouseAPI.getWarehouseItems(1);
+      await useGameStore.getState().fetchCompanyData(1);
+      const items = useGameStore.getState().warehouseItems;
+      const backendMaxSlots = Math.max(0, ...items.map(i => (i as any).slotIndex || 0)) + 6; // dummy estimation
+      const totalDisplay = backendMaxSlots + (6 - (backendMaxSlots % 6 === 0 ? 6 : backendMaxSlots % 6)) + 6;
+      const displaySlots: SlotData[] = Array(totalDisplay).fill(null).map((_, i) => ({
+        id: i, dbSlotIndex: i, item: null, locked: i > 5 // Just mock locked for now since backend doesn't send maxSlots easily
+      }));
+      items.forEach(item => {
+        const si = (item as any).slotIndex;
+        if (si !== undefined && si < totalDisplay) {
+          displaySlots[si].dbSlotIndex = si;
+          displaySlots[si].item = {
+            type: item.type,
+            quantity: item.quantity,
+            name: item.name ?? "",
+            id_: item.id,
+          };
+        }
+      });
+      setSlots(displaySlots);
+    } catch (err) {
+      console.warn("창고 데이터 로드 실패", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchSlots();
+  }, []);
 
   const handleUnlockSlot = async (slotId: number) => {
     if (warehouseExpandTickets <= 0) {
       useAlertStore.getState().openAlert("창고 확장권이 부족합니다. 미니게임에서 획득할 수 있습니다.", "확장 불가");
       return;
     }
-    
     const ticketItem = useGameStore.getState().inventoryItems.find((i: any) => i.type === "ticket_warehouse");
     if (!ticketItem || ticketItem.slotIndex === undefined) {
       useAlertStore.getState().openAlert("창고 확장권의 슬롯 정보를 찾을 수 없습니다.", "에러");
@@ -229,8 +255,8 @@ export function WarehousePage() {
     }
 
     try {
-      await WarehouseAPI.unlockSlot({ ticketSlotIndex: ticketItem.slotIndex });
-      await useGameStore.getState().fetchCompanyData(1);
+      await WarehouseAPI.unlockSlot({ companyId: 1, maxSlot: ticketItem.slotIndex });
+      await fetchSlots();
       useAlertStore.getState().openAlert("창고 슬롯이 확장되었습니다!", "확장 완료");
     } catch (e) {
       useAlertStore.getState().openAlert("슬롯 확장에 실패했습니다.", "API 오류");
@@ -255,10 +281,24 @@ export function WarehousePage() {
 
     if (slots[targetIndex].locked) return;
 
+    // 낙관적 UI 업데이트
+    setSlots((prev) => {
+      const newSlots = [...prev];
+      const srcIdx = newSlots.findIndex(s => s.dbSlotIndex === sourceDbIdx);
+      if (srcIdx < 0) return prev;
+      const src = newSlots[srcIdx];
+      const tgt = newSlots[targetIndex];
+      const tempItem = src.item;
+      src.item = tgt.item;
+      tgt.item = tempItem;
+      return newSlots;
+    });
+
     try {
       await WarehouseAPI.moveSlot({ fromIdx: sourceDbIdx, toIdx: targetDbIdx }); // ✅ DB slotIndex 전송
-      await useGameStore.getState().fetchCompanyData(1);
+      await fetchSlots();
     } catch (err) {
+      await fetchSlots();
       useAlertStore.getState().openAlert("아이템 이동에 실패했습니다.", "오류");
     }
   };
@@ -267,7 +307,7 @@ export function WarehousePage() {
   const handleDiscard = async (type: "material" | "product", qty: number) => {
     try {
       await WarehouseAPI.discardItems(type, qty);
-      await useGameStore.getState().fetchCompanyData(1);
+      await fetchSlots();
       useAlertStore.getState().openAlert(
         `${type === "material" ? material : product} ${qty.toLocaleString()}개를 폐기했습니다.`,
         "폐기 완료"
@@ -287,13 +327,13 @@ export function WarehousePage() {
 
   const handleGetTestItems = async () => {
     try {
-      let itemId = 3; // 금광업 -> 금 드릴
+      let itemId = 3; // 금광업 (MINING) -> 금 드릴
       let addAmount = 10; // 금 드릴은 10개가 1슬롯 최대
 
-      if (industry === "금 제련업") { 
+      if (industry === "금 제련업" || industry === "SMELTING") { 
         itemId = 1; // 금광석
         addAmount = 50; // 금광석 최대적재량 고려
-      } else if (industry === "제조업") { 
+      } else if (industry === "제조업" || industry === "MANUFACTURING") { 
         itemId = 2; // 금괴
         addAmount = 50; 
       }

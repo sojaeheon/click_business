@@ -81,7 +81,7 @@ def save_order(data, payload):
     is_virtual = payload.get("is_virtual", False)
     created_at_ms = to_epoch_millis(payload.get("created_at"))
     updated_at_ms = created_at_ms
-    status = payload.get("status", "OPEN")
+    status = payload.get("status", "PENDING")
     remaining_quantity = payload.get("remaining_quantity", quantity)
 
     # 스코어 계산
@@ -146,7 +146,7 @@ def cancel_order(data, payload):
     # HASH 상태 업데이트
     if r.exists(order_key):
         r.hset(order_key, mapping={
-            "status": "CANCELLED",
+            "status": "CANCELED",
             "cancelled_at": payload.get("cancelled_at", str(int(time.time())))
         })
 

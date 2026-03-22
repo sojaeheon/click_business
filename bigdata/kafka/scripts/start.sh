@@ -7,6 +7,9 @@ case "$CONSUMER_TYPE" in
   order_db)
     python -u ./consumers/order_db_consumer.py
     ;;
+  order_hdfs)
+    python -u ./consumers/order_hdfs_consumer.py
+    ;;
   trade_db)
     python -u ./consumers/trade_db_consumer.py
     ;;

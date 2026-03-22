@@ -6,6 +6,7 @@ import { useAlertStore } from "../../../store/useAlertStore";
 import { getWorkerIcon, WorkerCard } from "../ui/WorkerCard";
 import { useGameStore } from "../../../store/gameStore";
 import { getWorkerDefByLevel, WORKER_LEVEL_IMAGES, IndustryKey } from "../../../constants/workers";
+import { WarehouseAPI } from "../../../api/gameApi";
 
 // 다른 곳에서도 쓸 수 있게 export 해줍니다.
 export interface ConfirmData {
@@ -57,9 +58,21 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
     }
   }, [data.type, data.isWorking, resProd]);
 
+  // 작업장 모달 열릴 때 창고 재료 수량 백엔드에서 직접 조회
+  const [liveMatStock, setLiveMatStock] = useState<number | null>(null);
+  useEffect(() => {
+    if (data.type !== "workstation") return;
+    WarehouseAPI.getWarehouseItems(0).then(res => {
+      const total = res.data
+        .filter((i: any) => i.type === "material")
+        .reduce((sum: number, i: any) => sum + (i.quantity || 0), 0);
+      setLiveMatStock(total);
+    }).catch(() => {});
+  }, [data.type]);
+
   if (data.type === "workstation") {
     const { material, product, reqMat } = state.getIndustryItemNames();
-    const warehouseStock = state.warehouseItems.find(i => i.type === "material")?.quantity || 0;
+    const warehouseStock = liveMatStock ?? (state.warehouseItems.find(i => i.type === "material")?.quantity || 0);
 
     // qty = 유저가 자유롭게 입력한 생산 개수
     // 시간/재료는 개수에 비례 계산 (1분에 resProd개 생산 기준)
