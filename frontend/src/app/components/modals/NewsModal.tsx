@@ -67,7 +67,7 @@ function NewsList({ onSelect }: { onSelect: (news: NewsItem) => void }) {
   const otherNews = state.news.filter((n) => n.id !== breakingNews?.id);
 
   return (
-    <div className="flex gap-6 items-stretch pb-2">
+    <div className="flex gap-6 items-stretch pb-2 h-[420px]">
       {/* 왼쪽: 헤드라인 뉴스 (은행 스타일) */}
       <div className="flex flex-col" style={{ flex: 5.5 }}>
         {breakingNews && (
