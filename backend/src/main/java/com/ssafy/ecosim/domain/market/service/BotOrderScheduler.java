@@ -129,8 +129,14 @@ public class BotOrderScheduler {
             eventPublisher.publishOrderEvent(botEvent);
         }
 
+        // 전역 시계 동기화 (ID 1번 아이템 기준으로 Redis에 현재 틱 저장) - 증가 전에 먼저 저장
+        if (itemId == 1L) {
+            redisTemplate.opsForValue().set("game:simulation:tick", String.valueOf(state.currentTick));
+        }
+        
         // 사이클 증가
         state.currentTick++;
+
         if (state.currentTick >= CYCLE_SECONDS) {
             state.currentTick = 0;
         }
@@ -221,6 +227,11 @@ public class BotOrderScheduler {
 
         log.info("[Virtual Index Cycle] Item: {} | Date: {} | Base Price: {} | Fluct (H/L/C): {} / {} / {}",
                 itemId, state.lastSimulatedDate, currentMarketPrice, state.targetHighFluct, state.targetLowFluct, state.targetCloseFluct);
+
+        // 전역 시계 동기화 (ID 1번 아이템 기준으로 Redis에 현재 날짜 저장)
+        if (itemId == 1L) {
+            redisTemplate.opsForValue().set("game:simulation:date", state.lastSimulatedDate.toString());
+        }
 
         // 장 시작 시점에, 하루치 600틱에 대한 '타겟 변동률'을 미리 계산하여 배열에 저장
         for (int i = 0; i < CYCLE_SECONDS; i++) {
