@@ -9,6 +9,8 @@ services:
     command: >
       /opt/spark/bin/spark-class
       org.apache.spark.deploy.master.Master
+    env_file:
+      - ../data/.env  
     ports:
       - "7077:7077"
       - "8082:8080"
@@ -28,6 +30,8 @@ services:
       /opt/spark/bin/spark-class
       org.apache.spark.deploy.worker.Worker
       spark://spark-master:7077
+    env_file:
+      - ../data/.env
     ports:
       - "8081:8081"
     networks:
