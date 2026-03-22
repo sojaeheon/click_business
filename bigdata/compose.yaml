@@ -36,70 +36,23 @@ services:
       - "8081:8081"
     networks:
       - ecosim-network
-
-  # -----------------------------
-  # HDFS NameNode
-  # 파일 시스템 메타데이터 관리
-  # -----------------------------
-  namenode:
-    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
-    container_name: namenode
-
-    ports:
-      # NameNode Web UI
-      - "9870:9870"
-
-      # HDFS client 접속 포트
-      - "9000:9000"
-
-    environment:
-      # HDFS 클러스터 이름
-      CLUSTER_NAME: ecosim-hdfs
-
-    env_file:
-      # Hadoop 환경 변수 파일
-      - ./hdfs/conf/hadoop.env
-
-    volumes:
-      # NameNode 메타데이터 저장
-      - ./hdfs/storage/namenode:/hadoop/dfs/name
-
-      # 초기화 스크립트
-      - ./hdfs/init:/init
-
-      # 샘플 데이터 폴더
-      - ./hdfs/sample-data:/sample-data
-
-    networks:
-      - ecosim-network
-
-  # -----------------------------
-  # HDFS DataNode
-  # 실제 데이터 블록 저장
-  # -----------------------------
-  datanode:
-    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
-    container_name: datanode
-
+  
+  park-submit-valuation:
+    build:
+      context: .
+      dockerfile: ./spark/Dockerfile.spark
+    container_name: spark-submit-valuation
     depends_on:
-      # NameNode 이후 실행
-      - namenode
-
-    ports:
-      # DataNode Web UI
-      - "9864:9864"
-
-    environment:
-      # NameNode 준비 후 실행
-      SERVICE_PRECONDITION: "namenode:9870"
-
-    env_file:
-      - ./hdfs/conf/hadoop.env
-
+      - spark-master
+      - spark-worker
     volumes:
-      # 실제 데이터 블록 저장
-      - ./hdfs/storage/datanode:/hadoop/dfs/data
-
+      - ./spark/jobs:/opt/spark-apps
+    env_file:
+      - ../data/.env
+    command: >
+      /opt/spark/bin/spark-submit
+      --master spark://spark-master:7077
+      /opt/spark-apps/company_valutation_stream.py
     networks:
       - ecosim-network
 

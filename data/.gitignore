@@ -1,3 +1,6 @@
 redis_data/
 /postgres_data/
 analytics_postgres_data
+
+**/storage/datanode/
+**/storage/namenode/

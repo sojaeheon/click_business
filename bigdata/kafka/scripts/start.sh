@@ -16,6 +16,9 @@ case "$CONSUMER_TYPE" in
   trade_hdfs)
     python -u ./consumers/trade_hdfs_consumer.py
     ;;
+  hdfs_raw_sink)
+    python -u ./consumers/hdfs_raw_sink_consumer.py
+    ;;
   *)
     echo "Unknown CONSUMER_TYPE"
     exit 1
