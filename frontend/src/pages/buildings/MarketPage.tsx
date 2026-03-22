@@ -87,6 +87,17 @@ export function MarketPage() {
 
   const [hasDragged, setHasDragged] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isAutoScrolling = useRef(false);
+
+  const snapToRight = useCallback(() => {
+    if (scrollRef.current) {
+      isAutoScrolling.current = true;
+      scrollRef.current.scrollLeft = 999999;
+      // 브라우저 렌더링 스크롤 이벤트를 무시하기 위해 플래그 타임아웃
+      setTimeout(() => { isAutoScrolling.current = false; }, 100);
+    }
+  }, []);
+
   const isDragging = useRef(false);
   const startX = useRef(0);
   const scrollLeft = useRef(0);
@@ -360,24 +371,40 @@ export function MarketPage() {
   const chartWidthPct = Math.max(100, (visibleDataLen / 10) * 100);
   const diff = changePrice;
   const isUpTrend = diff >= 0;
-  
+
   useEffect(() => {
-    if (!scrollRef.current || hasDragged) return;
-    const el = scrollRef.current;
-    const scrollToEnd = () => { if (el) el.scrollLeft = 999999; };
-    
+    setHasDragged(false);
+  }, [mode]);
+
+  useEffect(() => {
+    if (!scrollRef.current) return;
+
+    snapToRight();
+
+    const interval = setInterval(() => {
+      if (!hasDragged) snapToRight();
+    }, 200);
+
     const observer = new ResizeObserver(() => {
-      scrollToEnd();
-      setTimeout(scrollToEnd, 50);
+      if (!hasDragged) snapToRight();
     });
-    
-    if (el.firstChild) {
-      observer.observe(el.firstChild as Element);
-    }
-    
-    scrollToEnd(); // initial
-    return () => observer.disconnect();
-  }, [hasDragged, displayChartData.length]);
+    if (scrollRef.current.firstChild) observer.observe(scrollRef.current.firstChild as Element);
+
+    const handleScroll = () => {
+      if (!isAutoScrolling.current) {
+        setHasDragged(true);
+      }
+    };
+    scrollRef.current.addEventListener('scroll', handleScroll);
+
+    return () => {
+      clearInterval(interval);
+      observer.disconnect();
+      if (scrollRef.current) {
+        scrollRef.current.removeEventListener('scroll', handleScroll);
+      }
+    };
+  }, [hasDragged, chartData, mode, snapToRight]);
   const diffSign = diff > 0 ? "+" : diff < 0 ? "-" : "";
   const pctStr = Math.abs(changeRate).toFixed(1);
   const diffStr = `${diffSign}${Math.abs(diff).toLocaleString()}원 (${diffSign}${pctStr}%)`;
@@ -462,7 +489,7 @@ export function MarketPage() {
             {/* 📈 1. 실시간 차트 영역 (w-1/2) */}
             <div className="w-1/2 bg-white border-4 border-slate-300 rounded-3xl p-6 flex flex-col shadow-xl relative overflow-hidden">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-black text-slate-700 flex items-center gap-2">
+                <h2 className="text-2xl font-black text-slate-700 flex items-center gap-2 relative">
                   <Activity className="w-6 h-6 text-slate-500" /> 실시간 시장 동향
                 </h2>
                 <div className="flex items-start gap-3 text-right pr-2 pt-1">
@@ -480,7 +507,7 @@ export function MarketPage() {
                   </div>
                 </div>
               </div>
-              <div className="flex-1 w-full flex flex-col pt-1">
+              <div className="flex-1 w-full flex flex-col pt-1 relative">
                 {/* 📊 차트 합성(Scrolling body + Fixed Y-axis) 영역 */}
                 <div className="flex-1 w-full relative box-border">
                   {/* 스크롤 가능한 차트 영역 */}
@@ -495,7 +522,7 @@ export function MarketPage() {
                     onMouseLeave={handleDragLeave}
                     onMouseUp={handleDragEnd}
                     onMouseMove={handleDragMove}
-                    onScroll={() => setHasDragged(true)}
+                    onWheel={() => setHasDragged(true)}
                     tabIndex={0}
                     onKeyDown={(e) => {
                       if (!scrollRef.current) return;
@@ -506,7 +533,7 @@ export function MarketPage() {
                   >
                     <div style={{ width: `${chartWidthPct}%`, height: '100%', paddingLeft: '60px' }}>
                       <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={displayChartData} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
+                        <AreaChart data={displayChartData} margin={{ top: 10, right: 10, left: 20, bottom: 5 }}>
                           <defs>
                             <linearGradient id="colorPriceUp" x1="0" y1="0" x2="0" y2="1">
                               <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.4} />
@@ -517,7 +544,7 @@ export function MarketPage() {
                               <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                             </linearGradient>
                           </defs>
-                          <XAxis dataKey="time" stroke="#cbd5e1" tick={{ fill: '#94a3b8', fontSize: 11 }} interval="preserveStartEnd" minTickGap={30} />
+                          <XAxis dataKey="time" stroke="#cbd5e1" tick={{ fill: '#94a3b8', fontSize: 11 }} interval="preserveStartEnd" minTickGap={30} height={24} />
                           <YAxis domain={[(dataMin: number) => (dataMin ? Math.max(0, dataMin - 100) : 'auto'), (dataMax: number) => (dataMax ? dataMax + 100 : 'auto')]} hide />
                           <Tooltip
                             contentStyle={{ borderRadius: '12px', border: '2px solid #e2e8f0', fontWeight: 'bold' }}
@@ -541,9 +568,10 @@ export function MarketPage() {
                   </div>
 
                   {/* 좌측 고정 Y축 (Fixed YAxis Overlay) */}
-                  <div className="absolute top-0 left-0 bottom-[24px] w-[60px] z-10 bg-white/95 backdrop-blur shadow-[2px_0_5px_rgba(0,0,0,0.03)] pointer-events-none select-none overflow-hidden pb-1">
+                  <div className="absolute top-0 left-0 bottom-0 w-[60px] z-10 bg-white/95 backdrop-blur shadow-[2px_0_5px_rgba(0,0,0,0.03)] pointer-events-none select-none overflow-hidden border-r border-slate-100">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={displayChartData} margin={{ top: 10, right: 0, left: -20, bottom: 5 }}>
+                        <XAxis hide height={24} />
                         <YAxis
                           domain={[(dataMin: number) => (dataMin ? Math.max(0, dataMin - 100) : 'auto'), (dataMax: number) => (dataMax ? dataMax + 100 : 'auto')]}
                           stroke="#cbd5e1"
@@ -559,9 +587,20 @@ export function MarketPage() {
                   </div>
                 </div>
 
-                {/* 그래프 하단 안내 텍스트 */}
-                <div className={`text-center text-xs mt-3 font-extrabold transition-opacity duration-500 rounded-lg p-1.5 ${hasDragged ? "opacity-0 pointer-events-none" : "text-slate-500 bg-slate-50 opacity-100 border border-slate-200"}`}>
-                  💡 그래프를 드래그해서 과거 기록을 확인하세요!
+                {/* 그래프 하단 안내 및 상호작용 영역 */}
+                <div className="relative mt-2 h-[36px] flex items-center w-full">
+                  <div className={`text-center text-xs font-black transition-opacity duration-500 ${hasDragged ? "opacity-0 pointer-events-none" : "text-slate-300 opacity-100"}`}>
+                    그래프를 드래그해서 과거 기록을 확인하세요!
+                  </div>
+
+                  {hasDragged && (
+                    <button
+                      onClick={() => setHasDragged(false)}
+                      className="absolute right-0 flex items-center gap-2 px-4 py-1.5 bg-rose-500 hover:bg-rose-600 text-white text-[13px] font-black rounded-full shadow-[0_4px_15px_rgba(244,63,94,0.4)] transition-transform hover:scale-105 active:scale-95 animate-bounce cursor-pointer z-40"
+                    >
+                      <Activity className="w-4 h-4" /> 실시간 가격 보기
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -718,7 +757,7 @@ export function MarketPage() {
                         onChange={(e) => setQuantity(Number(e.target.value))}
                         placeholder="수량 입력"
                         className={`w-full bg-slate-50 border-2 rounded-xl px-4 py-3 text-right text-xl font-black focus:outline-none transition-colors ${mode === 'sell' && quantity > warehouseItems.filter(i => i.type === 'product').reduce((a, i) => a + i.quantity, 0)
-                            ? 'border-rose-400 focus:border-rose-500' : 'border-slate-200 focus:border-slate-400'
+                          ? 'border-rose-400 focus:border-rose-500' : 'border-slate-200 focus:border-slate-400'
                           }`}
                       />
                       {mode === 'sell' && (() => {
@@ -740,8 +779,8 @@ export function MarketPage() {
                         onClick={handleConfirm}
                         disabled={price <= 0 || quantity <= 0 || isProcessing}
                         className={`w-full py-4 rounded-3xl font-black text-lg transition-all transform active:scale-95 flex items-center justify-center gap-2 shadow-lg cursor-pointer ${price > 0 && quantity > 0 && !isProcessing
-                            ? mode === "buy" ? "bg-rose-500 hover:bg-rose-600 text-white shadow-rose-200" : "bg-blue-500 hover:bg-blue-600 text-white shadow-blue-200"
-                            : "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
+                          ? mode === "buy" ? "bg-rose-500 hover:bg-rose-600 text-white shadow-rose-200" : "bg-blue-500 hover:bg-blue-600 text-white shadow-blue-200"
+                          : "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
                           }`}
                       >
                         <ShoppingCart className="w-5 h-5" />
@@ -837,7 +876,7 @@ export function MarketPage() {
                                   className="px-2 py-0.5 bg-amber-500 text-white text-[11px] font-black rounded-lg hover:bg-amber-600 transition-colors"
                                 >
                                   수령
-                                </button>
+                                  ㅋ                               </button>
                               )}
                               {trade.isCollected && (
                                 <span className="text-[11px] text-slate-400 font-bold">수령 완료</span>
