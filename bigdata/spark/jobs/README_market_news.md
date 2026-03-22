@@ -2,8 +2,9 @@
 
 `market.order.events`와 `market.trade.events`를 HDFS에서 읽어 최근 시장 변화를 뉴스 후보로 변환하는 Spark 잡입니다.
 
-- 배치 잡: `market_news_signals.py`
+- 배치 잡: `market_news_trigger.py`
 - 자동 1분 스트리밍 잡: `market_news_streaming.py`
+- 후속 생성기 초안: `market_news_generator.py`
 
 ## 감지하는 시그널
 
@@ -26,29 +27,29 @@
 ```bash
 spark-submit \
   --master spark://spark-master:7077 \
-  /opt/spark-apps/market_news_signals.py \
-  --window-minutes 1 \
+  /opt/spark-apps/market_news_trigger.py \
+  --window-minutes 10 \
   --reference-time 2026-03-22T14:30:00+09:00
 ```
 
-기본값이 1분이라서 `--window-minutes`를 생략해도 됩니다.
+기본값이 10분이라서 `--window-minutes`를 생략해도 됩니다.
 
 ```bash
 spark-submit \
   --master spark://spark-master:7077 \
-  /opt/spark-apps/market_news_signals.py
+  /opt/spark-apps/market_news_trigger.py
 ```
 
 ## Structured Streaming 자동 실행
 
-이 잡은 내부적으로 `rate` 스트림을 heartbeat로 사용해서 1분마다 `foreachBatch`를 실행합니다.
+이 잡은 내부적으로 `rate` 스트림을 heartbeat로 사용해서 10분마다 `foreachBatch`를 실행합니다.
 
 ```bash
 spark-submit \
   --master spark://spark-master:7077 \
   /opt/spark-apps/market_news_streaming.py \
-  --trigger-interval "1 minute" \
-  --window-minutes 1 \
+  --trigger-interval "10 minutes" \
+  --window-minutes 10 \
   --checkpoint-path /tmp/checkpoints/market-news-stream
 ```
 

@@ -53,8 +53,8 @@ services:
       /opt/spark/bin/spark-submit
       --master spark://spark-master:7077
       /opt/spark-apps/market_news_streaming.py
-      --trigger-interval "1 minute"
-      --window-minutes 1
+      --trigger-interval "10 minutes"
+      --window-minutes 10
       --checkpoint-path /tmp/checkpoints/market-news-stream
       '
     networks:

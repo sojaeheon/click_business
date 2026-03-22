@@ -81,16 +81,16 @@ spark-submit --master spark://spark-master:7077 /opt/spark-apps/kafka_test.py
 # market 뉴스 후보 생성 배치 잡 실행
 spark-submit \
   --master spark://spark-master:7077 \
-  /opt/spark-apps/market_news_signals.py \
-  --window-minutes 1 \
+  /opt/spark-apps/market_news_trigger.py \
+  --window-minutes 10 \
   --reference-time 2026-03-22T14:30:00+09:00
 ```
 
 ```bash
-# 기본값(1분 윈도우)으로 배치 실행
+# 기본값(10분 윈도우)으로 배치 실행
 spark-submit \
   --master spark://spark-master:7077 \
-  /opt/spark-apps/market_news_signals.py
+  /opt/spark-apps/market_news_trigger.py
 ```
 
 ```bash
@@ -98,9 +98,14 @@ spark-submit \
 spark-submit \
   --master spark://spark-master:7077 \
   /opt/spark-apps/market_news_streaming.py \
-  --trigger-interval "1 minute" \
-  --window-minutes 1 \
+  --trigger-interval "10 minutes" \
+  --window-minutes 10 \
   --checkpoint-path /tmp/checkpoints/market-news-stream
+```
+
+```bash
+# 뉴스 후보를 읽어 LLM 기사 생성/DB 적재 초안 워커 실행
+python3 /opt/spark-apps/market_news_generator.py
 ```
 
 ```bash

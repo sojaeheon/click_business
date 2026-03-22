@@ -4,8 +4,8 @@ from datetime import datetime
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-from market_news_signals import build_parser as build_batch_parser
-from market_news_signals import run_market_news_batch
+from market_news_trigger import build_parser as build_batch_parser
+from market_news_trigger import run_market_news_batch
 
 
 DEFAULT_CHECKPOINT_PATH = "/tmp/checkpoints/market-news-stream"
@@ -57,7 +57,7 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=batch_defaults.cancel_rate_threshold,
     )
-    parser.add_argument("--trigger-interval", default="1 minute")
+    parser.add_argument("--trigger-interval", default="10 minutes")
     parser.add_argument("--checkpoint-path", default=DEFAULT_CHECKPOINT_PATH)
     parser.add_argument("--rows-per-second", type=int, default=1)
     return parser.parse_args()

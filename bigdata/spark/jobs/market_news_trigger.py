@@ -18,7 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--order-path", default=DEFAULT_ORDER_PATH)
     parser.add_argument("--trade-path", default=DEFAULT_TRADE_PATH)
     parser.add_argument("--output-path", default=DEFAULT_OUTPUT_PATH)
-    parser.add_argument("--window-minutes", type=int, default=1)
+    parser.add_argument("--window-minutes", type=int, default=10)
     parser.add_argument("--reference-time", default=None)
     parser.add_argument("--min-trade-qty", type=float, default=200.0)
     parser.add_argument("--min-order-qty", type=float, default=300.0)
