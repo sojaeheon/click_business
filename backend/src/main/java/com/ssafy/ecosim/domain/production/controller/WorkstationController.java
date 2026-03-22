@@ -148,6 +148,15 @@ public class WorkstationController {
         return ApiResponse.success(response);
     }
 
+    @Operation(summary = "일꾼 속도 가중치 조회",
+               description = "일꾼 아이템 ID를 받아 속도 가중치(speedMultiplier)를 반환합니다. 프론트에서 수량 변경 시 로컬 계산에 사용합니다.")
+    @GetMapping("/worker-speed")
+    public ApiResponse<Double> getWorkerSpeed(
+            @Parameter(description = "일꾼 아이템 ID", example = "4") @RequestParam Long itemId) {
+        Double multiplier = workstationService.getWorkerSpeedMultiplierByItemId(itemId);
+        return ApiResponse.success(multiplier);
+    }
+
     private Company getCompanyByUserId(Long userId) {
         return companyRepository.findByUser_Id(userId)
                 .orElseThrow(() -> new IllegalArgumentException("이 유저는 아직 회사를 소유하고 있지 않습니다."));
