@@ -59,6 +59,7 @@ public class WarehouseService {
             slots.add(new WarehouseSlot(saved, i));
         }
         warehouseSlotRepository.saveAll(slots);
+        saved.getSlots().addAll(slots); // 동일 트랜잭션 내 1차 캐시에도 반영
 
         return saved;
     }
