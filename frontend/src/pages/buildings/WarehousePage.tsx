@@ -283,14 +283,27 @@ export function WarehousePage() {
   const localPercent = localUnlocked > 0 ? Math.min((localUsed / localUnlocked) * 100, 100) : 0;
   const visibleCount = Math.max(15, Math.ceil(localUnlocked / 3) * 3 + (localUnlocked % 3 === 0 && localUnlocked >= 15 ? 3 : 0));
   const hasAnyItem = totalMaterial > 0 || totalProduct > 0;
+  const industry = useGameStore(s => s.industry);
 
   const handleGetTestItems = async () => {
     try {
-      await WarehouseAPI.addTestItem({ itemId: 1, amount: 100 });
+      let itemId = 3; // 금광업 -> 금 드릴
+      let addAmount = 10; // 금 드릴은 10개가 1슬롯 최대
+
+      if (industry === "금 제련업") { 
+        itemId = 1; // 금광석
+        addAmount = 50; // 금광석 최대적재량 고려
+      } else if (industry === "제조업") { 
+        itemId = 2; // 금괴
+        addAmount = 50; 
+      }
+
+      await WarehouseAPI.addTestItem({ itemId, amount: addAmount });
       await useGameStore.getState().fetchCompanyData(1);
-      useAlertStore.getState().openAlert("테스트 원자재 100개가 창고에 지급되었습니다!", "성공");
-    } catch {
-      useAlertStore.getState().openAlert("테스트 자원 지급에 실패했습니다.", "오류");
+      useAlertStore.getState().openAlert(`테스트 자재 ${addAmount}개가 창고에 지급되었습니다!`, "성공");
+    } catch (e: any) {
+      console.error("Test item fail:", e);
+      useAlertStore.getState().openAlert(e?.response?.data?.message || "창고 빈 슬롯 부족 혹은 통신 오류로 실패했습니다.", "오류");
     }
   };
 

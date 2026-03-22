@@ -183,19 +183,16 @@ export const useGameStore = create<GameState>()(
       activeModal: null,
       selectedBuilding: null,
       activeBuildingPage: null,
-      bankData: { loanRate: 5.5, depositRate: 2.3, currentLoan: 0, currentDeposit: 0 },
+      bankData: { loanRate: 0, depositRate: 0, currentLoan: 0, currentDeposit: 0 },
       warehouseItems: [],
-      hrData: { currentLevel: 1, expectedLevel: 2, successRate: 70, materialCurrent: 1, materialMax: 2 },
+      hrData: { currentLevel: 0, expectedLevel: 0, successRate: 0, materialCurrent: 0, materialMax: 0 },
       isLoading: false,
       workstationId: 0,  // ✅ 실제 DB workstation ID (0 = 아직 불러옴)
-      // 인벤토리 아이템 (기본 캐릭터 lv1 일꾼 1개 지급)
-      inventoryItems: [
-        { id: "inv_default_1", type: "worker_lv1", name: "초보 일꾼", icon: "⛏️", quantity: 1, level: 1 },
-      ],
+      inventoryItems: [],
       warehouseExpandTickets: 0,
       inventoryExpandTickets: 0,
 
-      equippedWorkerId: "inv_default_1",
+      equippedWorkerId: null,
       hasNewWorker: false,
       setEquippedWorkerId: (id) => set({ equippedWorkerId: id }),
       setHasNewWorker: (v) => set({ hasNewWorker: v }),
@@ -461,9 +458,9 @@ export const useGameStore = create<GameState>()(
           // 백엔드 API 종합 호출 (workstationId도 함께 초기화)
           const [companyRes, warehouseRes, inventoryRes, bankRes, workstationIdRes] = await Promise.all([
             CompanyAPI.getStatus(),
-            WarehouseAPI.getWarehouseItems(companyId),
-            InventoryAPI.getInventory(companyId),
-            BankAPI.getSummary(companyId),
+            WarehouseAPI.getWarehouseItems().catch(() => ({ data: [] })),
+            InventoryAPI.getInventory().catch(() => ({ data: [] })),
+            BankAPI.getSummary(companyId).catch(() => ({ data: { loanRate: 0, depositRate: 0, currentLoan: 0, currentDeposit: 0 } })),
             WorkstationAPI.getMyId().catch(() => ({ data: 1 })), // 에러시 1로 폴백
           ]);
 

@@ -16,15 +16,7 @@ const UPGRADE_TABLE: Record<number, { success: number; stay: number; down: numbe
 };
 type UpgradeResult = "success" | "stay" | "down" | "reset";
 
-function rollUpgrade(lv: number): { result: UpgradeResult; newLevel: number } {
-  const t = UPGRADE_TABLE[lv];
-  if (!t || lv >= 6) return { result: "stay", newLevel: lv };
-  const r = Math.random();
-  if (r < t.success) return { result: "success", newLevel: lv + 1 };
-  if (r < t.success + t.stay) return { result: "stay", newLevel: lv };
-  if (r < t.success + t.stay + t.down) return { result: "down", newLevel: Math.max(1, lv - 1) };
-  return { result: "reset", newLevel: 1 };
-}
+
 
 // ── 레벨별 테두리 색상 ──
 const LEVEL_COLORS: Record<number, string> = {
@@ -104,10 +96,13 @@ export function HRPage() {
     let res: { result: UpgradeResult; newLevel: number };
     try {
       const api = await HRAPI.upgradeWorker({ companyId: 1, currentLevel: lv });
-      if (api.data?.result && api.data?.newLevel != null) res = { result: api.data.result, newLevel: api.data.newLevel };
-      else throw new Error();
-    } catch {
-      res = rollUpgrade(lv);
+      res = { result: api.data.result, newLevel: api.data.newLevel };
+    } catch (e: any) {
+      useAlertStore.getState().openAlert(e?.response?.data?.message || "서버 연동 실패. (미구현 또는 오류)", "경고");
+      setPhase("idle");
+      setShakeClass("");
+      setBusy(false);
+      return;
     }
 
     // 4) 결과 표시
