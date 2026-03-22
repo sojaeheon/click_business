@@ -9,6 +9,7 @@ import com.ssafy.ecosim.domain.inventory.repository.EquipmentInventoryRepository
 import com.ssafy.ecosim.domain.inventory.repository.InventoryRepository;
 import com.ssafy.ecosim.domain.inventory.repository.InventorySlotRepository;
 import com.ssafy.ecosim.domain.inventory.service.WarehouseService;
+import com.ssafy.ecosim.domain.item.entity.Item;
 import com.ssafy.ecosim.domain.item.entity.ItemType;
 import com.ssafy.ecosim.domain.item.repository.ItemRepository;
 import com.ssafy.ecosim.domain.notification.dto.NotificationEvent;
@@ -258,6 +259,18 @@ public class WorkstationService {
                                 builder.outputItemId(item.getId())
                                        .outputItemName(item.getName())
                                        .outputQuantity(workstation.getProducedQuantity())
+                        );
+                }
+
+                Company company = workstation.getCompany();
+                builder.baseRequirement(company.getIndustryType().getBaseRequirement())
+                       .baseYield(company.getIndustryType().getBaseYield());
+
+                Long inputItemId = company.getInputItemId();
+                if (inputItemId != null) {
+                        itemRepository.findById(inputItemId).ifPresent(item ->
+                                builder.inputItemId(item.getId())
+                                       .inputItemName(item.getName())
                         );
                 }
 
