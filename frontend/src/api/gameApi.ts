@@ -147,7 +147,6 @@ export const MarketAPI = {
     return apiClient.post(`/market/orders/${tradeHistoryId}`);
   },
 
-  /** develop 기준 URL: /market/chart, param: item_id */
   getMarketChart: (itemId: number) => apiClient.get('/market/chart', { params: { item_id: itemId } }),
 };
 
@@ -289,4 +288,13 @@ export const NotificationAPI = {
   markRead: async (id: number): Promise<void> => {
     await apiClient.patch(`/notifications/${id}/read`);
   },
+};
+
+// ==================== News (develop에서 추가) ====================
+export const NewsAPI = {
+  /** 뉴스 목록 조회 (/api/news) */
+  getNews: async (): Promise<any[]> => {
+    const res = await apiClient.get('/api/news', { baseURL: '/' });
+    return res.data?.data ?? [];
+  }
 };
