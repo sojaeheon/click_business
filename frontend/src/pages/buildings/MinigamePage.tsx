@@ -3,7 +3,7 @@ import { Lock, Timer } from "lucide-react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
-import { useGameStore, pickReward } from "../../store/gameStore";
+import { useGameStore } from "../../store/gameStore";
 import type { InventoryItem } from "../../store/gameStore";
 import { MinigameAPI } from "../../api/gameApi";
 import { BackButton } from "../../app/components/ui/backbutton";
@@ -145,7 +145,6 @@ export function MinigamePage() {
     }
 
     try {
-      useGameStore.setState((prev) => ({ money: prev.money - 100000 }));
       setGameState("playing");
       setTimeLeft(10);
       setClicksLeft(TOTAL_CLICKS);
@@ -194,29 +193,49 @@ export function MinigamePage() {
       const next = Math.max(0, prev - damage);
       if (next === 0 && prev > 0) {
         setGameState("success");
-        // 랜덤 보상 뽑기 (확률 가중치 로직 적용)
-        const randomReward = pickReward();
-        setRewardItem(randomReward);
+        setIsProcessing(true);
         
-        // ✨ 백엔드 DB 연동 강제 삽입 (디버깅 용)
-        const getDbItemId = (type: string, level?: number) => {
-          if (type.startsWith("worker_lv")) return 1000 + (level || 1);
-          if (type === "ticket_inventory") return 1011;
-          if (type === "ticket_warehouse") return 1012;
-          return 1001; // fallback to lv1 worker
-        };
-        const dbItemId = getDbItemId(randomReward.type, randomReward.level);
-        
-        import("../../api/gameApi").then(({ InventoryAPI }) => {
-          InventoryAPI.addTestItem({ itemId: dbItemId, amount: randomReward.quantity || 1 })
-            .then(() => useGameStore.getState().fetchCompanyData(1))
-            .catch((err: any) => {
-               console.error("아이템 강제 저장 통신 실패:", err);
-               useGameStore.getState().fetchCompanyData(1);
-            });
-        });
+        MinigameAPI.claimReward({ companyId: 1, clicks: TOTAL_CLICKS, isFever })
+          .then((res) => {
+            const data = res.data;
+            let typeStr = "";
+            let iconStr = "🎁";
+            if (data.itemType === "EQUIPMENT") {
+               typeStr = `worker_lv${data.workerLevel || 1}`;
+               if (data.workerLevel === 1) iconStr = "⛏️";
+               else if (data.workerLevel === 2) iconStr = "🔥";
+               else if (data.workerLevel === 3) iconStr = "🔨";
+               else if (data.workerLevel === 4) iconStr = "🏹";
+               else if (data.workerLevel === 5) iconStr = "🌟";
+               else if (data.workerLevel === 6) iconStr = "👑";
+            } else {
+               if (data.itemName.includes("창고")) {
+                  typeStr = "ticket_warehouse";
+                  iconStr = "📦";
+               } else {
+                  typeStr = "ticket_inventory";
+                  iconStr = "🎒";
+               }
+            }
 
-        MinigameAPI.claimReward({ companyId: 1, clicks: TOTAL_CLICKS, isFever }).catch(console.error);
+            setRewardItem({
+              type: typeStr as any,
+              name: data.itemName,
+              quantity: 1,
+              icon: iconStr,
+              level: data.workerLevel || undefined
+            });
+
+            useGameStore.getState().fetchCompanyData(1);
+          })
+          .catch((err) => {
+             console.error("미니게임 보상 수령 실패:", err);
+             // useAlertStore.getState().openAlert(err?.response?.data?.message || "보상 처리 오류", "오류");
+             // 실패해도 창 닫기나 잠금 처리 등 필요시 추가
+          })
+          .finally(() => {
+             setIsProcessing(false);
+          });
       }
       return next;
     });

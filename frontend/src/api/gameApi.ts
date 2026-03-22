@@ -46,16 +46,7 @@ export const CompanyAPI = {
         }
       };
     } catch (err) {
-      console.warn("API 연동 실패! CompanyAPI.getStatus 목업 데이터 사용", err);
-      return {
-        data: {
-          name: undefined,
-          industry_type: undefined,
-          cash: undefined,
-          total_asset: undefined,
-          slots: undefined
-        }
-      };
+      throw err;
     }
   },
 
@@ -69,9 +60,7 @@ export const CompanyAPI = {
       });
       return { data: res.data?.data ?? { success: true } };
     } catch (err) {
-      console.warn("CompanyAPI.create 목업 폴백:", err);
-      await mockDelay(300);
-      return { data: { success: true, mock: true } };
+      throw err;
     }
   },
 };
@@ -79,14 +68,7 @@ export const CompanyAPI = {
 // 내 작업장 ID 세션 캐시 (한 번 조회 후 재사용)
 let _cachedWorkstationId: number | null = null;
 
-// 💡 작업장(Workstation) 백엔드 연동 전 임시 테스트용 목업 상태
-let mockWorkIsWorking = false;
-let mockWorkProgress = 0;      // 0 ~ 100 퍼센트
-let mockWorkTotalQuantity = 0; // 총 생산 예상 개수 (유저 입력값)
-let mockWorkUncollected = 0;   // 생산 완료된 미수령 아이템 개수
-let mockWorkInterval: ReturnType<typeof setInterval> | null = null;
-let mockWorkStartedAt = 0;     // 작업 시작 timestamp(ms)
-let mockWorkTotalMs = 0;       // 총 소요 예상 시간(ms)
+
 
 export const WorkstationAPI = {
   // 내 작업장 ID를 가져오는 헬퍼 (세션 중 최초 1회만 API 호출)
@@ -132,79 +114,20 @@ export const WorkstationAPI = {
         }
       };
     } catch (err) {
-      console.warn("API 연동 실패! WorkstationAPI.getStatus 목업 데이터 사용", err);
-      const elapsed = mockWorkIsWorking ? Date.now() - mockWorkStartedAt : 0;
-      const remaining = mockWorkIsWorking ? Math.max(0, mockWorkTotalMs - elapsed) : 0;
-      return {
-        data: {
-          isWorking: mockWorkIsWorking,
-          progress: Math.min(100, mockWorkProgress),
-          producedQuantity: mockWorkUncollected,
-          totalQuantity: mockWorkTotalQuantity || 0,
-          remainingMs: mockWorkIsWorking ? remaining : null,
-        }
-      };
+      // 프론트 자체 계산 금지
+      throw err;
     }
   },
-  // data.quantity = 유저가 요청한 생산 개수 (개 단위)
-  // 시간 = (quantity / resProd) × 60초 비례 계산
   start: async (data: { companyId: number; recipeId: number; quantity: number; workerId: number }) => {
-    let resProd = 1;
-    let reqMat = 1;
     try {
-      const { useGameStore } = await import('../store/gameStore');
-      const names = useGameStore.getState().getIndustryItemNames();
-      resProd = names.resProd;
-      reqMat = names.reqMat;
-    } catch (e) { }
-
-    // 개수 비례 계산 (사이클 올림 없이 qty 그대로 반영)
-    const ratio = data.quantity / resProd;
-    const reserveQty = Math.ceil(ratio * reqMat); // 재료 (API reserve용)
-
-    try {
-      // ✅ 실제 연동 /api/v1/workstations/{workstation_id}/reserve (예약 및 가동)
-      // reserve API에는 재료 수량(reserveQty)을 전달해야 함 (제품 수량 data.quantity 아님)
+      // ✅ 유저가 입력한 data.quantity (개수) 그대로 백엔드에 요청. 프론트엔드 연산(ratio/resProd 등) 제거
       const wsId = await WorkstationAPI.getMyId();
-      await apiClient.post(`/workstations/${wsId}/reserve`, { quantity: reserveQty });
+      await apiClient.post(`/workstations/${wsId}/reserve`, { quantity: data.quantity });
       await apiClient.post(`/workstations/${wsId}/toggle`);
       return { data: { success: true, message: "작업이 시작되었습니다." } };
     } catch (err) {
-      console.warn("API 연동 실패! WorkstationAPI.start 목업 데이터 사용", err);
-      await mockDelay();
-
-      // 비례 시간: qty/resProd × 60000ms
-      const totalMs = Math.ceil(ratio * 60000);
-      mockWorkTotalQuantity = data.quantity; // 목표 개수 = 유저 입력 그대로
-      mockWorkUncollected = 0;
-      mockWorkIsWorking = true;
-      mockWorkProgress = 0;
-      mockWorkStartedAt = Date.now();
-      mockWorkTotalMs = totalMs;
-
-      let producedSoFar = 0;
-      if (mockWorkInterval) { clearInterval(mockWorkInterval); mockWorkInterval = null; }
-      const intervalMs = 500;
-      const totalTicks = totalMs / intervalMs;
-      const tickPercent = 100 / totalTicks;
-
-      mockWorkInterval = setInterval(() => {
-        if (mockWorkProgress < 100) {
-          mockWorkProgress += tickPercent;
-          if (mockWorkProgress > 100) mockWorkProgress = 100;
-          const expectedItems = Math.floor((mockWorkProgress / 100) * mockWorkTotalQuantity);
-          const newlyProduced = expectedItems - producedSoFar;
-          if (newlyProduced > 0) {
-            mockWorkUncollected += newlyProduced;
-            producedSoFar = expectedItems;
-          }
-        } else {
-          if (mockWorkInterval) { clearInterval(mockWorkInterval); mockWorkInterval = null; }
-          mockWorkIsWorking = false;
-        }
-      }, intervalMs);
-
-      return { data: { success: true, message: "작업이 시작되었습니다. (Mock)" } };
+      // 프론트 임의 계산 로직 삭제
+      throw err;
     }
   },
   process: async (workstationId: number = 1) => {
@@ -230,20 +153,7 @@ export const WorkstationAPI = {
       await apiClient.post(`/workstations/${wsId}/harvest`);
       return { data: { success: true, message: "수령 완료" } };
     } catch (err) {
-      console.warn("API 연동 실패! WorkstationAPI.collect 목업 데이터 사용", err);
-      await mockDelay();
-
-      // 중간 수령 처리: 미수령 개수만 0으로 비움 (진행도는 그대로, 아직 작업중이면 계속 작업)
-      mockWorkUncollected = 0;
-
-      // 이미 100% 진행된 상태에서 수납했다면 작업 완료된 것으로 보고 상태 리셋
-      if (mockWorkProgress >= 100) {
-        mockWorkProgress = 0;
-        mockWorkIsWorking = false;
-      }
-
-      return { data: { success: true, message: "수령 완료 (Mock)" } };
-
+      throw err;
     }
   }
 };

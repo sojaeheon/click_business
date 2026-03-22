@@ -139,10 +139,14 @@ export const IndustrySelectionPage = () => {
         companyName: companyName.trim(),
         industryType: mappedIndustry,
       });
-      // ✅ 공장 생성 (백엔드에서 회사 생성 시 공장 자동생성이 제거되었으므로 여기서 바로 호출)
-      await WorkstationAPI.create({ companyId: 1 });
+      // 프론트엔드에서 회사 생성 직후 직접 작업장 생성 API 호출! (백엔드 CompanyService.java 수정을 피하기 위함)
+      if (created.data && created.data.id != null) {
+        await WorkstationAPI.create({ companyId: created.data.id });
+      } else {
+        await WorkstationAPI.create({ companyId: 1 });
+      }
     } catch (e) {
-      console.warn("회사 생성 API 실패, 목업으로 진행:", e);
+      console.warn("회사 또는 작업장 생성 API 실패:", e);
     } finally {
       setCompanyInfo(companyName.trim(), selectedIndustry);
       setIsSubmitting(false);

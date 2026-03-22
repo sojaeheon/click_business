@@ -216,10 +216,10 @@ export function WarehousePage() {
       const res = await WarehouseAPI.getWarehouseItems(1);
       await useGameStore.getState().fetchCompanyData(1);
       const items = useGameStore.getState().warehouseItems;
-      const backendMaxSlots = Math.max(0, ...items.map(i => (i as any).slotIndex || 0)) + 6; // dummy estimation
-      const totalDisplay = backendMaxSlots + (6 - (backendMaxSlots % 6 === 0 ? 6 : backendMaxSlots % 6)) + 6;
+      const maxSlots = useGameStore.getState().warehouseMaxSlots || 6;
+      const totalDisplay = maxSlots + 6; 
       const displaySlots: SlotData[] = Array(totalDisplay).fill(null).map((_, i) => ({
-        id: i, dbSlotIndex: i, item: null, locked: i > 5 // Just mock locked for now since backend doesn't send maxSlots easily
+        id: i, dbSlotIndex: i, item: null, locked: i >= maxSlots 
       }));
       items.forEach(item => {
         const si = (item as any).slotIndex;
@@ -339,6 +339,7 @@ export function WarehousePage() {
       }
 
       await WarehouseAPI.addTestItem({ itemId, amount: addAmount });
+      await fetchSlots(); // 👈 추가된 부분: 로컬 슬롯 상태도 새로고침
       await useGameStore.getState().fetchCompanyData(1);
       useAlertStore.getState().openAlert(`테스트 자재 ${addAmount}개가 창고에 지급되었습니다!`, "성공");
     } catch (e: any) {

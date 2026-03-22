@@ -46,38 +46,7 @@ export interface InventoryItem {
   slotIndex?: number;
 }
 
-// ─── 미니게임 보상 가중치 풀 ──────────────────────────────────────────────
 
-// 없으면 아래 프론트 기본값 사용 (weight sum = 100)
-type RewardEntry = { item: Omit<InventoryItem, "id">; weight: number };
-
-export const REWARD_WEIGHT_POOL: RewardEntry[] = [
-  { item: { type: "worker_lv1", name: "초보 일꾼", icon: "⛏️", quantity: 1, level: 1 }, weight: 70 },
-  { item: { type: "ticket_inventory", name: "인벤토리 확장권", icon: "🎒", quantity: 1 }, weight: 24.7 },
-  { item: { type: "ticket_warehouse", name: "창고 확장권", icon: "📦", quantity: 1 }, weight: 4.7 },
-  { item: { type: "worker_lv2", name: "견습 일꾼", icon: "🔥", quantity: 1, level: 2 }, weight: 0.4 },
-  { item: { type: "worker_lv3", name: "숙련 일꾼", icon: "🔨", quantity: 1, level: 3 }, weight: 0.18 },
-  { item: { type: "worker_lv4", name: "마스터 일꾼", icon: "🏹", quantity: 1, level: 4 }, weight: 0.01 },
-  { item: { type: "worker_lv5", name: "에픽 일꾼", icon: "🗡️", quantity: 1, level: 5 }, weight: 0.009 },
-  { item: { type: "worker_lv6", name: "레전드 일꾼", icon: "👑", quantity: 1, level: 6 }, weight: 0.001 },
-];
-
-/**
- * 미니게임 보상 1개를 가중치 확률로 랜덤 픽.
- * ⚠️ 서버에서 결과를 내려주면 API response로 대체하세요.
- */
-export function pickReward(pool = REWARD_WEIGHT_POOL): Omit<InventoryItem, "id"> {
-  const totalWeight = pool.reduce((s, e) => s + e.weight, 0);
-  let rand = Math.random() * totalWeight;
-  for (const entry of pool) {
-    rand -= entry.weight;
-    if (rand <= 0) return entry.item;
-  }
-  return pool[0].item;
-}
-
-// 하위 호환성 (기존 코드가 import하는 REWARD_ITEM_POOL)
-export const REWARD_ITEM_POOL: Omit<InventoryItem, "id">[] = REWARD_WEIGHT_POOL.map(e => e.item);
 
 export interface HRData { currentLevel: number; expectedLevel: number; successRate: number; materialCurrent: number; materialMax: number; }
 
@@ -139,9 +108,6 @@ export interface GameState {
   closeBuildingPage: () => void;
 
   setCompanyInfo: (name: string, industry: string) => void;
-  updateMoney: (amount: number) => boolean;
-  updateMaterial: (amount: number) => number;
-  updateProduct: (amount: number) => number;
   addAlert: (alertData: Omit<Alert, 'id' | 'timeAgo' | 'read'>) => void;
   markAllAlertsAsRead: () => void;
 
@@ -250,94 +216,19 @@ export const useGameStore = create<GameState>()(
         return { material: "재료", product: "생산품", reqMat: 1, resProd: 1, batchSize: 5 };
       },
 
-      updateMoney: (amount) => {
-        if (get().money + amount < 0) return false;
-        set(state => ({ money: state.money + amount }));
-        return true;
-      },
 
-      updateMaterial: (amount) => {
-        let actualAdded = amount;
-        set(state => {
-          const newItems = [...state.warehouseItems];
-          const matIdx = newItems.findIndex(i => i.type === "material");
-          const currentQty = matIdx >= 0 ? newItems[matIdx].quantity : 0;
-
-          if (amount < 0) {
-            if (currentQty + amount < 0) return state;
-            actualAdded = amount;
-          } else {
-            let slotsByOther = 0;
-            state.warehouseItems.forEach(i => {
-              if (i.type !== "material") slotsByOther += Math.ceil(i.quantity / MAX_PER_SLOT);
-            });
-            const slotsAvailable = state.warehouseMaxSlots - slotsByOther;
-            let freeSpace = 0;
-            if (slotsAvailable <= 0) {
-              const currentSlots = Math.ceil(currentQty / MAX_PER_SLOT);
-              freeSpace = Math.max(0, (currentSlots * MAX_PER_SLOT) - currentQty);
-            } else {
-              freeSpace = Math.max(0, (slotsAvailable * MAX_PER_SLOT) - currentQty);
-            }
-            actualAdded = Math.min(amount, freeSpace);
-          }
-
-          if (matIdx >= 0) {
-            newItems[matIdx] = { ...newItems[matIdx], quantity: currentQty + actualAdded, name: get().getIndustryItemNames().material };
-          } else if (actualAdded > 0) {
-            newItems.push({ id: "m1", type: "material", quantity: actualAdded, name: get().getIndustryItemNames().material });
-          }
-          return { warehouseItems: newItems };
-        });
-        return actualAdded;
-      },
-
-      updateProduct: (amount) => {
-        let actualAdded = amount;
-        set(state => {
-          const newItems = [...state.warehouseItems];
-          const pIdx = newItems.findIndex(i => i.type === "product");
-          const currentQty = pIdx >= 0 ? newItems[pIdx].quantity : 0;
-
-          if (amount < 0) {
-            if (currentQty + amount < 0) return state;
-            actualAdded = amount;
-          } else {
-            let slotsByOther = 0;
-            state.warehouseItems.forEach(i => {
-              if (i.type !== "product") slotsByOther += Math.ceil(i.quantity / MAX_PER_SLOT);
-            });
-            const slotsAvailable = state.warehouseMaxSlots - slotsByOther;
-            let freeSpace = 0;
-            if (slotsAvailable <= 0) {
-              const currentSlots = Math.ceil(currentQty / MAX_PER_SLOT);
-              freeSpace = Math.max(0, (currentSlots * MAX_PER_SLOT) - currentQty);
-            } else {
-              freeSpace = Math.max(0, (slotsAvailable * MAX_PER_SLOT) - currentQty);
-            }
-            actualAdded = Math.min(amount, freeSpace);
-          }
-
-          if (pIdx >= 0) {
-            newItems[pIdx] = { ...newItems[pIdx], quantity: currentQty + actualAdded, name: get().getIndustryItemNames().product };
-          } else if (actualAdded > 0) {
-            newItems.push({ id: "p1", type: "product", quantity: actualAdded, name: get().getIndustryItemNames().product });
-          }
-          return { warehouseItems: newItems };
-        });
-        return actualAdded;
-      },
 
       fetchCompanyData: async (companyId: number) => {
         set({ isLoading: true });
         try {
           // 백엔드 API 종합 호출 (workstationId도 함께 초기화)
-          const [companyRes, warehouseRes, inventoryRes, bankRes, workstationIdRes] = await Promise.all([
+          const [companyRes, warehouseRes, inventoryRes, bankRes, workstationIdRes, wsStatusRes] = await Promise.all([
             CompanyAPI.getStatus(),
             WarehouseAPI.getWarehouseItems(1).catch(() => ({ data: [], maxSlots: undefined })),
             InventoryAPI.getInventory(companyId).catch(() => ({ data: [], maxSlots: undefined })),
             BankAPI.getSummary(companyId).catch(() => ({ data: { loanRate: 0, depositRate: 0, currentLoan: 0, currentDeposit: 0 } })),
             WorkstationAPI.getMyId().catch(() => 1), // 에러시 1로 폴백
+            WorkstationAPI.getStatus().catch(() => ({ data: null }))
           ]);
 
           const realData = companyRes.data;
@@ -380,6 +271,13 @@ export const useGameStore = create<GameState>()(
             },
             debt: bankRes.data.currentLoan,
             workstationId: typeof workstationIdRes === "number" ? workstationIdRes : (workstationIdRes as any)?.data ?? 0,  // ✅ 실제 DB ID 저장
+            workstationState: {
+              ...get().workstationState,
+              isWorking: wsStatusRes.data?.isWorking ?? false,
+              producedCount: wsStatusRes.data?.producedQuantity ?? 0,
+              storedCount: wsStatusRes.data?.producedQuantity ?? 0, 
+              requestedQty: wsStatusRes.data?.totalQuantity ?? 0,
+            },
             isLoading: false
           });
         } catch (error) {

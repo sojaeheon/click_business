@@ -161,7 +161,7 @@ export function InventoryModal() {
                 const canAffordPurchase = money >= nextSlotCost;
 
                 return (
-                  <button
+                  <div
                     key={'slot-' + idx}
                     draggable={!isLocked && !!item}
                     onDragStart={(e) => handleDragStart(e, idx)}
@@ -263,7 +263,7 @@ export function InventoryModal() {
                         <Trash2 className="w-4 h-4 text-red-500" />
                       </button>
                     )}
-                  </button>
+                  </div>
                 );
               })}
             </div>

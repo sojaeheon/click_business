@@ -138,21 +138,7 @@ export function MarketPage() {
 
   const handleConfirm = async () => {
     if (quantity <= 0 || price <= 0 || !mode) return;
-
-    // 로컬 프리체크 (UX용, 실제 검증은 백엔드에서 수행)
-    if (mode === "buy") {
-      if (money < totalAmount) {
-        useAlertStore.getState().openAlert("잔액이 부족합니다.", "안내");
-        return;
-      }
-    } else if (mode === "sell") {
-      const prodList = warehouseItems.filter(i => i.type === "product");
-      const currentCount = prodList.reduce((acc, i) => acc + i.quantity, 0);
-      if (currentCount < quantity) {
-        useAlertStore.getState().openAlert("창고에 판매할 생산품이 부족합니다.", "판매 불가");
-        return;
-      }
-    }
+    setIsProcessing(true);
 
     setIsProcessing(true);
     try {
