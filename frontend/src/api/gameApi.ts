@@ -388,25 +388,39 @@ export const InventoryAPI = {
           }
   };
 
-  // ==================== Notifications ====================
-  export const NotificationAPI = {
-    /** 과거 알림 목록 조회 */
-    getAll: async (): Promise<import('./types').NotificationResponse[]> => {
-      try {
-        const res = await apiClient.get('/notifications');
-        return res.data?.data ?? [];
-      } catch (err) {
-        console.warn('NotificationAPI.getAll 실패, 빈 배열 반환', err);
-        return [];
-      }
-    },
+// ==================== Notifications ====================
+export const NotificationAPI = {
+  /** 과거 알림 목록 조회 */
+  getAll: async (): Promise<import('./types').NotificationResponse[]> => {
+    try {
+      const res = await apiClient.get('/notifications');
+      return res.data?.data ?? [];
+    } catch (err) {
+      console.warn('NotificationAPI.getAll 실패, 빈 배열 반환', err);
+      return [];
+    }
+  },
 
-    /** 특정 알림 읽음 처리 */
-    markRead: async (id: number): Promise<void> => {
-      try {
-        await apiClient.patch(`/notifications/${id}/read`);
-      } catch (err) {
-        console.warn('NotificationAPI.markRead 실패', err);
-      }
-    },
-  };
+  /** 특정 알림 읽음 처리 */
+  markRead: async (id: number): Promise<void> => {
+    try {
+      await apiClient.patch(`/notifications/${id}/read`);
+    } catch (err) {
+      console.warn('NotificationAPI.markRead 실패', err);
+    }
+  },
+};
+
+// ==================== News ====================
+export const NewsAPI = {
+  /** 뉴스 목록 조회 (/api/news) */
+  getNews: async (): Promise<any[]> => {
+    try {
+      const res = await apiClient.get('/api/news', { baseURL: '/' });
+      return res.data?.data ?? [];
+    } catch (err) {
+      console.warn('NewsAPI.getNews 실패', err);
+      return [];
+    }
+  }
+};
