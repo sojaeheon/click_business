@@ -44,7 +44,7 @@ public class UserOrderController {
         return ResponseEntity.ok("주문 취소 이벤트가 발행되었습니다.");
     }
 
-    @Operation(summary = "체결 결과 수령", description = "체결된 거래 결과를 수령합니다. 매수 체결 시 인벤토리에 아이템이 지급되고, 매도 체결 시 회사 잔고에 현금이 입금됩니다.")
+    @Operation(summary = "체결 결과 수령", description = "체결된 거래 결과를 수령합니다.")
     @PostMapping("/{tradeHistoryId}")
     public ResponseEntity<ApiResponse<Void>> collectTrade(
             @AuthenticationPrincipal UserDetails userDetails,
@@ -53,5 +53,16 @@ public class UserOrderController {
         Long userId = Long.parseLong(userDetails.getUsername());
         tradeCollectService.collect(userId, tradeHistoryId);
         return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    @Operation(summary = "내 대기 주문 내역 조회", description = "현재 사용자의 회사에서 낸 미체결 주문(PENDING, PARTIALLY_COMPLETED) 목록을 반환합니다.")
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<java.util.List<com.ssafy.ecosim.domain.market.dto.response.UserOrderResponseDto>>> getMyPendingOrders(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = "조회할 아이템 ID", example = "1") @RequestParam("item_id") Integer itemId) {
+
+        Long userId = Long.parseLong(userDetails.getUsername());
+        java.util.List<com.ssafy.ecosim.domain.market.dto.response.UserOrderResponseDto> response = userOrderService.getMyPendingOrders(userId, itemId);
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 }
