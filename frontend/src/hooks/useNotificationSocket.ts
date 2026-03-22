@@ -34,10 +34,25 @@ export function useNotificationSocket() {
       onConnect: () => {
         console.log('[WSNotification] 연결됨');
 
+        // 최근에 발생한 알림을 기억하여 중복 무한 알림 방지 (핵심 로직)
+        const recentMessages = new Set<string>();
+
         // 개인 알림 큐 구독
         client.subscribe('/user/queue/notifications', (frame) => {
           try {
             const data = JSON.parse(frame.body);
+            
+            // 💡 백엔드 버그로 인해 똑같은 메시지가 계속 오는 것을 프론트단에서 필터링
+            if (recentMessages.has(data.message)) {
+              return; // 이미 보여준 알림은 무시
+            }
+            
+            // 새 메시지 등록 후, 60초 지나면 캐시 큐에서 삭제해 다시 받을 수 있도록 조치
+            recentMessages.add(data.message);
+            setTimeout(() => {
+              recentMessages.delete(data.message);
+            }, 60000);
+
             // gameStore에 알림 추가 (벨 배지 + AlertModal 목록)
             addAlert({ message: data.message, detail: data.type });
 

@@ -87,6 +87,7 @@ export const WorkstationAPI = {
         progress: data.progress ?? 0,
         producedQuantity: data.outputQuantity ?? data.producedQuantity ?? 0,
         totalQuantity: data.reservedQuantity ?? data.totalQuantity ?? 0,
+        expectedEndTime: data.expectedEndTime, // ✅ 백엔드 계산 시각 추가
         remainingMs: null as number | null,
       }
     };
@@ -94,8 +95,18 @@ export const WorkstationAPI = {
 
   start: async (data: { companyId: number; recipeId: number; quantity: number; workerId: number }) => {
     const wsId = await WorkstationAPI.getMyId();
+    // 1. 재료 예약 실시 (Back: /api/v1/workstations/{id}/reserve)
+    // 주의: quantity는 각 산업군별 baseYield(40, 6, 2 등)의 배수여야 400 에러가 나지 않습니다.
     await apiClient.post(`/workstations/${wsId}/reserve`, { quantity: data.quantity });
-    await apiClient.post(`/workstations/${wsId}/toggle`);
+
+    // 2. 가동 시작 (Back: /api/v1/workstations/{id}/toggle)
+    // 리저브 이후에 활성화되어야 Tick이 돌기 시작합니다. 
+    // 이미 켜져있는 상태에서 다시 누르면 꺼질 수 있으므로, 상태 체크 후 토글하는 것이 안전합니다.
+    const status = await WorkstationAPI.getStatus();
+    if (!status.data?.isWorking) {
+      await apiClient.post(`/workstations/${wsId}/toggle`);
+    }
+
     return { data: { success: true, message: "작업이 시작되었습니다." } };
   },
 
@@ -109,11 +120,20 @@ export const WorkstationAPI = {
     return { data: { success: true } };
   },
 
-  collect: async (companyId: number) => {
+  stop: async () => {
     const wsId = await WorkstationAPI.getMyId();
-    await apiClient.post(`/workstations/${wsId}/harvest`);
-    return { data: { success: true, message: "수령 완료" } };
-  }
+    // 켜져있을 때만 토글해서 끕니다.
+    const status = await WorkstationAPI.getStatus();
+    if (status.data?.isWorking) {
+      return await apiClient.post(`/workstations/${wsId}/toggle`);
+    }
+  },
+
+  collect: async () => {
+    const wsId = await WorkstationAPI.getMyId();
+    // 결과물 수확 (Back: /api/v1/workstations/{id}/harvest)
+    return await apiClient.post(`/workstations/${wsId}/harvest`);
+  },
 };
 
 export const MarketAPI = {

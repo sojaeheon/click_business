@@ -318,6 +318,28 @@ export function WarehousePage() {
     setShowDiscard(false);
   };
 
+  const handleTestAdd = async () => {
+    try {
+      const gameStore = useGameStore.getState();
+      const ind = gameStore.industry;
+      // 백엔드 IndustryType.java 명세 기반 ID: 드릴(3), 금광석(1), 금괴(2)
+      let targetItemId = 3; // 기본 드릴 (금광업용)
+      if (ind === "GOLD_SMELTING" || ind === "금 제련업") targetItemId = 1; // 금광석 (제련업용)
+      if (ind === "MANUFACTURING" || ind === "제조업") targetItemId = 2;    // 금괴 (제조업용)
+
+      await WarehouseAPI.addTestItem({ itemId: targetItemId, amount: 100 });
+      await fetchSlots(); // UI 갱신
+      
+      useAlertStore.getState().openAlert(
+        `테스트 아이템(ID: ${targetItemId}) 100개가 지급되었습니다!`, 
+        "테스트 지급 완료"
+      );
+    } catch (err) {
+      console.error("테스트 지급 실패:", err);
+      useAlertStore.getState().openAlert("테스트 지급에 실패했습니다. (API 오류)", "오류");
+    }
+  };
+
   const localUnlocked = slots.filter(s => !s.locked).length;
   const localUsed = slots.filter(s => !s.locked && s.item !== null).length;
   const localPercent = localUnlocked > 0 ? Math.min((localUsed / localUnlocked) * 100, 100) : 0;
@@ -357,6 +379,16 @@ export function WarehousePage() {
             </span>
           </div>
         </div>
+
+        {/* 🧪 테스트 지급 버튼 */}
+        <button
+          onClick={handleTestAdd}
+          className="flex items-center gap-2 px-4 py-3 rounded-2xl border-2 border-yellow-300 bg-yellow-50 text-yellow-700 font-black text-sm transition-all shadow-lg hover:bg-yellow-100 hover:border-yellow-400 cursor-pointer"
+          title="테스트 아이템 지급"
+        >
+          <Package className="w-4 h-4" />
+          테스트 지급
+        </button>
 
         {/* 🗑️ 폐기 버튼 (아이템이 있을 때만 활성화) */}
         <button

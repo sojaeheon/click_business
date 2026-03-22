@@ -124,15 +124,15 @@ export interface GameState {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// 3. 상태 관리소 (persist 미들웨어 적용)
+// 3. 상태 관리소
 // ─────────────────────────────────────────────────────────────────────────
 export const useGameStore = create<GameState>()(
   (set, get) => ({
     companyName: "",
     industry: "금광업",
-    money: 5000000,
+    money: 0,
     currency: "₩",
-    capital: 5000000,
+    capital: 0,
     debt: 0,
     warehouseMaxSlots: 6,
     inventoryMax: 4,
@@ -146,7 +146,7 @@ export const useGameStore = create<GameState>()(
     warehouseItems: [],
     hrData: { currentLevel: 0, expectedLevel: 0, successRate: 0, materialCurrent: 0, materialMax: 0 },
     isLoading: false,
-    workstationId: 0,  // ✅ 실제 DB workstation ID (0 = 아직 불러옴)
+    workstationId: 0,
     inventoryItems: [],
     warehouseExpandTickets: 0,
     inventoryExpandTickets: 0,
@@ -205,7 +205,6 @@ export const useGameStore = create<GameState>()(
     })),
 
     getWarehouseUsage: () => {
-      // 백엔드에서 빈 슬롯을 걸러낸(item이 존재하는) 슬롯 배열의 길이를 사용합니다.
       const usedSlots = get().warehouseItems.length;
       const percent = Math.min((usedSlots / get().warehouseMaxSlots) * 100, 100);
       return { usedSlots, percent };
@@ -224,23 +223,19 @@ export const useGameStore = create<GameState>()(
     fetchCompanyData: async (companyId: number) => {
       set({ isLoading: true });
       try {
-        // 백엔드 API 종합 호출 (workstationId도 함께 초기화)
         const [companyRes, warehouseRes, inventoryRes, bankRes, workstationIdRes, wsStatusRes] = await Promise.all([
           CompanyAPI.getStatus(),
           WarehouseAPI.getWarehouseItems(1).catch(() => ({ data: [], maxSlots: undefined })),
           InventoryAPI.getInventory(companyId).catch(() => ({ data: [], maxSlots: undefined })),
           BankAPI.getSummary(companyId).catch(() => ({ data: { loanRate: 0, depositRate: 0, currentLoan: 0, currentDeposit: 0 } })),
-          WorkstationAPI.getMyId().catch(() => 1), // 에러시 1로 폴백
+          WorkstationAPI.getMyId().catch(() => 1),
           WorkstationAPI.getStatus().catch(() => ({ data: null }))
         ]);
 
         const realData = companyRes.data;
 
-        // 모든 아이템(티켓 / 일꾼 구분 없이)을 inventoryItems에 그대로 저장
-        // 관련 UI(InventoryModal)에서 type.startsWith("ticket_")로 구분한다
         const allItems: InventoryItem[] = inventoryRes.data.map((item: any) => item);
 
-        // ✅ 더미 아이템 삽입 제거: 이제 실제 DB에 있는 데이터만 보여줌 (빈 DB일 경우 400 에러 혼동 방지)
         const finalIndustry = realData?.industry_type ?? get().industry;
         const { material, product } = get().getIndustryItemNames(finalIndustry);
 
@@ -249,9 +244,41 @@ export const useGameStore = create<GameState>()(
           name: item.type === "material" ? material : item.type === "product" ? product : item.name
         }));
 
-        // 백엔드가 maxSlots를 제공하면 가장 우선 적용 (과거 캐시 문제 해결)
         const warehouseMaxSlotsFromApi = (warehouseRes as any).maxSlots;
         const inventoryMaxSlotsFromApi = (inventoryRes as any).maxSlots;
+
+        // ★ 작업장 상태: endTime을 폴링 시 덮어쓰지 않도록 보호
+        const backendIsWorking = wsStatusRes.data?.isWorking ?? false;
+        const currentEndTime = get().workstationState.endTime;
+
+        // endTime 결정 로직:
+        // 1. 작업 안 하면 → null (리셋)
+        // 2. 작업 중이고 이미 endTime 있으면 → 기존 값 유지 (폴링이 덮어쓰지 않음)
+        // 3. 작업 중인데 endTime 없으면 → 백엔드에서 받아옴 (최초 1회)
+        let resolvedEndTime: number | null;
+        if (!backendIsWorking) {
+          resolvedEndTime = null;
+        } else if (currentEndTime) {
+          resolvedEndTime = currentEndTime;
+        } else {
+          resolvedEndTime = wsStatusRes.data?.expectedEndTime
+            ? new Date(wsStatusRes.data.expectedEndTime).getTime()
+            : null;
+        }
+
+        // ★ requestedQty 역산: 백엔드는 reservedQuantity(남은 재료)만 주므로
+        // 산업별 비율로 "총 생산품 수량"을 계산
+        // 예: 제조업 - 재료 20개 → 생산품 2개, reservedQty=0 + producedQty=2 → 총 2개
+        const { reqMat, resProd } = get().getIndustryItemNames(finalIndustry);
+        const reserved = wsStatusRes.data?.reservedQuantity ?? 0;
+        const produced = wsStatusRes.data?.producedQuantity ?? 0;
+        const consumedLaps = resProd > 0 ? Math.floor(produced / resProd) : 0;
+        const remainingLaps = reqMat > 0 ? Math.floor(reserved / reqMat) : 0;
+        const totalExpectedOutput = (consumedLaps + remainingLaps) * resProd;
+        // 이미 설정된 값이 있으면 유지 (작업 시작 시 프론트에서 직접 세팅한 값)
+        const resolvedRequestedQty = totalExpectedOutput > 0
+          ? totalExpectedOutput
+          : get().workstationState.requestedQty;
 
         set({
           money: realData?.cash ?? get().money,
@@ -262,7 +289,6 @@ export const useGameStore = create<GameState>()(
           inventoryMax: inventoryMaxSlotsFromApi ?? realData?.slots?.inventory_slots ?? (get().inventoryMax === 50 ? 4 : get().inventoryMax),
           warehouseItems: fixedWarehouseItems,
           inventoryItems: allItems,
-          // 티켓은 inventoryItems 안에 아이템으로 저장됨. 개수 정보는 UI에서 type로 필터링
           warehouseExpandTickets: allItems.filter(i => i.type === 'ticket_warehouse').reduce((a, i) => a + (i.quantity || 1), 0),
           inventoryExpandTickets: allItems.filter(i => i.type === 'ticket_inventory').reduce((a, i) => a + (i.quantity || 1), 0),
           bankData: {
@@ -273,14 +299,14 @@ export const useGameStore = create<GameState>()(
             currentDeposit: bankRes.data.currentDeposit,
           },
           debt: bankRes.data.currentLoan,
-          workstationId: typeof workstationIdRes === "number" ? workstationIdRes : (workstationIdRes as any)?.data ?? 0,  // ✅ 실제 DB ID 저장
+          workstationId: typeof workstationIdRes === "number" ? workstationIdRes : (workstationIdRes as any)?.data ?? 0,
           workstationState: {
             ...get().workstationState,
-            isWorking: wsStatusRes.data?.isWorking ?? false,
-            producedCount: wsStatusRes.data?.producedQuantity ?? 0,
-            storedCount: wsStatusRes.data?.producedQuantity ?? 0,
-            requestedQty: wsStatusRes.data?.totalQuantity ?? 0,
-            endTime: wsStatusRes.data?.expectedEndTime ? new Date(wsStatusRes.data.expectedEndTime).getTime() : null,
+            isWorking: backendIsWorking,
+            producedCount: produced,
+            storedCount: produced,
+            requestedQty: resolvedRequestedQty,
+            endTime: resolvedEndTime,
           },
           isLoading: false
         });

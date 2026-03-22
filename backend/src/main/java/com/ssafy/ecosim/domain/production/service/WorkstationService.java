@@ -36,7 +36,6 @@ public class WorkstationService {
         private final WarehouseService warehouseService;
         private final ApplicationEventPublisher eventPublisher;
 
-        // 일꾼 레벨별 생산 속도 배율 (프론트 workers.ts의 speedMultiplier와 동일)
         private static double getWorkerSpeedMultiplier(int workerLevel) {
                 return switch (workerLevel) {
                         case 1 -> 1.00;
@@ -71,9 +70,6 @@ public class WorkstationService {
                 return workstation.getIsActive();
         }
 
-        /**
-         * 일꾼 장착: 인벤토리 슬롯 인덱스를 Workstation에 연결
-         */
         @Transactional
         public void equipWorker(Long companyId, Long workstationId, Integer slotIndex) {
                 Workstation workstation = findWorkstation(companyId, workstationId);
@@ -89,9 +85,6 @@ public class WorkstationService {
                 workstation.equipWorker(slotIndex);
         }
 
-        /**
-         * 일꾼 장착 해제
-         */
         @Transactional
         public void unequipWorker(Long companyId, Long workstationId) {
                 findWorkstation(companyId, workstationId).unequipWorker();
@@ -114,9 +107,6 @@ public class WorkstationService {
                 findWorkstation(companyId, workstationId).unequipEquipment();
         }
 
-        /**
-         * 재료 예약: 창고(MATERIAL) → 워크스테이션 예약석
-         */
         @Transactional
         public void reserveMaterials(Long companyId, Long workstationId, Long outputQuantity) {
                 Workstation workstation = findWorkstation(companyId, workstationId);
@@ -127,7 +117,6 @@ public class WorkstationService {
                 int baseYield = workstation.getCompany().getIndustryType().getBaseYield();
                 int baseRequirement = workstation.getCompany().getIndustryType().getBaseRequirement();
 
-                // 나머지는 버림 처리 (손해 감수)
                 long laps = outputQuantity / baseYield;
                 if (laps == 0) throw new IllegalArgumentException("생산 수량이 너무 적습니다. 최소 " + baseYield + "개 이상 입력하세요.");
 
@@ -137,9 +126,6 @@ public class WorkstationService {
                 workstation.addReservedQuantity(requiredMaterials);
         }
 
-        /**
-         * 생산 처리 (지연 평가 - Passive Tick)
-         */
         @Transactional
         public void processProduction(Long companyId, Long workstationId) {
                 Workstation workstation = findWorkstation(companyId, workstationId);
@@ -151,13 +137,11 @@ public class WorkstationService {
 
                 if (secondsPassed <= 0) return;
 
-                // 기본 생산량: 장비(EquipmentInventory) 레벨 기반 (없으면 분당 1회)
                 long productionPerMinute = 1L;
                 if (workstation.getEquipmentInventory() != null) {
                         productionPerMinute = workstation.getEquipmentInventory().getLevel();
                 }
 
-                // 일꾼 속도 배율 적용 (장착된 슬롯의 일꾼 workerLevel로 계산)
                 double workerMult = 1.0;
                 if (workstation.getEquippedWorkerSlotIndex() != null) {
                         workerMult = inventorySlotRepository
@@ -167,43 +151,41 @@ public class WorkstationService {
                                 .orElse(1.0);
                 }
 
-                // 잠재 생산량 = 경과 초 × (분당 생산량 / 60) × 일꾼 배율
                 long potentialProduction = (long) (secondsPassed * productionPerMinute / 60.0 * workerMult);
                 Company company = workstation.getCompany();
                 int requirement = company.getIndustryType().getBaseRequirement();
                 int yield = company.getIndustryType().getBaseYield();
 
                 long availableLaps = workstation.getReservedQuantity() / requirement;
-                long actualLaps = Math.min(potentialProduction, availableLaps);
+                
+                if (potentialProduction > 0) {
+                        long actualLaps = Math.min(potentialProduction, availableLaps);
 
-                if (actualLaps > 0) {
-                        workstation.consumeReservedQuantity(actualLaps * requirement);
-                        workstation.addProducedQuantity(actualLaps * yield);
+                        if (actualLaps > 0) {
+                                workstation.consumeReservedQuantity(actualLaps * requirement);
+                                workstation.addProducedQuantity(actualLaps * yield);
 
-                        eventPublisher.publishEvent(new NotificationEvent(
-                                        company.getUser().getId(),
-                                        String.format("[%s] 생산이 %d개 완료되었습니다!",
-                                                      company.getIndustryType().name(), actualLaps * yield),
-                                        NotificationType.PRODUCTION
-                        ));
+                                eventPublisher.publishEvent(new NotificationEvent(
+                                                company.getUser().getId(),
+                                                String.format("[%s] 생산이 %d개 완료되었습니다!",
+                                                              company.getIndustryType().name(), actualLaps * yield),
+                                                NotificationType.PRODUCTION
+                                ));
+                        }
+
+                        long secondsUsed = (long) (potentialProduction * 60.0 / (productionPerMinute * workerMult));
+                        workstation.updateLastTickTime(workstation.getLastTickTime().plusSeconds(secondsUsed));
                 }
-
-                workstation.updateLastTickTime(now);
         }
 
-        /**
-         * 결과물 수확: 워크스테이션 → 창고(PRODUCT)
-         * 수확 전 processProduction을 실행하여 미처리된 생산량을 반영합니다.
-         */
         @Transactional
         public void harvestOutput(Long companyId, Long workstationId) {
-                // 수확 전 지연 평가 실행 (생산 시간이 경과했다면 producedQuantity 증가)
                 processProduction(companyId, workstationId);
 
                 Workstation workstation = findWorkstation(companyId, workstationId);
 
                 long harvestQuantity = workstation.getProducedQuantity();
-                if (harvestQuantity <= 0) throw new IllegalStateException("수확할 아이템이 없습니다.");
+                if (harvestQuantity <= 0) return;  // ★ 여기만 수정: throw → return
 
                 Long harvestItemId = workstation.getCompany().getOutputItemId();
                 if (harvestItemId == null) throw new IllegalArgumentException("회사의 생산 결과물 설정이 되어있지 않습니다.");
@@ -211,7 +193,8 @@ public class WorkstationService {
                 warehouseService.addItem(companyId, harvestItemId, harvestQuantity);
                 workstation.clearProducedQuantity();
         }
-
+        
+        @Transactional
         public WorkstationStatusResponse getMyWorkstationStatus(Long companyId) {
                 Workstation workstation = workstationRepository.findAllByCompanyId(companyId)
                                 .stream()
@@ -259,15 +242,21 @@ public class WorkstationService {
                                 .orElse(1.0);
                 }
 
-                // 예상 완료 시각 계산 (가동 중이고 예약 재료가 있을 때만)
                 if (workstation.getIsActive() && workstation.getReservedQuantity() > 0) {
                         long productionPerMinute = (workstation.getEquipmentInventory() != null)
                                 ? workstation.getEquipmentInventory().getLevel() : 1L;
                         double productionPerSecond = productionPerMinute / 60.0 * workerMult;
                         int requirement = workstation.getCompany().getIndustryType().getBaseRequirement();
                         long availableLaps = workstation.getReservedQuantity() / requirement;
+                        
                         long secondsToComplete = (long) Math.ceil(availableLaps / productionPerSecond);
-                        builder.expectedEndTime(Instant.now().plusSeconds(secondsToComplete));
+                        
+                        java.time.Instant expected = workstation.getLastTickTime()
+                            .atZone(java.time.ZoneId.systemDefault())
+                            .toInstant()
+                            .plusSeconds(secondsToComplete);
+                            
+                        builder.expectedEndTime(expected);
                 }
 
                 return builder.build();
