@@ -68,7 +68,8 @@ public class NewsService {
     }
 
     /**
-     * Redis에서 현재 게임 시뮬레이션 날짜를 가져와서 해당 날짜의 끝 시간(23:59:59)으로 반환합니다.
+     * Redis에서 현재 게임 시뮬레이션 날짜를 가져와서 하루 뒤의 날짜 끝 시간(23:59:59)으로 반환합니다.
+     * DB에 저장된 날짜보다 게임 내 하루(10분) 앞당겨 뉴스를 발행합니다.
      * 게임 시계가 초기화되지 않은 경우 예외를 발생시킵니다.
      */
     private LocalDateTime getCurrentGameDateTime() {
@@ -82,9 +83,11 @@ public class NewsService {
         
         try {
             LocalDate gameDate = LocalDate.parse(dateObj.toString());
-            // 해당 날짜의 뉴스를 모두 보여주기 위해 23:59:59로 설정
-            // (데이터팀은 published_at을 해당 날짜의 00:00:00으로 입력해야 함)
-            return gameDate.atTime(LocalTime.MAX);
+            // 하루 뒤의 뉴스까지 미리 보여주기 위해 +1일 추가
+            // 예: 게임 날짜가 2024-03-21이면 2024-03-22 00:00:00 뉴스까지 노출
+            // (데이터팀은 published_at을 해당 날짜의 00:00:00으로 입력)
+            LocalDate adjustedDate = gameDate.plusDays(1);
+            return adjustedDate.atTime(LocalTime.MAX);
         } catch (Exception e) {
             log.error("[NewsService] Redis game:simulation:date 파싱 실패: {}", dateObj, e);
             return LocalDate.now().atStartOfDay();
