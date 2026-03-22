@@ -17,6 +17,12 @@ public class OrderBookResponseDto {
     @Schema(description = "현재 시장가", example = "1500")
     private Long currentPrice;
 
+    @Schema(description = "시가 대비 변동액", example = "300")
+    private Long changePrice;
+
+    @Schema(description = "시가 대비 변동률(%)", example = "1.5")
+    private Double changeRate;
+
     @Schema(description = "매수 호가 목록 (높은 가격순, 최대 10레벨)")
     private List<OrderBookEntryDto> buyOrders;
 

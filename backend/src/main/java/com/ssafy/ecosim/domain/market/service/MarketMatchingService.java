@@ -116,8 +116,9 @@ public class MarketMatchingService {
             // log.info("Sell order {} completed and removed from orderbook", sellOrder.getId()); //
         }
 
-        // Redis 시장가 갱신
+        // Redis 시장가 갱신 및 차트 데이터 갱신
         orderBookManager.setMarketPrice(itemId, matchedPrice);
+        orderBookManager.addChartData(itemId, matchedPrice, System.currentTimeMillis());
 
         // TradeEvent 발행
         TradeEventDto tradeEvent = TradeEventDto.builder()

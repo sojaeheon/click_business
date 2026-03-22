@@ -93,6 +93,7 @@ export interface GameState {
     isWorking: boolean;
     startTime: number;
     totalMs: number;
+    endTime: number | null;
     requestedQty: number;
     storedCount: number;
     producedCount: number;
@@ -159,6 +160,7 @@ export const useGameStore = create<GameState>()(
         isWorking: false,
         startTime: 0,
         totalMs: 0,
+        endTime: null,
         requestedQty: 0,
         storedCount: 0,
         producedCount: 0,
@@ -277,6 +279,7 @@ export const useGameStore = create<GameState>()(
               producedCount: wsStatusRes.data?.producedQuantity ?? 0,
               storedCount: wsStatusRes.data?.producedQuantity ?? 0, 
               requestedQty: wsStatusRes.data?.totalQuantity ?? 0,
+              endTime: wsStatusRes.data?.expectedEndTime ? new Date(wsStatusRes.data.expectedEndTime).getTime() : null,
             },
             isLoading: false
           });

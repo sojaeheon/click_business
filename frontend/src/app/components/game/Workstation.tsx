@@ -227,14 +227,24 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
     // 로컬 1초 카운트다운 (폴링 보완 및 초기화)
     useEffect(() => {
         if (!isWorking || isCompleted) return;
-        // 남은 시간 1회 즉시 초기화 (null 방지)
-        setRemainingSec(Math.ceil((wsState.totalMs - (Date.now() - wsState.startTime)) / 1000));
 
-        const tick = setInterval(() => {
-            setRemainingSec(prev => (prev !== null && prev > 0) ? prev - 1 : prev);
-        }, 1000);
-        return () => clearInterval(tick);
-    }, [isWorking, isCompleted, wsState.startTime, wsState.totalMs]);
+        // 백엔드가 제공하는 예상 종료 시간(endTime)이 있다면 그것을 사용
+        if (wsState.endTime) {
+            const calculateRemaining = () => Math.max(0, Math.ceil((wsState.endTime! - Date.now()) / 1000));
+            setRemainingSec(calculateRemaining());
+            const tick = setInterval(() => {
+                setRemainingSec(calculateRemaining());
+            }, 1000);
+            return () => clearInterval(tick);
+        } else {
+            // 과거 호환용 (fallback)
+            setRemainingSec(Math.max(0, Math.ceil((wsState.totalMs - (Date.now() - wsState.startTime)) / 1000)));
+            const tick = setInterval(() => {
+                setRemainingSec(prev => (prev !== null && prev > 0) ? prev - 1 : prev);
+            }, 1000);
+            return () => clearInterval(tick);
+        }
+    }, [isWorking, isCompleted, wsState.endTime, wsState.startTime, wsState.totalMs]);
 
     // ── 더미 시각화: 단일 스택, 레벨만 변화 ─────────────────────
     const singleStackLevel = getSingleStackLevel(wsState.storedCount, maxCapacity);

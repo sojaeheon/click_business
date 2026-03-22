@@ -134,6 +134,11 @@ export const MarketAPI = {
 
   cancelOrder: (orderId: number) => apiClient.delete(`/market/orders/${orderId}`),
 
+  /** 내 미체결 주문 목록 조회 (develop에서 추가) */
+  getMyOrders: async (itemId: number) => {
+    return apiClient.get('/market/orders/me', { params: { item_id: itemId } });
+  },
+
   getTrades: async (itemId: number) => {
     return apiClient.get('/market/trades', { params: { item_id: itemId } });
   },
@@ -142,7 +147,8 @@ export const MarketAPI = {
     return apiClient.post(`/market/orders/${tradeHistoryId}`);
   },
 
-  getMarketChart: (itemId: number, range: '1D' | '1W' | '1M' = '1D') => apiClient.get('/market/charts', { params: { itemId, range } }),
+  /** develop 기준 URL: /market/chart, param: item_id */
+  getMarketChart: (itemId: number) => apiClient.get('/market/chart', { params: { item_id: itemId } }),
 };
 
 export const BankAPI = {

@@ -131,4 +131,34 @@ public class OrderBookManager {
         }
         return totalVolume;
     }
+
+    // --- 차트 및 기준가(시가) 추가 메서드 ---
+
+    public Long getOpenPrice(Integer itemId) {
+        String key = "market:price:open:" + itemId;
+        String value = stringRedisTemplate.opsForValue().get(key);
+        if (value == null) return null;
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    public void addChartData(Integer itemId, Long price, Long timestamp) {
+        String key = "market:chart:" + itemId;
+        // 형식: "timestamp:price"
+        stringRedisTemplate.opsForList().rightPush(key, timestamp + ":" + price);
+        // 최신 100개 데이터만 유지
+        stringRedisTemplate.opsForList().trim(key, -100, -1);
+    }
+
+    public java.util.List<String> getChartData(Integer itemId) {
+        String key = "market:chart:" + itemId;
+        return stringRedisTemplate.opsForList().range(key, 0, -1);
+    }
+
+    public void clearChartData(Integer itemId) {
+        stringRedisTemplate.delete("market:chart:" + itemId);
+    }
 }
