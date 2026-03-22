@@ -5,7 +5,7 @@ import { useGame } from "../../../store/gameStore";
 import { useAlertStore } from "../../../store/useAlertStore";
 import { getWorkerIcon, WorkerCard } from "../ui/WorkerCard";
 import { useGameStore } from "../../../store/gameStore";
-import { getWorkerDefByLevel, IndustryKey } from "../../../constants/workers";
+import { getWorkerDefByLevel, WORKER_LEVEL_IMAGES, IndustryKey } from "../../../constants/workers";
 import { WarehouseAPI } from "../../../api/gameApi";
 
 // 다른 곳에서도 쓸 수 있게 export 해줍니다.
@@ -361,17 +361,16 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                           setIsInventoryOpen(false);
                         }}
                       />
-                      {/* 장착중 배지 */}
+                      {/* 장착중 배지 (프리미엄 다크 글래스) */}
                       {isEquipped && (
-                        <div className="absolute top-2 right-2 flex items-center gap-1">
-                          <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
-                            ✔ 장착중
-                          </span>
+                        <div className="absolute inset-0 bg-black/50 border border-white/20 rounded-2xl flex flex-col items-center justify-center pointer-events-none z-10 backdrop-blur-[3px]">
+                          <div className="flex items-center px-5 py-1.5 bg-white/15 rounded-full shadow-[0_4px_12px_rgba(0,0,0,0.5)] border border-white/30 mb-2 backdrop-blur-md">
+                            <span className="text-white font-black text-sm tracking-widest drop-shadow-md">장착중</span>
+                          </div>
+                          <p className="text-[11px] text-white/80 font-bold bg-black/60 px-3 py-1 rounded-full border border-white/10 shadow-inner drop-shadow-sm">
+                            다시 클릭하면 해제
+                          </p>
                         </div>
-                      )}
-                      {/* 장착중일 때 클릭 힌트 */}
-                      {isEquipped && (
-                        <p className="text-[10px] text-slate-400 text-center mt-1 font-bold">클릭하면 장착 해제</p>
                       )}
                     </div>
                   );
