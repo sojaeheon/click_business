@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 // 🚨 gameApi.ts에 정의된 정확한 이름인 대문자 CompanyAPI로 가져옵니다.
-import { CompanyAPI, WarehouseAPI, InventoryAPI, BankAPI, WorkstationAPI } from "../api/gameApi";
+import { CompanyAPI, WarehouseAPI, InventoryAPI, BankAPI, WorkstationAPI, NewsAPI } from "../api/gameApi";
 import { WORKER_DEFINITIONS, getWorkerDefByLevel } from "../constants/workers";
 import { useAlertStore } from "./useAlertStore";
 
@@ -119,173 +119,202 @@ export interface GameState {
   getIndustryItemNames: (indOverride?: string) => { material: string; product: string; reqMat: number; resProd: number; batchSize: number };
 
   fetchCompanyData: (companyId: number) => Promise<void>;
+  fetchNews: () => Promise<void>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
 // 3. 상태 관리소 (persist 미들웨어 적용)
 // ─────────────────────────────────────────────────────────────────────────
 export const useGameStore = create<GameState>()(
-    (set, get) => ({
-      companyName: "",
-      industry: "금광업",
-      money: 5000000,
-      currency: "₩",
-      capital: 5000000,
-      debt: 0,
-      warehouseMaxSlots: 6,
-      inventoryMax: 4,
-      inventoryPurchaseCount: 0,
-      alerts: [],
-      news: [],
-      activeModal: null,
-      selectedBuilding: null,
-      activeBuildingPage: null,
-      bankData: { loanRate: 0, depositRate: 0, currentLoan: 0, currentDeposit: 0 },
-      warehouseItems: [],
-      hrData: { currentLevel: 0, expectedLevel: 0, successRate: 0, materialCurrent: 0, materialMax: 0 },
-      isLoading: false,
-      workstationId: 0,  // ✅ 실제 DB workstation ID (0 = 아직 불러옴)
-      inventoryItems: [],
-      warehouseExpandTickets: 0,
-      inventoryExpandTickets: 0,
+  (set, get) => ({
+    companyName: "",
+    industry: "금광업",
+    money: 5000000,
+    currency: "₩",
+    capital: 5000000,
+    debt: 0,
+    warehouseMaxSlots: 6,
+    inventoryMax: 4,
+    inventoryPurchaseCount: 0,
+    alerts: [],
+    news: [],
+    activeModal: null,
+    selectedBuilding: null,
+    activeBuildingPage: null,
+    bankData: { loanRate: 0, depositRate: 0, currentLoan: 0, currentDeposit: 0 },
+    warehouseItems: [],
+    hrData: { currentLevel: 0, expectedLevel: 0, successRate: 0, materialCurrent: 0, materialMax: 0 },
+    isLoading: false,
+    workstationId: 0,  // ✅ 실제 DB workstation ID (0 = 아직 불러옴)
+    inventoryItems: [],
+    warehouseExpandTickets: 0,
+    inventoryExpandTickets: 0,
 
-      equippedWorkerId: null,
-      hasNewWorker: false,
-      setEquippedWorkerId: (id) => set({ equippedWorkerId: id }),
-      setHasNewWorker: (v) => set({ hasNewWorker: v }),
+    equippedWorkerId: null,
+    hasNewWorker: false,
+    setEquippedWorkerId: (id) => set({ equippedWorkerId: id }),
+    setHasNewWorker: (v) => set({ hasNewWorker: v }),
 
-      workstationState: {
-        isStarting: false,
-        isWorking: false,
-        startTime: 0,
-        totalMs: 0,
-        requestedQty: 0,
-        storedCount: 0,
-        producedCount: 0,
-      },
-      setWorkstationState: (updater) => set(s => ({
-        workstationState: { ...s.workstationState, ...updater }
-      })),
-
-
-      openModal: (tab) => set({ activeModal: tab }),
-      closeModal: () => set({ activeModal: null }),
-      switchTab: (tab) => set({ activeModal: tab }),
-      addAlert: (alertData) => set((state) => {
-        const newAlert: Alert = {
-          ...alertData,
-          id: "alert_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
-          timeAgo: "방금 전",
-          read: false
-        };
-        return { alerts: [newAlert, ...state.alerts] };
-      }),
-      dismissAlert: (id) => set((state) => ({
-        alerts: state.alerts.filter(alert => alert.id !== id)
-      })),
-      markAllAlertsAsRead: () => set((state) => ({
-        alerts: state.alerts.map(alert => ({ ...alert, read: true }))
-      })),
-      selectBuilding: (building) => set({ selectedBuilding: building }),
-      openBuildingPage: (page) => set({ activeBuildingPage: page }),
-      closeBuildingPage: () => set({ activeBuildingPage: null }),
-
-      setCompanyInfo: (name, industry) => set({ companyName: name, industry }),
+    workstationState: {
+      isStarting: false,
+      isWorking: false,
+      startTime: 0,
+      totalMs: 0,
+      requestedQty: 0,
+      storedCount: 0,
+      producedCount: 0,
+    },
+    setWorkstationState: (updater) => set(s => ({
+      workstationState: { ...s.workstationState, ...updater }
+    })),
 
 
+    openModal: (tab) => set({ activeModal: tab }),
+    closeModal: () => set({ activeModal: null }),
+    switchTab: (tab) => set({ activeModal: tab }),
+    addAlert: (alertData) => set((state) => {
+      const newAlert: Alert = {
+        ...alertData,
+        id: "alert_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+        timeAgo: "방금 전",
+        read: false
+      };
+      return { alerts: [newAlert, ...state.alerts] };
+    }),
+    dismissAlert: (id) => set((state) => ({
+      alerts: state.alerts.filter(alert => alert.id !== id)
+    })),
+    markAllAlertsAsRead: () => set((state) => ({
+      alerts: state.alerts.map(alert => ({ ...alert, read: true }))
+    })),
+    selectBuilding: (building) => set({ selectedBuilding: building }),
+    openBuildingPage: (page) => set({ activeBuildingPage: page }),
+    closeBuildingPage: () => set({ activeBuildingPage: null }),
 
-      // 은행 데이터 통합 동기화
-      updateBankData: (data) => set(state => ({ bankData: { ...state.bankData, ...data } })),
-      updateDebt: (amount) => set(state => ({
-        bankData: { ...state.bankData, currentLoan: Math.max(0, state.bankData.currentLoan + amount) },
-        debt: Math.max(0, state.debt + amount),
-      })),
-
-      getWarehouseUsage: () => {
-        // 백엔드에서 빈 슬롯을 걸러낸(item이 존재하는) 슬롯 배열의 길이를 사용합니다.
-        const usedSlots = get().warehouseItems.length;
-        const percent = Math.min((usedSlots / get().warehouseMaxSlots) * 100, 100);
-        return { usedSlots, percent };
-      },
-
-      getIndustryItemNames: (indOverride?: string) => {
-        const ind = indOverride || get().industry;
-        if (ind === "GOLD_MINING" || ind === "금광업") return { material: "광산 드릴", product: "금광석", reqMat: 2, resProd: 40, batchSize: 20 };
-        if (ind === "GOLD_SMELTING" || ind === "금 제련업" || ind === "제철업") return { material: "금광석", product: "금괴", reqMat: 12, resProd: 6, batchSize: 10 };
-        if (ind === "MANUFACTURING" || ind === "제조업") return { material: "금괴", product: "광산 드릴", reqMat: 20, resProd: 2, batchSize: 5 };
-        return { material: "재료", product: "생산품", reqMat: 1, resProd: 1, batchSize: 5 };
-      },
+    setCompanyInfo: (name, industry) => set({ companyName: name, industry }),
 
 
 
-      fetchCompanyData: async (companyId: number) => {
-        set({ isLoading: true });
-        try {
-          // 백엔드 API 종합 호출 (workstationId도 함께 초기화)
-          const [companyRes, warehouseRes, inventoryRes, bankRes, workstationIdRes, wsStatusRes] = await Promise.all([
-            CompanyAPI.getStatus(),
-            WarehouseAPI.getWarehouseItems(1).catch(() => ({ data: [], maxSlots: undefined })),
-            InventoryAPI.getInventory(companyId).catch(() => ({ data: [], maxSlots: undefined })),
-            BankAPI.getSummary(companyId).catch(() => ({ data: { loanRate: 0, depositRate: 0, currentLoan: 0, currentDeposit: 0 } })),
-            WorkstationAPI.getMyId().catch(() => 1), // 에러시 1로 폴백
-            WorkstationAPI.getStatus().catch(() => ({ data: null }))
-          ]);
+    // 은행 데이터 통합 동기화
+    updateBankData: (data) => set(state => ({ bankData: { ...state.bankData, ...data } })),
+    updateDebt: (amount) => set(state => ({
+      bankData: { ...state.bankData, currentLoan: Math.max(0, state.bankData.currentLoan + amount) },
+      debt: Math.max(0, state.debt + amount),
+    })),
 
-          const realData = companyRes.data;
+    getWarehouseUsage: () => {
+      // 백엔드에서 빈 슬롯을 걸러낸(item이 존재하는) 슬롯 배열의 길이를 사용합니다.
+      const usedSlots = get().warehouseItems.length;
+      const percent = Math.min((usedSlots / get().warehouseMaxSlots) * 100, 100);
+      return { usedSlots, percent };
+    },
 
-          // 모든 아이템(티켓 / 일꾼 구분 없이)을 inventoryItems에 그대로 저장
-          // 관련 UI(InventoryModal)에서 type.startsWith("ticket_")로 구분한다
-          const allItems: InventoryItem[] = inventoryRes.data.map((item: any) => item);
+    getIndustryItemNames: (indOverride?: string) => {
+      const ind = indOverride || get().industry;
+      if (ind === "GOLD_MINING" || ind === "금광업") return { material: "광산 드릴", product: "금광석", reqMat: 2, resProd: 40, batchSize: 20 };
+      if (ind === "GOLD_SMELTING" || ind === "금 제련업" || ind === "제철업") return { material: "금광석", product: "금괴", reqMat: 12, resProd: 6, batchSize: 10 };
+      if (ind === "MANUFACTURING" || ind === "제조업") return { material: "금괴", product: "광산 드릴", reqMat: 20, resProd: 2, batchSize: 5 };
+      return { material: "재료", product: "생산품", reqMat: 1, resProd: 1, batchSize: 5 };
+    },
 
-          // ✅ 더미 아이템 삽입 제거: 이제 실제 DB에 있는 데이터만 보여줌 (빈 DB일 경우 400 에러 혼동 방지)
-          const finalIndustry = realData?.industry_type ?? get().industry;
-          const { material, product } = get().getIndustryItemNames(finalIndustry);
 
-          const fixedWarehouseItems = (warehouseRes.data as WarehouseItem[]).map(item => ({
-            ...item,
-            name: item.type === "material" ? material : item.type === "product" ? product : item.name
-          }));
 
-          // 백엔드가 maxSlots를 제공하면 가장 우선 적용 (과거 캐시 문제 해결)
-          const warehouseMaxSlotsFromApi = (warehouseRes as any).maxSlots;
-          const inventoryMaxSlotsFromApi = (inventoryRes as any).maxSlots;
-          
-          set({
-            money: realData?.cash ?? get().money,
-            capital: realData?.total_asset ?? get().capital,
-            companyName: realData?.name ?? get().companyName,
-            industry: finalIndustry,
-            warehouseMaxSlots: warehouseMaxSlotsFromApi ?? realData?.slots?.warehouse_slots ?? (get().warehouseMaxSlots === 10 ? 6 : get().warehouseMaxSlots),
-            inventoryMax: inventoryMaxSlotsFromApi ?? realData?.slots?.inventory_slots ?? (get().inventoryMax === 50 ? 4 : get().inventoryMax),
-            warehouseItems: fixedWarehouseItems,
-            inventoryItems: allItems,
-            // 티켓은 inventoryItems 안에 아이템으로 저장됨. 개수 정보는 UI에서 type로 필터링
-            warehouseExpandTickets: allItems.filter(i => i.type === 'ticket_warehouse').reduce((a, i) => a + (i.quantity || 1), 0),
-            inventoryExpandTickets: allItems.filter(i => i.type === 'ticket_inventory').reduce((a, i) => a + (i.quantity || 1), 0),
-            bankData: {
-              ...get().bankData,
-              loanRate: bankRes.data.loanRate,
-              depositRate: bankRes.data.depositRate,
-              currentLoan: bankRes.data.currentLoan,
-              currentDeposit: bankRes.data.currentDeposit,
-            },
-            debt: bankRes.data.currentLoan,
-            workstationId: typeof workstationIdRes === "number" ? workstationIdRes : (workstationIdRes as any)?.data ?? 0,  // ✅ 실제 DB ID 저장
-            workstationState: {
-              ...get().workstationState,
-              isWorking: wsStatusRes.data?.isWorking ?? false,
-              producedCount: wsStatusRes.data?.producedQuantity ?? 0,
-              storedCount: wsStatusRes.data?.producedQuantity ?? 0, 
-              requestedQty: wsStatusRes.data?.totalQuantity ?? 0,
-            },
-            isLoading: false
-          });
-        } catch (error) {
-          console.error("전반적인 회사 게임 데이터 로드 실패:", error);
-          set({ isLoading: false });
-        }
+    fetchCompanyData: async (companyId: number) => {
+      set({ isLoading: true });
+      try {
+        // 백엔드 API 종합 호출 (workstationId도 함께 초기화)
+        const [companyRes, warehouseRes, inventoryRes, bankRes, workstationIdRes, wsStatusRes] = await Promise.all([
+          CompanyAPI.getStatus(),
+          WarehouseAPI.getWarehouseItems(1).catch(() => ({ data: [], maxSlots: undefined })),
+          InventoryAPI.getInventory(companyId).catch(() => ({ data: [], maxSlots: undefined })),
+          BankAPI.getSummary(companyId).catch(() => ({ data: { loanRate: 0, depositRate: 0, currentLoan: 0, currentDeposit: 0 } })),
+          WorkstationAPI.getMyId().catch(() => 1), // 에러시 1로 폴백
+          WorkstationAPI.getStatus().catch(() => ({ data: null }))
+        ]);
+
+        const realData = companyRes.data;
+
+        // 모든 아이템(티켓 / 일꾼 구분 없이)을 inventoryItems에 그대로 저장
+        // 관련 UI(InventoryModal)에서 type.startsWith("ticket_")로 구분한다
+        const allItems: InventoryItem[] = inventoryRes.data.map((item: any) => item);
+
+        // ✅ 더미 아이템 삽입 제거: 이제 실제 DB에 있는 데이터만 보여줌 (빈 DB일 경우 400 에러 혼동 방지)
+        const finalIndustry = realData?.industry_type ?? get().industry;
+        const { material, product } = get().getIndustryItemNames(finalIndustry);
+
+        const fixedWarehouseItems = (warehouseRes.data as WarehouseItem[]).map(item => ({
+          ...item,
+          name: item.type === "material" ? material : item.type === "product" ? product : item.name
+        }));
+
+        // 백엔드가 maxSlots를 제공하면 가장 우선 적용 (과거 캐시 문제 해결)
+        const warehouseMaxSlotsFromApi = (warehouseRes as any).maxSlots;
+        const inventoryMaxSlotsFromApi = (inventoryRes as any).maxSlots;
+
+        set({
+          money: realData?.cash ?? get().money,
+          capital: realData?.total_asset ?? get().capital,
+          companyName: realData?.name ?? get().companyName,
+          industry: finalIndustry,
+          warehouseMaxSlots: warehouseMaxSlotsFromApi ?? realData?.slots?.warehouse_slots ?? (get().warehouseMaxSlots === 10 ? 6 : get().warehouseMaxSlots),
+          inventoryMax: inventoryMaxSlotsFromApi ?? realData?.slots?.inventory_slots ?? (get().inventoryMax === 50 ? 4 : get().inventoryMax),
+          warehouseItems: fixedWarehouseItems,
+          inventoryItems: allItems,
+          // 티켓은 inventoryItems 안에 아이템으로 저장됨. 개수 정보는 UI에서 type로 필터링
+          warehouseExpandTickets: allItems.filter(i => i.type === 'ticket_warehouse').reduce((a, i) => a + (i.quantity || 1), 0),
+          inventoryExpandTickets: allItems.filter(i => i.type === 'ticket_inventory').reduce((a, i) => a + (i.quantity || 1), 0),
+          bankData: {
+            ...get().bankData,
+            loanRate: bankRes.data.loanRate,
+            depositRate: bankRes.data.depositRate,
+            currentLoan: bankRes.data.currentLoan,
+            currentDeposit: bankRes.data.currentDeposit,
+          },
+          debt: bankRes.data.currentLoan,
+          workstationId: typeof workstationIdRes === "number" ? workstationIdRes : (workstationIdRes as any)?.data ?? 0,  // ✅ 실제 DB ID 저장
+          workstationState: {
+            ...get().workstationState,
+            isWorking: wsStatusRes.data?.isWorking ?? false,
+            producedCount: wsStatusRes.data?.producedQuantity ?? 0,
+            storedCount: wsStatusRes.data?.producedQuantity ?? 0,
+            requestedQty: wsStatusRes.data?.totalQuantity ?? 0,
+          },
+          isLoading: false
+        });
+      } catch (error) {
+        console.error("전반적인 회사 게임 데이터 로드 실패:", error);
+        set({ isLoading: false });
       }
-    })
+    },
+
+    fetchNews: async () => {
+      try {
+        const newsData = await NewsAPI.getNews();
+
+        const mappedNews: NewsItem[] = newsData.map((item: any) => {
+          let dateStr = "";
+          if (typeof item.publishedAt === "string") {
+            dateStr = item.publishedAt.split('T')[0].replaceAll('-', '.');
+          } else if (Array.isArray(item.publishedAt)) {
+            const [year, month, day] = item.publishedAt;
+            dateStr = `${year}.${String(month).padStart(2, '0')}.${String(day).padStart(2, '0')}`;
+          }
+
+          return {
+            id: String(item.id ?? "anonymous"),
+            headline: item.title ?? "제목 없는 뉴스",
+            summary: item.content ?? "",
+            date: dateStr,
+            isBreaking: item.type === 'INTERNAL',
+          };
+        });
+
+        set({ news: mappedNews });
+      } catch (err) {
+        console.error("뉴스 데이터 로드 실패:", err);
+      }
+    }
+  })
 );
 
 // ─────────────────────────────────────────────────────────────────────────
