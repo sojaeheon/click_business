@@ -78,7 +78,11 @@ export function BankPage() {
   };
 
   const handleUnit = (unit: number) => {
-    setInputValue((prev) => (Number(prev) * unit).toString());
+    setInputValue((prev) => {
+      const next = Number(prev) * unit;
+      if (next > 1000000000000000) return prev; // Limit excessively large numbers to avoid float inaccuracies and UI overflow
+      return next.toString();
+    });
   };
 
   const handleConfirmInput = () => {
@@ -87,6 +91,7 @@ export function BankPage() {
     setStep("confirm");
   };
 
+  // ★ 수정된 processTransaction — 프론트 자체 계산 제거, 서버 응답만 신뢰
   const processTransaction = async () => {
     const amount = Number(inputValue);
     setIsProcessing(true);
@@ -94,46 +99,8 @@ export function BankPage() {
       const mappedType = mode === "loan" ? "BORROW" : mode === "repay" ? "REPAY" : mode === "deposit" ? "DEPOSIT" : "WITHDRAW";
       await BankAPI.processLoan({ companyId: 1, type: mappedType, amount });
 
-      // store 돈/부채 연동
-      if (mode === "loan") {
-        // 대출: 돈이 들어오고 부채가 증가함
-        useGameStore.getState().updateMoney(amount);
-        useGameStore.getState().updateDebt(amount);
-      } else if (mode === "repay") {
-        // 상환: 돈이 나가고 부채가 감소함
-        const success = useGameStore.getState().updateMoney(-amount);
-        if (!success) {
-          useAlertStore.getState().openAlert("보유 금액이 부족합니다.", "경고");
-          setStep("input");
-          setIsProcessing(false);
-          return;
-        }
-        useGameStore.getState().updateDebt(-amount);
-      } else if (mode === "deposit") {
-        // 예금: 돈이 나가고 예금이 증가함
-        const success = useGameStore.getState().updateMoney(-amount);
-        if (!success) {
-          useAlertStore.getState().openAlert("보유 금액이 부족합니다.", "경고");
-          setStep("input");
-          setIsProcessing(false);
-          return;
-        }
-        useGameStore.getState().updateBankData({ 
-          currentDeposit: (bankData.currentDeposit || 0) + amount 
-        });
-      } else if (mode === "withdraw") {
-        // 인출: 돈이 들어오고 예금이 감소함
-        if ((bankData.currentDeposit || 0) < amount) {
-          useAlertStore.getState().openAlert("예금 잔액이 부족합니다.", "경고");
-          setStep("input");
-          setIsProcessing(false);
-          return;
-        }
-        useGameStore.getState().updateMoney(amount);
-        useGameStore.getState().updateBankData({ 
-          currentDeposit: (bankData.currentDeposit || 0) - amount 
-        });
-      }
+      // ★ 서버가 성공(200)했으면 서버 데이터로 전체 갱신
+      await useGameStore.getState().fetchCompanyData(1);
 
       setStep("done");
 
@@ -148,7 +115,8 @@ export function BankPage() {
 
     } catch (e: any) {
       console.error(e);
-      useAlertStore.getState().openAlert(e?.response?.data?.message || "서버 통신 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.", "경고");
+      // ★ 서버가 400/500 줬으면 에러 메시지만 표시 (프론트가 잔액 체크 안 함)
+      useAlertStore.getState().openAlert(e?.response?.data?.message || "서버 통신 중 오류가 발생했습니다.", "경고");
       setStep("input");
     } finally {
       setIsProcessing(false);
@@ -233,7 +201,7 @@ export function BankPage() {
         {/* 전체 화면 차단 오버레이 (회색 불투명) + 끄기 버튼 */}
         {showOverlay && (
           <div className="absolute inset-0 z-[60] bg-slate-900/40 backdrop-blur-[1px] cursor-not-allowed pointer-events-auto">
-            <button 
+            <button
               onClick={(e) => {
                 e.stopPropagation();
                 setShowOverlay(false);
@@ -253,7 +221,7 @@ export function BankPage() {
           </div>
         )}
         {/* Header Bar */}
-        <div className="w-full h-28 bg-[#1E3A8A] flex flex-col shadow-xl relative z-50">
+        <div className="w-full h-28 bg-[#1E3A8A] flex flex-col shadow-xl relative z-50 flex-shrink-0">
           <div className="max-w-[85%] mx-auto w-full flex flex-col justify-between h-full p-4 relative">
             {/* Top Status inside Header */}
             <div className="flex justify-between items-center w-full text-xs text-slate-200 font-bold">
@@ -280,7 +248,7 @@ export function BankPage() {
         </div>
 
         {/* ATM 하단 안내 바 */}
-        <div className="w-full bg-slate-100 text-slate-800 py-2 shadow-sm z-40 border-b border-slate-300">
+        <div className="w-full bg-slate-100 text-slate-800 py-2 shadow-sm z-40 border-b border-slate-300 flex-shrink-0">
           <div className="max-w-[85%] mx-auto w-full flex items-center justify-center gap-3 font-bold">
             <span className="w-5 h-5 flex items-center justify-center bg-[#1E3A8A] text-white rounded-full text-xs font-black">📢</span>
             <span>원하시는 거래를 터치해 주십시오.</span>
@@ -407,7 +375,7 @@ export function BankPage() {
           </div>
         ) : step === "input" ? (
           // --- DEPTH 2: Numpad & Detail ---
-          <div className="flex-1 px-8 pt-8 pb-24 flex flex-col items-center justify-start gap-12 max-w-5xl mx-auto w-full relative z-10">
+          <div className="flex-1 px-8 pt-8 pb-8 flex flex-col items-center justify-center gap-8 max-w-5xl mx-auto w-full relative z-10 overflow-hidden">
             {/* 1. Title Centered At Top */}
             <div className="w-full text-center">
               <h2 className="text-3xl font-black text-slate-700 bg-white inline-block px-12 py-3.5 rounded-full shadow-md border-2 border-slate-200">
@@ -416,7 +384,7 @@ export function BankPage() {
             </div>
 
             {/* 2. Content Row */}
-            <div className="flex flex-row items-stretch justify-center gap-12 w-full flex-1">
+            <div className="flex flex-row items-stretch justify-center gap-12 w-full flex-1 min-h-0">
               {/* Left: Numpad */}
               <div className="w-1/2 flex flex-col justify-center h-full max-w-md">
                 <div className="w-full grid grid-cols-4 gap-4 bg-white p-6 rounded-3xl border-4 border-slate-300 shadow-2xl h-full">
@@ -465,12 +433,19 @@ export function BankPage() {
                 </div>
 
                 {/* Amount Display */}
-                <div className="w-full bg-white rounded-2xl border-4 border-slate-300 p-8 shadow-xl flex flex-col items-end flex-1 justify-center">
+                <div className="w-full bg-white rounded-2xl border-4 border-slate-300 px-6 py-4 shadow-xl flex flex-col flex-1 justify-center min-h-0">
                   <span className="text-sm font-bold text-slate-400 mb-2 w-full text-left">금액 입력</span>
-                  <div className="flex items-end gap-2 text-slate-800">
-                    <span className="text-5xl font-black tracking-tight">{Number(inputValue || 0).toLocaleString()}</span>
-                    <span className="text-2xl font-bold pb-1">원</span>
-                  </div>
+                  {(() => {
+                    const displayed = Number(inputValue || 0).toLocaleString();
+                    const len = displayed.length;
+                    const fontClass = len > 22 ? "text-lg" : len > 17 ? "text-2xl" : len > 12 ? "text-3xl" : "text-5xl";
+                    return (
+                      <div className="w-full text-right select-none overflow-hidden flex-shrink-0">
+                        <span className={`font-black break-all ${fontClass} text-slate-800`}>{displayed}</span>
+                        <span className="text-xl font-bold ml-1 text-slate-800">원</span>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Interest estimate */}

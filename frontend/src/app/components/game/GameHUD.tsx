@@ -60,20 +60,18 @@ export function GameHUD({ onOpenGuide }: { onOpenGuide?: () => void }) {
           </div>
 
           {/* 재고량 영역 */}
-          <div className="relative flex items-center bg-[#292631] rounded-r-full rounded-l-3xl h-12 min-w-[300px] shadow-lg border border-gray-700">
+          <div className="relative flex items-center bg-[#292631] rounded-full rounded-3xl ml-10 h-12 min-w-[300px] shadow-lg border border-gray-700">
             <div className="absolute -left-6 top-1/2 -translate-y-1/2 w-16 h-16 flex items-center justify-center z-10">
-              <img src="/ui_icons/star_128x128_4.png" alt="Star" className="w-16 h-16 object-contain drop-shadow" />
+              <img src="/ui_icons/box.png" alt="Box" className="w-20 h-20 object-contain drop-shadow" />
             </div>
 
-            <div className="pl-14 pr-4 w-full flex items-center justify-center h-full">
-              <div className="relative w-full h-5">
+            <div className="pl-10 pr-4 w-full flex items-center justify-center h-full">
+              <div className="relative w-full h-5 bg-gray-900 rounded overflow-hidden">
                 <div
-                  className="absolute left-[-10%] h-[100%] overflow-hidden transition-all duration-700 ease-out flex justify-start items-center rounded-sm"
-                  style={{ width: `${percent * 0.9}%` }}
-                >
-                  <img src="/ui_icons/Progressbar_Gold_3.png" alt="Gauge Fill" className="h-full w-[130px] max-w-none object-fill" />
-                </div>
-                <span className="absolute inset-0 flex items-center justify-center text-white font-black text-[12px] drop-shadow-[0_1px_2px_rgba(0,0,0,1)] tracking-widest pointer-events-none">
+                  className="absolute left-0 top-0 h-full transition-all duration-700 ease-out bg-gradient-to-r from-amber-400 to-amber-600"
+                  style={{ width: `${Math.min(Math.max(percent, 0), 100)}%` }}
+                />
+                <span className="absolute inset-0 flex items-center justify-center text-white font-black text-base drop-shadow-[0_2px_3px_rgba(0,0,0,1)] tracking-widest pointer-events-none z-10">
                   {percent.toFixed(0)}%
                 </span>
               </div>

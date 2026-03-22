@@ -4,9 +4,11 @@ import { useGameStore } from "../../store/gameStore";
 import { BackButton } from "../../app/components/ui/backbutton";
 import { useAlertStore } from "../../store/useAlertStore";
 import { WarehouseAPI } from "../../api/gameApi";
+import { getPropsImage } from "../../constants/workers";
 
 interface SlotData {
   id: number;
+  dbSlotIndex: number; // ✅ 실제 DB의 slotIndex (스왓 API에 이걸 보내야 함)
   item: null | {
     type: "material" | "product";
     quantity: number;
@@ -73,8 +75,8 @@ function DiscardPanel({ totalMaterial, totalProduct, materialName, productName, 
             <button
               onClick={() => { setSelectedType("material"); setQty(""); }}
               className={`flex items-center gap-3 px-4 py-3 rounded-2xl border-2 transition-all font-bold text-sm cursor-pointer ${selectedType === "material"
-                  ? "bg-yellow-50 border-yellow-400 text-yellow-800"
-                  : "bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300"
+                ? "bg-yellow-50 border-yellow-400 text-yellow-800"
+                : "bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300"
                 }`}
             >
               <div className={`w-3 h-3 rounded-full ${selectedType === "material" ? "bg-yellow-500" : "bg-gray-300"}`} />
@@ -86,8 +88,8 @@ function DiscardPanel({ totalMaterial, totalProduct, materialName, productName, 
             <button
               onClick={() => { setSelectedType("product"); setQty(""); }}
               className={`flex items-center gap-3 px-4 py-3 rounded-2xl border-2 transition-all font-bold text-sm cursor-pointer ${selectedType === "product"
-                  ? "bg-blue-50 border-blue-400 text-blue-800"
-                  : "bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300"
+                ? "bg-blue-50 border-blue-400 text-blue-800"
+                : "bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300"
                 }`}
             >
               <div className={`w-3 h-3 rounded-full ${selectedType === "product" ? "bg-blue-500" : "bg-gray-300"}`} />
@@ -154,8 +156,8 @@ function DiscardPanel({ totalMaterial, totalProduct, materialName, productName, 
             onClick={handleConfirm}
             disabled={!canDiscard}
             className={`flex-1 py-3 rounded-2xl font-black transition-all ${canDiscard
-                ? "bg-red-500 text-white hover:bg-red-600 cursor-pointer shadow-lg shadow-red-200"
-                : "bg-gray-100 text-gray-400 cursor-not-allowed"
+              ? "bg-red-500 text-white hover:bg-red-600 cursor-pointer shadow-lg shadow-red-200"
+              : "bg-gray-100 text-gray-400 cursor-not-allowed"
               }`}
           >
             폐기 확인
@@ -185,26 +187,53 @@ export function WarehousePage() {
     const totalDisplay = backendMaxSlots + (6 - (backendMaxSlots % 6 === 0 ? 6 : backendMaxSlots % 6)) + 6;
     const displaySlots: SlotData[] = Array(totalDisplay).fill(null).map((_, i) => ({
       id: i,
+      dbSlotIndex: i, // 기본값: UI와 DB 인덱스가 같다고 가정
       item: null,
       locked: i >= backendMaxSlots,
     }));
-    rawSlots.forEach(slot => {
-      if (slot.slotIndex < displaySlots.length && slot.itemId != null) {
-        displaySlots[slot.slotIndex].item = {
-          type: slot.itemType === "MATERIAL" ? "material" : "product",
-          quantity: slot.quantity,
-          name: slot.itemName ?? "",
-          id_: `w_${slot.itemId}`,
-        };
+    // ✅ warehouseItems의 실제 slotIndex를 사용해 정확한 슬롯에 배치
+    rawSlots.forEach((slot: any) => {
+      // slotIndex가 존재하면 해당 DB 슬롯에 직접 잘라넣음
+      if (slot.slotIndex !== undefined && slot.slotIndex < totalDisplay) {
+        const si = slot.slotIndex as number;
+        displaySlots[si].dbSlotIndex = si;
+        if (slot.itemId != null) {
+          displaySlots[si].item = {
+            type: slot.itemType === "MATERIAL" ? "material" : "product",
+            quantity: slot.quantity,
+            name: slot.itemName ?? "",
+            id_: `w_${slot.itemId}`,
+          };
+        }
       }
     });
+
     return displaySlots;
   };
 
   const fetchSlots = async () => {
     try {
-      const rawSlots = await WarehouseAPI.getSlots();
-      setSlots(buildSlots(rawSlots));
+      const res = await WarehouseAPI.getWarehouseItems(1);
+      await useGameStore.getState().fetchCompanyData(1);
+      const items = useGameStore.getState().warehouseItems;
+      const maxSlots = useGameStore.getState().warehouseMaxSlots || 6;
+      const totalDisplay = maxSlots + 6; 
+      const displaySlots: SlotData[] = Array(totalDisplay).fill(null).map((_, i) => ({
+        id: i, dbSlotIndex: i, item: null, locked: i >= maxSlots 
+      }));
+      items.forEach(item => {
+        const si = (item as any).slotIndex;
+        if (si !== undefined && si < totalDisplay) {
+          displaySlots[si].dbSlotIndex = si;
+          displaySlots[si].item = {
+            type: item.type,
+            quantity: item.quantity,
+            name: item.name ?? "",
+            id_: item.id,
+          };
+        }
+      });
+      setSlots(displaySlots);
     } catch (err) {
       console.warn("창고 데이터 로드 실패", err);
     }
@@ -219,17 +248,24 @@ export function WarehousePage() {
       useAlertStore.getState().openAlert("창고 확장권이 부족합니다. 미니게임에서 획득할 수 있습니다.", "확장 불가");
       return;
     }
+    const ticketItem = useGameStore.getState().inventoryItems.find((i: any) => i.type === "ticket_warehouse");
+    if (!ticketItem || ticketItem.slotIndex === undefined) {
+      useAlertStore.getState().openAlert("창고 확장권의 슬롯 정보를 찾을 수 없습니다.", "에러");
+      return;
+    }
+
     try {
-      await WarehouseAPI.unlockSlot({ companyId: 0, maxSlot: slotId });
+      await WarehouseAPI.unlockSlot({ companyId: 1, maxSlot: ticketItem.slotIndex });
       await fetchSlots();
       useAlertStore.getState().openAlert("창고 슬롯이 확장되었습니다!", "확장 완료");
-    } catch {
-      useAlertStore.getState().openAlert("슬롯 확장에 실패했습니다.", "확장 실패");
+    } catch (e) {
+      useAlertStore.getState().openAlert("슬롯 확장에 실패했습니다.", "API 오류");
     }
   };
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
-    e.dataTransfer.setData("text/plain", index.toString());
+    // ✅ UI 인덱스가 아니라 실제 DB slotIndex를 전송
+    e.dataTransfer.setData("text/plain", slots[index].dbSlotIndex.toString());
     setDraggingIndex(index);
   };
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
@@ -237,34 +273,33 @@ export function WarehousePage() {
     e.preventDefault();
     setDragOverIndex(null);
     setDraggingIndex(null);
-    const sourceIndexStr = e.dataTransfer.getData("text/plain");
-    if (!sourceIndexStr) return;
-    const sourceIndex = parseInt(sourceIndexStr, 10);
-    if (sourceIndex === targetIndex) return;
+    const sourceDbIdxStr = e.dataTransfer.getData("text/plain");
+    if (!sourceDbIdxStr) return;
+    const sourceDbIdx = parseInt(sourceDbIdxStr, 10);
+    const targetDbIdx = slots[targetIndex].dbSlotIndex;
+    if (sourceDbIdx === targetDbIdx) return;
 
-    // 잠긴 슬롯으로 이동 불가
-    const targetSlot = slots[targetIndex];
-    if (targetSlot?.locked) return;
+    if (slots[targetIndex].locked) return;
 
-    // 낙관적 UI 업데이트 (즉각 반영)
+    // 낙관적 UI 업데이트
     setSlots((prev) => {
       const newSlots = [...prev];
-      const src = newSlots[sourceIndex];
+      const srcIdx = newSlots.findIndex(s => s.dbSlotIndex === sourceDbIdx);
+      if (srcIdx < 0) return prev;
+      const src = newSlots[srcIdx];
       const tgt = newSlots[targetIndex];
-      if (tgt.locked) return prev;
       const tempItem = src.item;
       src.item = tgt.item;
       tgt.item = tempItem;
       return newSlots;
     });
 
-    // 백엔드 동기화
     try {
-      await WarehouseAPI.moveSlot({ companyId: 0, fromIdx: sourceIndex, toIdx: targetIndex });
-    } catch {
-      // 실패 시 서버 상태로 롤백
+      await WarehouseAPI.moveSlot({ fromIdx: sourceDbIdx, toIdx: targetDbIdx }); // ✅ DB slotIndex 전송
       await fetchSlots();
-      useAlertStore.getState().openAlert("슬롯 이동에 실패했습니다.", "이동 실패");
+    } catch (err) {
+      await fetchSlots();
+      useAlertStore.getState().openAlert("아이템 이동에 실패했습니다.", "오류");
     }
   };
 
@@ -288,6 +323,30 @@ export function WarehousePage() {
   const localPercent = localUnlocked > 0 ? Math.min((localUsed / localUnlocked) * 100, 100) : 0;
   const visibleCount = Math.max(15, Math.ceil(localUnlocked / 3) * 3 + (localUnlocked % 3 === 0 && localUnlocked >= 15 ? 3 : 0));
   const hasAnyItem = totalMaterial > 0 || totalProduct > 0;
+  const industry = useGameStore(s => s.industry);
+
+  const handleGetTestItems = async () => {
+    try {
+      let itemId = 3; // 금광업 (MINING) -> 금 드릴
+      let addAmount = 10; // 금 드릴은 10개가 1슬롯 최대
+
+      if (industry === "금 제련업" || industry === "SMELTING") { 
+        itemId = 1; // 금광석
+        addAmount = 50; // 금광석 최대적재량 고려
+      } else if (industry === "제조업" || industry === "MANUFACTURING") { 
+        itemId = 2; // 금괴
+        addAmount = 50; 
+      }
+
+      await WarehouseAPI.addTestItem({ itemId, amount: addAmount });
+      await fetchSlots(); // 👈 추가된 부분: 로컬 슬롯 상태도 새로고침
+      await useGameStore.getState().fetchCompanyData(1);
+      useAlertStore.getState().openAlert(`테스트 자재 ${addAmount}개가 창고에 지급되었습니다!`, "성공");
+    } catch (e: any) {
+      console.error("Test item fail:", e);
+      useAlertStore.getState().openAlert(e?.response?.data?.message || "창고 빈 슬롯 부족 혹은 통신 오류로 실패했습니다.", "오류");
+    }
+  };
 
   return (
     <div
@@ -300,7 +359,18 @@ export function WarehousePage() {
         backgroundColor: '#cee7be'
       }}
     >
-      <BackButton onClick={closeBuildingPage} className="absolute top-6 left-6" />
+      <div className="absolute top-6 left-6 flex items-center gap-4 z-10">
+        <BackButton onClick={closeBuildingPage} />
+        {/* ✅ 테스트용 자원 지급 버튼 추가 */}
+        <button
+          onClick={handleGetTestItems}
+          className="flex-1 max-w-[120px] bg-[#8b4513] hover:bg-[#a0522d] text-white font-black py-2 rounded-xl border-4 border-[#5f2c09] shadow-[0_4px_0_#3e1c05] hover:shadow-none hover:translate-y-1 hover:border-[#3e1c05] transition-all flex items-center justify-center gap-1.5"
+        >
+          <span className="text-xl">🛠️</span>
+          <span className="text-sm">테스트 지급</span>
+        </button>
+      </div>
+
 
       {/* 우측 상단 인디케이터 */}
       <div className="absolute top-6 right-6 flex gap-4 items-center z-10">
@@ -329,8 +399,8 @@ export function WarehousePage() {
             setShowDiscard(true);
           }}
           className={`flex items-center gap-2 px-4 py-3 rounded-2xl border-2 font-black text-sm transition-all shadow-lg cursor-pointer ${hasAnyItem
-              ? "bg-red-50 border-red-300 text-red-600 hover:bg-red-100 hover:border-red-400 hover:shadow-red-200"
-              : "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed opacity-60"
+            ? "bg-red-50 border-red-300 text-red-600 hover:bg-red-100 hover:border-red-400 hover:shadow-red-200"
+            : "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed opacity-60"
             }`}
           title="아이템 폐기"
         >
@@ -366,7 +436,8 @@ export function WarehousePage() {
               return (
                 <div
                   key={slot.id}
-                  draggable={!slot.locked && hasItem}
+                  style={{ aspectRatio: "1/1" }}
+                  draggable={!slot.locked && slot.item !== null}
                   onDragStart={(e) => handleDragStart(e, idx)}
                   onDragOver={handleDragOver}
                   onDragEnter={() => !slot.locked && setDragOverIndex(idx)}
@@ -396,8 +467,8 @@ export function WarehousePage() {
                   {slot.locked ? (
                     <div className="flex flex-col items-center justify-center text-gray-400 w-full h-full">
                       <Lock className={`w-12 h-12 mb-2 transition-all ${warehouseExpandTickets > 0
-                          ? "group-hover:scale-110 group-hover:text-amber-500 text-slate-400"
-                          : "text-gray-300"
+                        ? "group-hover:scale-110 group-hover:text-amber-500 text-slate-400"
+                        : "text-gray-300"
                         }`} />
                       {warehouseExpandTickets > 0 ? (
                         <span className="text-xs font-bold text-amber-700 bg-amber-200 px-3 py-1 rounded-full shadow-sm mt-1">확장 가능</span>
@@ -409,21 +480,30 @@ export function WarehousePage() {
                       </div>
                     </div>
                   ) : hasItem ? (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-3 pt-8">
-                      <div
-                        className="w-16 h-16 rounded-2xl flex items-center justify-center mb-3 shadow-md relative overflow-hidden ring-1 ring-white/40"
-                        style={{
-                          background: slot.item!.type === "material"
-                            ? "linear-gradient(135deg, rgba(234, 179, 8, 0.2) 0%, rgba(202, 138, 4, 0.3) 100%)"
-                            : "linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.3) 100%)",
-                        }}
-                      >
-                        <Package className={`w-8 h-8 drop-shadow-md ${slot.item!.type === "material" ? "text-yellow-600" : "text-blue-500"}`} />
-                      </div>
-                      <div className="bg-white/90 backdrop-blur border border-white/50 shadow-sm rounded-xl px-3 py-2 text-center w-[90%] pointer-events-none">
-                        <span className="text-sm text-gray-800 font-extrabold block truncate w-full">{slot.item!.name}</span>
-                        <span className="text-xs text-gray-600 font-bold block mt-1 truncate">
-                          {slot.item!.quantity.toLocaleString()} 개
+                    <div className="w-full h-full relative overflow-hidden rounded-2xl">
+                      {/* 이미지 꽉 채우기 */}
+                      {(() => {
+                        const imgSrc = getPropsImage(slot.item!.name);
+                        return imgSrc ? (
+                          <img
+                            src={imgSrc}
+                            alt={slot.item!.name}
+                            className="absolute inset-0 w-full h-full object-contain p-4 drop-shadow-lg"
+                          />
+                        ) : (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <Package className={`w-12 h-12 drop-shadow-md ${slot.item!.type === "material" ? "text-yellow-600" : "text-blue-500"}`} />
+                          </div>
+                        );
+                      })()}
+
+                      {/* 하단 정보 바 */}
+                      <div className="absolute bottom-0 left-0 right-0 flex justify-between items-end px-4 py-2 bg-black/55 rounded-b-2xl">
+                        <span className="text-white font-extrabold text-[14px] leading-tight drop-shadow truncate max-w-[58%]">
+                          {slot.item!.name}
+                        </span>
+                        <span className="text-white font-black text-[13px] bg-black/40 px-2 py-1 rounded-full shrink-0">
+                          {slot.item!.quantity.toLocaleString()}개
                         </span>
                       </div>
                     </div>

@@ -3,11 +3,12 @@ import { Lock, Timer } from "lucide-react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
-import { useGameStore, pickReward } from "../../store/gameStore";
+import { useGameStore } from "../../store/gameStore";
 import type { InventoryItem } from "../../store/gameStore";
 import { MinigameAPI } from "../../api/gameApi";
 import { BackButton } from "../../app/components/ui/backbutton";
 import { useAlertStore } from "../../store/useAlertStore";
+import { WORKER_LEVEL_IMAGES } from "../../constants/workers";
 
 // ✨ shadcn/ui AlertDialog 임포트 추가 (경로는 프로젝트에 맞게 확인해주세요!)
 import {
@@ -58,7 +59,7 @@ export function MinigamePage() {
   const closeBuildingPage = useGameStore((state) => state.closeBuildingPage);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  const TOTAL_CLICKS = 10;
+  const TOTAL_CLICKS = 1;
   const [gameState, setGameState] = useState<"locked" | "playing" | "success" | "failure">("locked");
   const [timeLeft, setTimeLeft] = useState(10);
   const [clicksLeft, setClicksLeft] = useState(TOTAL_CLICKS);
@@ -115,8 +116,13 @@ export function MinigamePage() {
     }
   };
 
+  const isProcessingRef = useRef(false);
+
   const handleUnlock = async () => {
-    if (isProcessing) return;
+    if (isProcessingRef.current) return;
+    isProcessingRef.current = true;
+    setIsProcessing(true);
+
     const { money, inventoryItems, inventoryMax } = useGameStore.getState();
 
     // 인벤토리 가득 찼으면 게임 결제 차단 (워커 슬롯 기준, 티켓 제외)
@@ -126,17 +132,19 @@ export function MinigamePage() {
         `인벤토리가 가득 찼습니다. (${workerCount}/${inventoryMax})\n아이템을 버리거나 인벤토리를 확장한 후 이용하세요.`,
         "게임 참여 불가"
       );
+      isProcessingRef.current = false;
+      setIsProcessing(false);
       return;
     }
 
     if (money < 100000) {
       setShowErrorAlert(true);
+      isProcessingRef.current = false;
+      setIsProcessing(false);
       return;
     }
 
-    setIsProcessing(true);
     try {
-      useGameStore.setState((prev) => ({ money: prev.money - 100000 }));
       setGameState("playing");
       setTimeLeft(10);
       setClicksLeft(TOTAL_CLICKS);
@@ -145,6 +153,7 @@ export function MinigamePage() {
       console.error(e);
       useAlertStore.getState().openAlert("게임 입장에 실패했습니다.", "오류");
     } finally {
+      isProcessingRef.current = false;
       setIsProcessing(false);
     }
   };
@@ -184,12 +193,49 @@ export function MinigamePage() {
       const next = Math.max(0, prev - damage);
       if (next === 0 && prev > 0) {
         setGameState("success");
-        // 랜덤 보상 뽑기 (확률 가중치 로직 적용)
-        const randomReward = pickReward();
-        setRewardItem(randomReward);
-        useGameStore.getState().addInventoryItem(randomReward);
+        setIsProcessing(true);
+        
+        MinigameAPI.claimReward({ companyId: 1, clicks: TOTAL_CLICKS, isFever })
+          .then((res) => {
+            const data = res.data;
+            let typeStr = "";
+            let iconStr = "🎁";
+            if (data.itemType === "EQUIPMENT") {
+               typeStr = `worker_lv${data.workerLevel || 1}`;
+               if (data.workerLevel === 1) iconStr = "⛏️";
+               else if (data.workerLevel === 2) iconStr = "🔥";
+               else if (data.workerLevel === 3) iconStr = "🔨";
+               else if (data.workerLevel === 4) iconStr = "🏹";
+               else if (data.workerLevel === 5) iconStr = "🌟";
+               else if (data.workerLevel === 6) iconStr = "👑";
+            } else {
+               if (data.itemName.includes("창고")) {
+                  typeStr = "ticket_warehouse";
+                  iconStr = "📦";
+               } else {
+                  typeStr = "ticket_inventory";
+                  iconStr = "🎒";
+               }
+            }
 
-        MinigameAPI.claimReward({ companyId: 1, clicks: TOTAL_CLICKS, isFever }).catch(console.error);
+            setRewardItem({
+              type: typeStr as any,
+              name: data.itemName,
+              quantity: 1,
+              icon: iconStr,
+              level: data.workerLevel || undefined
+            });
+
+            useGameStore.getState().fetchCompanyData(1);
+          })
+          .catch((err) => {
+             console.error("미니게임 보상 수령 실패:", err);
+             // useAlertStore.getState().openAlert(err?.response?.data?.message || "보상 처리 오류", "오류");
+             // 실패해도 창 닫기나 잠금 처리 등 필요시 추가
+          })
+          .finally(() => {
+             setIsProcessing(false);
+          });
       }
       return next;
     });
@@ -218,33 +264,41 @@ export function MinigamePage() {
       <BackButton onClick={handleBackClick} className="absolute top-6 left-6" />
 
       {gameState === "locked" && (
-        <div className="absolute inset-0 z-50 bg-gray-950/80 flex flex-col items-center justify-center backdrop-blur-sm pointer-events-auto">
-          <div className="mb-10 flex items-center justify-center animate-bounce bg-white/10 p-10 rounded-full border-2 border-white/20">
-            <Lock className="w-24 h-24 text-white drop-shadow-2xl" strokeWidth={2} />
-          </div>
-          <button
-            onClick={handleUnlock}
-            className="px-16 py-5 bg-gradient-to-b from-yellow-300 to-yellow-500 border-4 border-yellow-700 rounded-full text-2xl font-black text-yellow-950 hover:from-yellow-200 hover:to-yellow-400 active:scale-95 transition-all shadow-[0_8px_0_rgb(161,98,7)] cursor-pointer tracking-widest"
-          >
-            100,000원 투입
-          </button>
+        <div className="absolute inset-0 z-50 bg-gray-950/80 flex flex-row items-center justify-center backdrop-blur-sm pointer-events-auto px-16 gap-8">
+          {/* Left spacer (mirrors right panel width) */}
+          <div className="flex-1 max-w-xl" />
 
-          {/* 💡 오른쪽 조작법 패널 */}
-          <div className="absolute right-32 top-1/2 -translate-y-1/2 bg-black/60 backdrop-blur-md rounded-2xl border-2 border-white/10 p-6 max-w-lg flex flex-col gap-4 text-left shadow-2xl whitespace-nowrap">
-            <h3 className="text-xl font-black text-yellow-400 flex items-center gap-2">
-              <span className="text-2xl">💡</span> 게임 조작 방법
-            </h3>
-            <div className="w-full h-0.5 bg-white/10"></div>
-            <ul className="flex flex-col gap-3 text-slate-200 font-bold text-sm leading-relaxed">
-              <li className="flex gap-2">
-                <span className="text-yellow-400">•</span>
-                <span>마우스 <strong className="text-white text-base">클릭</strong>이나 <strong className="text-white text-base">스페이스바</strong>를 누르면 타이머가 시작됩니다!</span>
-              </li>
-              <li className="flex gap-2">
-                <span className="text-yellow-400">•</span>
-                <span>게임이 시작된 후에는 어떤 연사 수단이든 동원하여 차를 부숴보세요 🚗🔥</span>
-              </li>
-            </ul>
+          {/* Center: lock + button */}
+          <div className="flex flex-col items-center flex-shrink-0">
+            <div className="mb-10 flex items-center justify-center animate-bounce bg-white/10 p-10 rounded-full border-2 border-white/20">
+              <Lock className="w-24 h-24 text-white drop-shadow-2xl" strokeWidth={2} />
+            </div>
+            <button
+              onClick={handleUnlock}
+              className="px-16 py-5 bg-gradient-to-b from-yellow-300 to-yellow-500 border-4 border-yellow-700 rounded-full text-2xl font-black text-yellow-950 hover:from-yellow-200 hover:to-yellow-400 active:scale-95 transition-all shadow-[0_8px_0_rgb(161,98,7)] cursor-pointer tracking-widest"
+            >
+              100,000원 투입
+            </button>
+          </div>
+
+          {/* Right: 조작법 패널 */}
+          <div className="flex-1 max-w-xl flex justify-end">
+            <div className="bg-black/60 backdrop-blur-md rounded-2xl border-2 border-white/10 p-6 flex flex-col gap-4 text-left shadow-2xl w-full">
+              <h3 className="text-xl font-black text-yellow-400 flex items-center gap-2">
+                <span className="text-2xl">💡</span> 게임 조작 방법
+              </h3>
+              <div className="w-full h-0.5 bg-white/10" />
+              <ul className="flex flex-col gap-3 text-slate-200 font-bold text-sm leading-relaxed">
+                <li className="flex gap-2">
+                  <span className="text-yellow-400">•</span>
+                  <span>마우스 <strong className="text-white text-base">클릭</strong>이나 <strong className="text-white text-base">스페이스바</strong>를 누르면 타이머가 시작됩니다!</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-yellow-400">•</span>
+                  <span>게임이 시작된 후에는 어떤 연사 수단이든 동원하여 차를 부숴보세요 🚗🔥</span>
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
       )}
@@ -276,9 +330,8 @@ export function MinigamePage() {
         <button
           ref={buttonRef}
           onClick={handleClickBuilding}
-          className={`relative transition-transform outline-none mt-auto mb-20 ${gameState === "locked" ? "cursor-default" : "cursor-pointer"}`}
+          className={`relative transition-transform duration-75 active:scale-95 outline-none mt-auto mb-20 ${gameState === "locked" ? "cursor-default" : "cursor-pointer"}`}
           style={{
-            transform: `scale(${1 - damagePercent * 0.002})`,
             filter: `brightness(${isFever ? 70 - damagePercent / 4 : 100 - damagePercent / 4}%) sepia(${isFever ? 0.8 : 0}) hue-rotate(${isFever ? -50 : 0}deg)`,
           }}
         >
@@ -305,22 +358,68 @@ export function MinigamePage() {
         </button>
       </div>
 
-      {/* 성공/실패 팝업 생략 (기존과 동일) */}
-      {gameState === "success" && (
-        <div className="absolute inset-0 z-50 bg-black/80 flex flex-col items-center justify-center backdrop-blur-sm animate-fade-in pointer-events-auto">
-          <div className="bg-white rounded-[32px] p-10 max-w-md w-full border-[6px] border-slate-800 shadow-2xl flex flex-col items-center">
-            <h2 className="text-5xl font-black text-slate-800 mb-8 tracking-wider">성 공 !</h2>
-            <div className="w-40 h-40 bg-yellow-50 rounded-3xl border-4 border-amber-400 flex flex-col items-center justify-center mb-8 shadow-inner">
-              <span className="text-6xl mb-3 drop-shadow-md">{rewardItem ? rewardItem.icon : "🎁"}</span>
-              <span className="font-bold text-amber-800 text-xl text-center break-keep leading-tight px-2">{rewardItem ? rewardItem.name : "아이템 획득"}</span>
-            </div>
-            <div className="w-full flex flex-col gap-4">
-              <button onClick={handleRetry} className="w-full py-5 bg-blue-50 border-[3px] border-blue-400 rounded-2xl font-black text-blue-800 text-xl hover:bg-blue-100 active:scale-95 transition-all shadow-sm cursor-pointer">한번 더 도전하기</button>
-              <button onClick={closeBuildingPage} className="w-full py-5 bg-slate-100 border-[3px] border-slate-300 rounded-2xl font-black text-slate-600 text-xl hover:bg-slate-200 active:scale-95 transition-all shadow-sm cursor-pointer">나가기</button>
+      {/* 성공 팝업 */}
+      {gameState === "success" && (() => {
+        const isHighTier = rewardItem?.type?.startsWith("worker") && (rewardItem.level || 0) >= 4;
+        return (
+          <div className="absolute inset-0 z-50 bg-black/80 flex flex-col items-center justify-center backdrop-blur-sm animate-fade-in pointer-events-auto overflow-hidden">
+            {/* 난리 부루스 배경 이펙트 (회전하는 빛) */}
+            {isHighTier && (
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-60 mix-blend-screen">
+                <div className="w-[150vw] h-[150vw] bg-[conic-gradient(from_0deg,transparent_0deg,rgba(252,211,77,1)_20deg,transparent_40deg,rgba(252,211,77,1)_60deg,transparent_80deg,rgba(252,211,77,1)_100deg,transparent_120deg,rgba(252,211,77,1)_140deg,transparent_160deg,rgba(252,211,77,1)_180deg,transparent_200deg,rgba(252,211,77,1)_220deg,transparent_240deg,rgba(252,211,77,1)_260deg,transparent_280deg,rgba(252,211,77,1)_300deg,transparent_320deg,rgba(252,211,77,1)_340deg,transparent_360deg)] animate-[spin_3s_linear_infinite]" />
+              </div>
+            )}
+            <div className={`relative bg-white rounded-[32px] p-10 max-w-md w-full border-[6px] shadow-2xl flex flex-col items-center z-10 transition-transform ${isHighTier ? "border-amber-400 scale-[1.02] shadow-[0_0_100px_rgba(251,191,36,0.8)]" : "border-slate-800"}`}>
+              
+              {/* 장식 이모지 */}
+              {isHighTier && (
+                <>
+                  <div className="absolute -top-14 left-0 right-0 flex justify-center text-7xl animate-[bounce_0.5s_infinite]">🎉</div>
+                  <div className="absolute -left-12 top-1/2 -translate-y-1/2 text-6xl animate-ping">✨</div>
+                  <div className="absolute -right-12 top-1/2 -translate-y-1/2 text-6xl animate-pulse">🔥</div>
+                </>
+              )}
+
+              <h2 className={`text-5xl font-black mb-8 tracking-wider drop-shadow-md ${isHighTier ? "text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-yellow-500 to-red-500 animate-pulse" : "text-slate-800"}`}>
+                {isHighTier ? "⭐대성공⭐" : "성 공 !"}
+              </h2>
+              
+              <div className={`w-40 h-40 bg-slate-50 rounded-3xl border-4 flex flex-col items-center justify-center mb-8 shadow-inner relative ${isHighTier ? "border-red-500 bg-yellow-100" : "border-amber-400"}`}>
+                {isHighTier && <div className="absolute inset-0 bg-yellow-400/30 animate-pulse pointer-events-none rounded-3xl" />}
+                
+                <div className={`flex items-center justify-center h-24 mb-2 z-10 ${isHighTier ? "scale-125 transition-transform drop-shadow-[0_10px_10px_rgba(220,38,38,0.6)]" : "drop-shadow-md"}`}>
+                  {rewardItem ? (
+                    !rewardItem.type?.startsWith("worker") ? (
+                      <span className="text-6xl">{rewardItem.icon}</span>
+                    ) : (
+                      <>
+                        <img src={WORKER_LEVEL_IMAGES[rewardItem.level || 1]} alt={rewardItem.name} className="w-24 h-24 object-contain" />
+                        <span className={`absolute -top-3 -left-3 px-3 py-1 font-black text-xs rounded-full shadow-lg ${isHighTier ? "bg-red-600 border-2 border-red-300 text-yellow-300 animate-pulse scale-110" : "bg-slate-800 text-yellow-400 border border-slate-600"}`}>
+                          Lv.{rewardItem.level}
+                        </span>
+                      </>
+                    )
+                  ) : (
+                    <span className="text-6xl">🎁</span>
+                  )}
+                </div>
+                <span className={`font-bold z-10 text-center break-keep leading-tight px-2 ${isHighTier ? "text-red-700 text-2xl drop-shadow-[0_1px_2px_rgba(255,255,255,1)]" : "text-amber-800 text-xl"}`}>
+                  {rewardItem ? rewardItem.name : "아이템 획득"}
+                </span>
+              </div>
+              
+              <div className="w-full flex flex-col gap-4 mt-2 relative z-20">
+                <button onClick={handleRetry} className="w-full py-5 bg-blue-50 border-[3px] border-blue-400 rounded-2xl font-black text-blue-800 text-xl hover:bg-blue-100 active:scale-95 transition-all shadow-sm cursor-pointer">
+                  한번 더 도전하기
+                </button>
+                <button onClick={closeBuildingPage} className="w-full py-5 bg-slate-100 border-[3px] border-slate-300 rounded-2xl font-black text-slate-600 text-xl hover:bg-slate-200 active:scale-95 transition-all shadow-sm cursor-pointer">
+                  나가기
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {gameState === "failure" && (
         <div className="absolute inset-0 z-50 bg-black/80 flex flex-col items-center justify-center backdrop-blur-sm animate-fade-in pointer-events-auto">

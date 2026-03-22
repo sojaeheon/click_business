@@ -3,7 +3,7 @@ import { WORKER_DEFINITIONS } from '../constants/workers';
 
 // 💡 헬퍼 함수: 가짜 로딩 시간(0.5초)을 만들어주는 함수입니다.
 const mockDelay = (ms = 500) => new Promise(resolve => setTimeout(resolve, ms));
-const isGuestMode = () => localStorage.getItem('isGuest') === 'true';
+const isGuestMode = () => sessionStorage.getItem('isGuest') === 'true';
 
 export const AuthAPI = {
   getLoginUrl: () => {
@@ -25,14 +25,10 @@ export const UserAPI = {
 
 export const CompanyAPI = {
   getStatusById: async (companyId: number) => {
-    try {
-      const res = await apiClient.get(`/companies/${companyId}/status`);
-      return { data: res.data?.data };
-    } catch (err) {
-      console.warn("API 연동 실패! CompanyAPI.getStatusById 목업 폴백", err);
-      return { data: { cash: 5000000, total_asset: 12000000 } };
-    }
+    const res = await apiClient.get(`/companies/${companyId}/status`);
+    return { data: res.data?.data };
   },
+
   getStatus: async () => {
     // ✅ 내 회사 게임 상태 조회 (GET /api/v1/companies/me/status)
     // money(현금), capital(총자산) 포함된 GameStatusResponse 반환
@@ -50,16 +46,7 @@ export const CompanyAPI = {
         }
       };
     } catch (err) {
-      console.warn("API 연동 실패! CompanyAPI.getStatus 목업 데이터 사용", err);
-      return {
-        data: {
-          name: undefined,
-          industry_type: undefined,
-          cash: undefined,
-          total_asset: undefined,
-          slots: undefined
-        }
-      };
+      throw err;
     }
   },
 
@@ -73,9 +60,7 @@ export const CompanyAPI = {
       });
       return { data: res.data?.data ?? { success: true } };
     } catch (err) {
-      console.warn("CompanyAPI.create 목업 폴백:", err);
-      await mockDelay(300);
-      return { data: { success: true, mock: true } };
+      throw err;
     }
   },
 };
@@ -83,14 +68,7 @@ export const CompanyAPI = {
 // 내 작업장 ID 세션 캐시 (한 번 조회 후 재사용)
 let _cachedWorkstationId: number | null = null;
 
-// 💡 작업장(Workstation) 백엔드 연동 전 임시 테스트용 목업 상태
-let mockWorkIsWorking = false;
-let mockWorkProgress = 0;      // 0 ~ 100 퍼센트
-let mockWorkTotalQuantity = 0; // 총 생산 예상 개수 (유저 입력값)
-let mockWorkUncollected = 0;   // 생산 완료된 미수령 아이템 개수
-let mockWorkInterval: ReturnType<typeof setInterval> | null = null;
-let mockWorkStartedAt = 0;     // 작업 시작 timestamp(ms)
-let mockWorkTotalMs = 0;       // 총 소요 예상 시간(ms)
+
 
 export const WorkstationAPI = {
   // 내 작업장 ID를 가져오는 헬퍼 (세션 중 최초 1회만 API 호출)
@@ -116,14 +94,10 @@ export const WorkstationAPI = {
   },
 
   create: async (data: { companyId: number; name?: string; type?: string }) => {
-    try {
-      const res = await apiClient.post('/workstations/create', data);
-      return { data: res.data?.data ?? { success: true } };
-    } catch (err) {
-      console.warn("API 연동 실패! WorkstationAPI.create 목업 폴백", err);
-      return { data: { success: true } };
-    }
+    const res = await apiClient.post('/workstations/create', data);
+    return { data: res.data?.data ?? { success: true } };
   },
+
   getStatus: async () => {
     // ✅ 실제 API 연결: GET /api/v1/workstations/my
     try {
@@ -140,92 +114,33 @@ export const WorkstationAPI = {
         }
       };
     } catch (err) {
-      console.warn("API 연동 실패! WorkstationAPI.getStatus 목업 데이터 사용", err);
-      const elapsed = mockWorkIsWorking ? Date.now() - mockWorkStartedAt : 0;
-      const remaining = mockWorkIsWorking ? Math.max(0, mockWorkTotalMs - elapsed) : 0;
-      return {
-        data: {
-          isWorking: mockWorkIsWorking,
-          progress: Math.min(100, mockWorkProgress),
-          producedQuantity: mockWorkUncollected,
-          totalQuantity: mockWorkTotalQuantity || 0,
-          remainingMs: mockWorkIsWorking ? remaining : null,
-        }
-      };
+      // 프론트 자체 계산 금지
+      throw err;
     }
   },
-  // data.quantity = 유저가 요청한 생산 개수 (개 단위)
-  // 시간 = (quantity / resProd) × 60초 비례 계산
   start: async (data: { companyId: number; recipeId: number; quantity: number; workerId: number }) => {
-    let resProd = 1;
-    let reqMat = 1;
     try {
-      const { useGameStore } = await import('../store/gameStore');
-      const names = useGameStore.getState().getIndustryItemNames();
-      resProd = names.resProd;
-      reqMat = names.reqMat;
-    } catch (e) { }
-
-    // 개수 비례 계산 (사이클 올림 없이 qty 그대로 반영)
-    const ratio = data.quantity / resProd;
-    const reserveQty = Math.ceil(ratio * reqMat); // 재료 (API reserve용)
-
-    try {
-      // ✅ 실제 연동 /api/v1/workstations/{workstation_id}/reserve (예약 및 가동)
-      // reserve API에는 재료 수량(reserveQty)을 전달해야 함 (제품 수량 data.quantity 아님)
+      // ✅ 유저가 입력한 data.quantity (개수) 그대로 백엔드에 요청. 프론트엔드 연산(ratio/resProd 등) 제거
       const wsId = await WorkstationAPI.getMyId();
-      await apiClient.post(`/workstations/${wsId}/reserve`, { quantity: reserveQty });
+      await apiClient.post(`/workstations/${wsId}/reserve`, { quantity: data.quantity });
       await apiClient.post(`/workstations/${wsId}/toggle`);
       return { data: { success: true, message: "작업이 시작되었습니다." } };
     } catch (err) {
-      console.warn("API 연동 실패! WorkstationAPI.start 목업 데이터 사용", err);
-      await mockDelay();
-
-      // 비례 시간: qty/resProd × 60000ms
-      const totalMs = Math.ceil(ratio * 60000);
-      mockWorkTotalQuantity = data.quantity; // 목표 개수 = 유저 입력 그대로
-      mockWorkUncollected = 0;
-      mockWorkIsWorking = true;
-      mockWorkProgress = 0;
-      mockWorkStartedAt = Date.now();
-      mockWorkTotalMs = totalMs;
-
-      let producedSoFar = 0;
-      if (mockWorkInterval) { clearInterval(mockWorkInterval); mockWorkInterval = null; }
-      const intervalMs = 500;
-      const totalTicks = totalMs / intervalMs;
-      const tickPercent = 100 / totalTicks;
-
-      mockWorkInterval = setInterval(() => {
-        if (mockWorkProgress < 100) {
-          mockWorkProgress += tickPercent;
-          if (mockWorkProgress > 100) mockWorkProgress = 100;
-          const expectedItems = Math.floor((mockWorkProgress / 100) * mockWorkTotalQuantity);
-          const newlyProduced = expectedItems - producedSoFar;
-          if (newlyProduced > 0) {
-            mockWorkUncollected += newlyProduced;
-            producedSoFar = expectedItems;
-          }
-        } else {
-          if (mockWorkInterval) { clearInterval(mockWorkInterval); mockWorkInterval = null; }
-          mockWorkIsWorking = false;
-        }
-      }, intervalMs);
-
-      return { data: { success: true, message: "작업이 시작되었습니다. (Mock)" } };
+      // 프론트 임의 계산 로직 삭제
+      throw err;
     }
   },
   process: async (workstationId: number = 1) => {
     try {
-      await apiClient.post(`/workstations/${workstationId}/process`);
+      await apiClient.post(`/workstations/${workstationId}/process`, { outputItemId: 0 });
       return { data: { success: true } };
     } catch (err) {
       return { data: { success: true } };
     }
   },
-  equip: async (workstationId: number = 1, equipmentId: number) => {
+  equip: async (workstationId: number, equipmentId: number) => {
     try {
-      await apiClient.post(`/workstations/${workstationId}/equip/${equipmentId}`);
+      await apiClient.post(`/workstations/${workstationId}/equip-equipment/${equipmentId}`);
       return { data: { success: true } };
     } catch (err) {
       return { data: { success: true } };
@@ -238,20 +153,7 @@ export const WorkstationAPI = {
       await apiClient.post(`/workstations/${wsId}/harvest`);
       return { data: { success: true, message: "수령 완료" } };
     } catch (err) {
-      console.warn("API 연동 실패! WorkstationAPI.collect 목업 데이터 사용", err);
-      await mockDelay();
-
-      // 중간 수령 처리: 미수령 개수만 0으로 비움 (진행도는 그대로, 아직 작업중이면 계속 작업)
-      mockWorkUncollected = 0;
-
-      // 이미 100% 진행된 상태에서 수납했다면 작업 완료된 것으로 보고 상태 리셋
-      if (mockWorkProgress >= 100) {
-        mockWorkProgress = 0;
-        mockWorkIsWorking = false;
-      }
-
-      return { data: { success: true, message: "수령 완료 (Mock)" } };
-
+      throw err;
     }
   }
 };
@@ -303,14 +205,8 @@ export const MarketAPI = {
 
 export const BankAPI = {
   getSummary: async (companyId: number) => {
-    try {
-      const res = await apiClient.get('/bank/summary');
-      return { data: res.data.data };
-    } catch (err) {
-      console.warn("API 연동 실패! BankAPI.getSummary 목업 데이터 사용", err);
-      await mockDelay();
-      return { data: { loanRate: 5.5, depositRate: 2.3, currentLoan: isGuestMode() ? 0 : 1000000, currentDeposit: isGuestMode() ? 0 : 500000 } };
-    }
+    const res = await apiClient.get('/bank/summary');
+    return { data: res.data.data };
   },
   processLoan: (data: { companyId: number; type: 'BORROW' | 'REPAY' | 'DEPOSIT' | 'WITHDRAW'; amount: number }) => apiClient.post('/bank/loans', data)
 };
@@ -322,45 +218,19 @@ export const HRAPI = {
 
 export const MinigameAPI = {
   claimReward: async (data: { companyId: number; clicks: number; isFever: boolean }) => {
-    try {
-      const res = await apiClient.post('/minigame/claim', data);
-      return { data: res.data.data };
-    } catch (err) {
-      console.warn("API 연동 실패! MinigameAPI.claimReward 목업 데이터 사용", err);
-      await mockDelay();
-      return { data: { success: true, reward: 500 } };
-    }
+    const res = await apiClient.post('/minigame/claim'); // 본문 없이 전송
+    return { data: res.data.data };
   },
   unlockGame: async (data: { companyId: number; amount: number }) => {
-    try {
-      const res = await apiClient.post('/minigame/unlock', data);
-      return { data: res.data.data };
-    } catch (err) {
-      console.warn("API 연동 실패! MinigameAPI.unlockGame 목업 데이터 사용", err);
-      await mockDelay();
-      return { data: { success: true } };
-    }
+    const res = await apiClient.post('/minigame/unlock', data);
+    return { data: res.data.data };
   },
 };
 
 export const RankingAPI = {
   getTopRanks: async () => {
-    try {
-      const res = await apiClient.get('/ranking/preview');
-      return { data: res.data.data };
-    } catch (err) {
-      console.warn("API 연동 실패! RankingAPI.getTopRanks 목업 데이터 사용", err);
-      await mockDelay();
-      return {
-        data: [
-          { rank: 1, companyName: "삼성제철", score: 99999, tier: "챌린저" },
-          { rank: 2, companyName: "현대광업", score: 88888, tier: "다이아" },
-          { rank: 3, companyName: "딸깍 컴퍼니", score: 77777, tier: "플래티넘" },
-          { rank: 4, companyName: "SSAFY 광물", score: 66666, tier: "골드" },
-          { rank: 5, companyName: "개미구멍", score: 55555, tier: "실버" },
-        ]
-      };
-    }
+    const res = await apiClient.get('/ranking/preview');
+    return { data: res.data.data };
   },
 };
 
@@ -385,15 +255,18 @@ export const WarehouseAPI = {
   getWarehouseItems: async (companyId: number) => {
     try {
       const res = await apiClient.get('/warehouses');
+      const allSlots = res.data.data || [];
       return {
-        data: res.data.data
+        data: allSlots
           .filter((slot: any) => slot.itemId != null && (slot.itemType === "MATERIAL" || slot.itemType === "PRODUCT"))
           .map((slot: any) => ({
-            id: `w_${slot.itemId || slot.slotIndex}`,
+            id: `w_${slot.itemId || slot.slotIndex}_${slot.slotIndex}`, // 중복 ID 방지를 위해 slotIndex 추가
             type: slot.itemType === "MATERIAL" ? "material" : "product",
             quantity: slot.quantity,
             name: slot.itemName,
-          }))
+            slotIndex: slot.slotIndex,
+          })),
+        maxSlots: allSlots.length // 실제 백엔드 슬롯 총 개수
       };
     } catch (err) {
       console.warn("API 연동 실패! WarehouseAPI", err);
@@ -409,14 +282,17 @@ export const WarehouseAPI = {
       return { data: { success: true } };
     }
   },
-  moveSlot: async (data: { companyId: number, fromIdx: number, toIdx: number }) => {
-    try {
-      await apiClient.post('/warehouses/swap', { fromSlot: data.fromIdx, toSlot: data.toIdx });
-      return { data: { success: true } };
-    } catch (err) {
-      console.warn("API 연동 실패! WarehouseAPI.moveSlot", err);
-      return { data: { success: true } };
-    }
+  moveSlot: async (data: { fromIdx: number, toIdx: number }) => {
+    await apiClient.post('/warehouses/swap', { fromSlot: data.fromIdx, toSlot: data.toIdx });
+    return { data: { success: true } };
+  },
+  addTestItem: async (data: { itemId: number, amount: number }) => {
+    await apiClient.post('/warehouses/add', null, { params: { itemId: data.itemId, amount: data.amount } });
+    return { data: { success: true } };
+  },
+  decreaseItem: async (data: { slotIndex: number, amount: number }) => {
+    await apiClient.delete('/warehouses/decrease', { data });
+    return { data: { success: true } };
   }
 };
 
@@ -425,18 +301,20 @@ export const InventoryAPI = {
     // ✅ 실제 API 연동: GET /api/v1/inventory/
     try {
       const res = await apiClient.get('/inventory'); // 백엔드 경로 수정
+      const allSlots = res.data.data || [];
       return {
-        data: res.data.data
+        data: allSlots
           .filter((slot: any) => slot.itemId != null) // 실제 아이템이 들어있는 슬롯만 프론트엔드 인벤토리에 담기
           .map((slot: any) => ({
-            id: slot.itemId || (slot.slotIndex * 1000), // id가 없으면 고유 임시 id
+            id: slot.itemId ? `inv_${slot.itemId}_${slot.slotIndex}` : `inv_slot_${slot.slotIndex * 1000}`, // 고유 임시 id 보장
             name: slot.itemName || undefined,
             level: slot.itemType === 'EQUIPMENT' ? Math.max(1, slot.quantity) : 1, // 장비는 quantity 등 화면 요구에 맞춤
             locked: false, // 백엔드에 아직 locked 컬럼 미지원
             quantity: slot.quantity,
             slotIndex: slot.slotIndex,
             type: slot.itemType === 'TICKET' ? `ticket_${slot.itemName?.includes("창고") ? "warehouse" : "inventory"}` : `worker_${slot.itemName?.replace(/ /g, "_")}`
-          }))
+          })),
+        maxSlots: allSlots.length
       };
     } catch (err) {
       console.warn("API 연동 실패! InventoryAPI.getInventory 목업 데이터 사용", err);
@@ -459,69 +337,43 @@ export const InventoryAPI = {
       };
     }
   },
-  unlockSlot: async (data: { companyId: number; slotId: number }) => {
-    try {
-      // ✅ 실제 API 연동 (확장권 사용)
-      await apiClient.post('/inventory/expand', null, { params: { ticketSlotIndex: data.slotId } });
-      return { data: { success: true } };
-    } catch (err) {
-      console.warn("API 연동 실패! InventoryAPI.unlockSlot 목업 데이터 사용", err);
-      await mockDelay();
-      return { data: { success: true } };
-    }
+  unlockSlot: async (data: { ticketSlotIndex: number }) => {
+    await apiClient.post('/inventory/expand', null, { params: { ticketSlotIndex: data.ticketSlotIndex } });
+    return { data: { success: true } };
   },
-  moveSlot: async (data: { fromSlot: number; toSlot: number }) => {
-    try {
-      // ✅ 명세: { "fromSlot": 0, "toSlot": 5 } -> 인벤토리 슬롯 아이템 교환
-      await apiClient.post('/inventory/swap', data);
-      return { data: { success: true } };
-    } catch (err) {
-      console.warn("API 연동 실패! InventoryAPI.moveSlot 목업 데이터 사용", err);
-      await mockDelay();
-      return { data: { success: true } };
-    }
-  },
-  addTestItem: async (data: { itemId: number, amount: number }) => {
-    try {
-      // ✅ 명세: 테스트용 아이템 추가 기능 POST /api/v1/inventory/add (Dev)
-      await apiClient.post('/inventory/add', data);
-      return { data: { success: true } };
-    } catch (err) {
-      console.warn("API 연동 실패! InventoryAPI.addTestItem 목업 폴백", err);
-      return { data: { success: true } };
-    }
-  },
-  decreaseItem: async (data: { slotIndex: number, amount: number }) => {
-    try {
-      // ✅ 명세: 슬롯 아이템 수량 감소 DELETE /api/v1/inventory/decrease
-      await apiClient.delete('/inventory/decrease', { data });
-      return { data: { success: true } };
-    } catch (err) {
-      console.warn("API 연동 실패! InventoryAPI.decreaseItem 목업 폴백", err);
-      return { data: { success: true } };
-    }
-  }
-};
+      moveSlot: async (data: { fromIdx: number; toIdx: number }) => {
+        await apiClient.post('/inventory/swap', { fromSlot: data.fromIdx, toSlot: data.toIdx });
+        return { data: { success: true } };
+      },
+        addTestItem: async (data: { itemId: number, amount: number }) => {
+          await apiClient.post('/inventory/add', null, { params: { itemId: data.itemId, amount: data.amount } });
+          return { data: { success: true } };
+        },
+          decreaseItem: async (data: { slotIndex: number, amount: number }) => {
+            await apiClient.delete('/inventory/decrease', { data });
+            return { data: { success: true } };
+          }
+  };
 
-// ==================== Notifications ====================
-export const NotificationAPI = {
-  /** 과거 알림 목록 조회 */
-  getAll: async (): Promise<import('./types').NotificationResponse[]> => {
-    try {
-      const res = await apiClient.get('/notifications');
-      return res.data?.data ?? [];
-    } catch (err) {
-      console.warn('NotificationAPI.getAll 실패, 빈 배열 반환', err);
-      return [];
-    }
-  },
+  // ==================== Notifications ====================
+  export const NotificationAPI = {
+    /** 과거 알림 목록 조회 */
+    getAll: async (): Promise<import('./types').NotificationResponse[]> => {
+      try {
+        const res = await apiClient.get('/notifications');
+        return res.data?.data ?? [];
+      } catch (err) {
+        console.warn('NotificationAPI.getAll 실패, 빈 배열 반환', err);
+        return [];
+      }
+    },
 
-  /** 특정 알림 읽음 처리 */
-  markRead: async (id: number): Promise<void> => {
-    try {
-      await apiClient.patch(`/notifications/${id}/read`);
-    } catch (err) {
-      console.warn('NotificationAPI.markRead 실패', err);
-    }
-  },
-};
+    /** 특정 알림 읽음 처리 */
+    markRead: async (id: number): Promise<void> => {
+      try {
+        await apiClient.patch(`/notifications/${id}/read`);
+      } catch (err) {
+        console.warn('NotificationAPI.markRead 실패', err);
+      }
+    },
+  };

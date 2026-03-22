@@ -14,8 +14,8 @@ export const LoginSuccessPage = () => {
       return;
     }
 
-    localStorage.setItem('accessToken', token);
-    localStorage.removeItem('isGuest');
+    sessionStorage.setItem('accessToken', token);
+    sessionStorage.removeItem('isGuest');
 
     // 이미 회사가 있으면 /main, 없으면 /industry-selection
     apiClient.get('/companies/me')
