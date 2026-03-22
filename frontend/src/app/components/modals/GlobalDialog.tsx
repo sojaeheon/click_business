@@ -29,7 +29,7 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
   // 장착 일꾼 데이터 전역 연동
   const { equippedWorkerId, setEquippedWorkerId, hasNewWorker, setHasNewWorker } = useGameStore();
   const slots = useGameStore(s => s.inventoryItems);
-  
+
   const equippedItem = slots.find(i => i.id === equippedWorkerId);
   const equippedWorker = equippedItem ? { id: equippedItem.id, name: equippedItem.name, level: equippedItem.level || 1 } : null;
 
@@ -67,7 +67,7 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
         .filter((i: any) => i.type === "material")
         .reduce((sum: number, i: any) => sum + (i.quantity || 0), 0);
       setLiveMatStock(total);
-    }).catch(() => {});
+    }).catch(() => { });
   }, [data.type]);
 
   if (data.type === "workstation") {
@@ -156,10 +156,10 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                 }
               }}
               className={`relative w-[88px] h-[88px] flex flex-col items-center justify-center rounded-2xl shadow-inner border-[3px] transition-all overflow-hidden group flex-shrink-0 ${equippedWorker
-                  ? "bg-gradient-to-br from-blue-100 to-indigo-50 border-blue-300"
-                  : data.isWorking
-                    ? "bg-slate-100 border-slate-300 opacity-50 cursor-not-allowed grayscale"
-                    : "bg-slate-50 border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 cursor-pointer"
+                ? "bg-gradient-to-br from-blue-100 to-indigo-50 border-blue-300"
+                : data.isWorking
+                  ? "bg-slate-100 border-slate-300 opacity-50 cursor-not-allowed grayscale"
+                  : "bg-slate-50 border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 cursor-pointer"
                 }`}
             >
               {equippedWorker ? (
@@ -256,9 +256,9 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                 ].map((btn, i) => (
                   <button
                     key={i}
-                    onClick={(e) => { 
-                      e.stopPropagation(); 
-                      setQty(q => Math.max(1, q + btn.val)); 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setQty(q => Math.max(1, q + btn.val));
                     }}
                     className="flex-1 px-1 py-2 rounded-lg text-xs font-black border-2 border-b-4 transition-all cursor-pointer select-none bg-indigo-50 text-indigo-500 border-indigo-200 border-b-indigo-300 hover:bg-indigo-100 active:translate-y-1 active:border-b-2"
                   >
