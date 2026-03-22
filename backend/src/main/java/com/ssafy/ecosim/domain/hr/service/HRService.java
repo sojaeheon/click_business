@@ -24,11 +24,11 @@ public class HRService {
 
     private static final double[][] UPGRADE_PROBS = {
         // { success, stay, down, reset }  index = level-1
-        { 0.45, 0.55, 0.00, 0.00 }, // Lv1 → Lv2
-        { 0.30, 0.45, 0.25, 0.00 }, // Lv2 → Lv3
+        { 0.70, 0.30, 0.00, 0.00 }, // Lv1 → Lv2
+        { 0.50, 0.35, 0.15, 0.00 }, // Lv2 → Lv3
         { 0.15, 0.40, 0.35, 0.10 }, // Lv3 → Lv4
-        { 0.07, 0.33, 0.40, 0.20 }, // Lv4 → Lv5
-        { 0.03, 0.17, 0.50, 0.30 }, // Lv5 → Lv6
+        { 0.05, 0.35, 0.40, 0.20 }, // Lv4 → Lv5
+        { 0.01, 0.30, 0.50, 0.19 }, // Lv5 → Lv6
     };
 
     private final InventorySlotRepository inventorySlotRepository;
