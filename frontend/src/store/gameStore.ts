@@ -364,7 +364,6 @@ export const useGameStore = create<GameState>()(
           console.error("전반적인 회사 게임 데이터 로드 실패:", error);
           set({ isLoading: false });
         }
-      }
     },
 
     fetchNews: async () => {

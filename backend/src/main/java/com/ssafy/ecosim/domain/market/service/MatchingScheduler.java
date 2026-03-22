@@ -18,9 +18,9 @@ public class MatchingScheduler {
     private static final java.util.List<Integer> TARGET_ITEM_IDS = java.util.List.of(1, 2, 3);
 
     /**
-     * 1초마다 모든 대상 아이템(1, 2, 3)에 대해 매칭을 실행합니다.
+     * 0.1초마다 모든 대상 아이템(1, 2, 3)에 대해 매칭을 실행합니다.
      */
-    @Scheduled(fixedRate = 1000)
+    @Scheduled(fixedRate = 100)
     public void runMatching() {
         for (Integer itemId : TARGET_ITEM_IDS) {
             try {
