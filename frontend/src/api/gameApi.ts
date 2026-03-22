@@ -346,39 +346,53 @@ export const InventoryAPI = {
     await apiClient.post('/inventory/expand', null, { params: { ticketSlotIndex: data.ticketSlotIndex } });
     return { data: { success: true } };
   },
-      moveSlot: async (data: { fromIdx: number; toIdx: number }) => {
-        await apiClient.post('/inventory/swap', { fromSlot: data.fromIdx, toSlot: data.toIdx });
-        return { data: { success: true } };
-      },
-        addTestItem: async (data: { itemId: number, amount: number }) => {
-          await apiClient.post('/inventory/add', null, { params: { itemId: data.itemId, amount: data.amount } });
-          return { data: { success: true } };
-        },
-          decreaseItem: async (data: { slotIndex: number, amount: number }) => {
-            await apiClient.delete('/inventory/decrease', { data });
-            return { data: { success: true } };
-          }
-  };
+  moveSlot: async (data: { fromIdx: number; toIdx: number }) => {
+    await apiClient.post('/inventory/swap', { fromSlot: data.fromIdx, toSlot: data.toIdx });
+    return { data: { success: true } };
+  },
+  addTestItem: async (data: { itemId: number, amount: number }) => {
+    await apiClient.post('/inventory/add', null, { params: { itemId: data.itemId, amount: data.amount } });
+    return { data: { success: true } };
+  },
+  decreaseItem: async (data: { slotIndex: number, amount: number }) => {
+    await apiClient.delete('/inventory/decrease', { data });
+    return { data: { success: true } };
+  }
+};
 
-  // ==================== Notifications ====================
-  export const NotificationAPI = {
-    /** 과거 알림 목록 조회 */
-    getAll: async (): Promise<import('./types').NotificationResponse[]> => {
-      try {
-        const res = await apiClient.get('/notifications');
-        return res.data?.data ?? [];
-      } catch (err) {
-        console.warn('NotificationAPI.getAll 실패, 빈 배열 반환', err);
-        return [];
-      }
-    },
+// ==================== Notifications ====================
+export const NotificationAPI = {
+  /** 과거 알림 목록 조회 */
+  getAll: async (): Promise<import('./types').NotificationResponse[]> => {
+    try {
+      const res = await apiClient.get('/notifications');
+      return res.data?.data ?? [];
+    } catch (err) {
+      console.warn('NotificationAPI.getAll 실패, 빈 배열 반환', err);
+      return [];
+    }
+  },
 
-    /** 특정 알림 읽음 처리 */
-    markRead: async (id: number): Promise<void> => {
-      try {
-        await apiClient.patch(`/notifications/${id}/read`);
-      } catch (err) {
-        console.warn('NotificationAPI.markRead 실패', err);
-      }
-    },
-  };
+  /** 특정 알림 읽음 처리 */
+  markRead: async (id: number): Promise<void> => {
+    try {
+      await apiClient.patch(`/notifications/${id}/read`);
+    } catch (err) {
+      console.warn('NotificationAPI.markRead 실패', err);
+    }
+  },
+};
+
+// ==================== News ====================
+export const NewsAPI = {
+  /** 뉴스 목록 조회 (/api/news) */
+  getNews: async (): Promise<any[]> => {
+    try {
+      const res = await apiClient.get('/api/news', { baseURL: '/' });
+      return res.data?.data ?? [];
+    } catch (err) {
+      console.warn('NewsAPI.getNews 실패', err);
+      return [];
+    }
+  }
+};
