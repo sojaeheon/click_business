@@ -189,6 +189,11 @@ export const MarketAPI = {
   /** ❌ 주문 취소 */
   cancelOrder: (orderId: number) => apiClient.delete(`/market/orders/${orderId}`),
 
+  /** 📋 내 미체결 주문 목록 조회 */
+  getMyOrders: async (itemId: number) => {
+    return apiClient.get('/market/orders', { params: { item_id: itemId } });
+  },
+
   /** 📈 체결 내역 조회 */
   getTrades: async (itemId: number) => {
     return apiClient.get('/market/trades', { params: { item_id: itemId } });
