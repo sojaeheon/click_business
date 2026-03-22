@@ -19,6 +19,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 
@@ -117,14 +118,23 @@ public class WorkstationService {
          * 재료 예약: 창고(MATERIAL) → 워크스테이션 예약석
          */
         @Transactional
-        public void reserveMaterials(Long companyId, Long workstationId, Long quantity) {
+        public void reserveMaterials(Long companyId, Long workstationId, Long outputQuantity) {
                 Workstation workstation = findWorkstation(companyId, workstationId);
                 Long inputItemId = workstation.getCompany().getInputItemId();
 
                 if (inputItemId == null) throw new IllegalArgumentException("회사의 생산 재료 설정이 되어있지 않습니다.");
 
-                warehouseService.removeItem(companyId, inputItemId, quantity);
-                workstation.addReservedQuantity(quantity);
+                int baseYield = workstation.getCompany().getIndustryType().getBaseYield();
+                int baseRequirement = workstation.getCompany().getIndustryType().getBaseRequirement();
+
+                // 나머지는 버림 처리 (손해 감수)
+                long laps = outputQuantity / baseYield;
+                if (laps == 0) throw new IllegalArgumentException("생산 수량이 너무 적습니다. 최소 " + baseYield + "개 이상 입력하세요.");
+
+                long requiredMaterials = laps * baseRequirement;
+
+                warehouseService.removeItem(companyId, inputItemId, requiredMaterials);
+                workstation.addReservedQuantity(requiredMaterials);
         }
 
         /**
@@ -236,12 +246,28 @@ public class WorkstationService {
                                .equipmentLevel(workstation.getEquipmentInventory().getLevel());
                 }
 
+                double workerMult = 1.0;
                 if (workstation.getEquippedWorkerSlotIndex() != null) {
                         builder.equippedWorkerSlotIndex(workstation.getEquippedWorkerSlotIndex());
-                        inventorySlotRepository
+                        workerMult = inventorySlotRepository
                                 .findByInventory_Company_IdAndSlotIndex(companyId, workstation.getEquippedWorkerSlotIndex())
                                 .filter(s -> s.getItem() != null && s.getItem().getWorkerLevel() != null)
-                                .ifPresent(s -> builder.equippedWorkerLevel(s.getItem().getWorkerLevel()));
+                                .map(s -> {
+                                        builder.equippedWorkerLevel(s.getItem().getWorkerLevel());
+                                        return getWorkerSpeedMultiplier(s.getItem().getWorkerLevel());
+                                })
+                                .orElse(1.0);
+                }
+
+                // 예상 완료 시각 계산 (가동 중이고 예약 재료가 있을 때만)
+                if (workstation.getIsActive() && workstation.getReservedQuantity() > 0) {
+                        long productionPerMinute = (workstation.getEquipmentInventory() != null)
+                                ? workstation.getEquipmentInventory().getLevel() : 1L;
+                        double productionPerSecond = productionPerMinute / 60.0 * workerMult;
+                        int requirement = workstation.getCompany().getIndustryType().getBaseRequirement();
+                        long availableLaps = workstation.getReservedQuantity() / requirement;
+                        long secondsToComplete = (long) Math.ceil(availableLaps / productionPerSecond);
+                        builder.expectedEndTime(Instant.now().plusSeconds(secondsToComplete));
                 }
 
                 return builder.build();
