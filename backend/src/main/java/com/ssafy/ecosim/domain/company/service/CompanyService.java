@@ -5,6 +5,7 @@ import com.ssafy.ecosim.domain.company.entity.IndustryType;
 import com.ssafy.ecosim.domain.company.repository.CompanyRepository;
 import com.ssafy.ecosim.domain.inventory.service.InventoryService;
 import com.ssafy.ecosim.domain.inventory.service.WarehouseService;
+import com.ssafy.ecosim.domain.item.repository.ItemRepository;
 import com.ssafy.ecosim.domain.user.entity.User;
 import com.ssafy.ecosim.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +21,7 @@ public class CompanyService {
     private final UserRepository userRepository;
     private final WarehouseService warehouseService;
     private final InventoryService inventoryService;
+    private final ItemRepository itemRepository;
 
     @Transactional
     public Company createCompanyForUser(Long userId, String companyName, IndustryType industryType) {
@@ -35,6 +37,10 @@ public class CompanyService {
 
         warehouseService.createDefaultWarehouse(saved);
         inventoryService.createDefaultInventory(saved);
+
+        // 회사 생성 시 Lv1 초보 일꾼 1개 지급
+        itemRepository.findByName("초보 일꾼").ifPresent(workerItem ->
+                inventoryService.addItem(saved.getId(), workerItem.getId(), 1L));
 
         return saved;
     }
