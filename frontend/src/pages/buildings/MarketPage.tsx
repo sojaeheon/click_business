@@ -74,33 +74,37 @@ export function MarketPage() {
   const minuteCandlesRef = useRef<Map<string, number>>(new Map()); // "HH:MM" → 해당 분의 마지막 가격
   const [currentMinuteKey, setCurrentMinuteKey] = useState<string>("");
 
-  const [orderBook, setOrderBook] = useState<{ asks: Array<{price: number, quantity: number}>, bids: Array<{price: number, quantity: number}> }>({ asks: [], bids: [] });
+  const [orderBook, setOrderBook] = useState<{ asks: Array<{ price: number, quantity: number }>, bids: Array<{ price: number, quantity: number }> }>({ asks: [], bids: [] });
   const [tradeHistory, setTradeHistory] = useState<any[]>([]);
   const [pendingOrders, setPendingOrders] = useState<any[]>([]);
   const [marketTrend, setMarketTrend] = useState<"up" | "down" | "neutral">("neutral");
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const currentPriceRef = useRef<HTMLDivElement>(null);
 
+  const [currentPrice, setCurrentPrice] = useState<number>(0);
+  const [changePrice, setChangePrice] = useState<number>(0);
+  const [changeRate, setChangeRate] = useState<number>(0);
+
   const [hasDragged, setHasDragged] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [startX, setStartX] = useState(0);
-  const [scrollLeft, setScrollLeft] = useState(0);
+  const isDragging = useRef(false);
+  const startX = useRef(0);
+  const scrollLeft = useRef(0);
 
   const handleDragStart = (e: React.MouseEvent) => {
     if (!scrollRef.current) return;
-    setIsDragging(true);
-    setStartX(e.pageX - scrollRef.current.offsetLeft);
-    setScrollLeft(scrollRef.current.scrollLeft);
+    isDragging.current = true;
+    startX.current = e.pageX - scrollRef.current.offsetLeft;
+    scrollLeft.current = scrollRef.current.scrollLeft;
   };
-  const handleDragLeave = () => setIsDragging(false);
-  const handleDragEnd = () => setIsDragging(false);
+  const handleDragLeave = () => { isDragging.current = false; };
+  const handleDragEnd = () => { isDragging.current = false; };
   const handleDragMove = (e: React.MouseEvent) => {
-    if (!isDragging || !scrollRef.current) return;
+    if (!isDragging.current || !scrollRef.current) return;
     e.preventDefault();
     const x = e.pageX - scrollRef.current.offsetLeft;
-    const walk = (x - startX) * 2;
-    scrollRef.current.scrollLeft = scrollLeft - walk;
+    const walk = (x - startX.current) * 2;
+    scrollRef.current.scrollLeft = scrollLeft.current - walk;
     setHasDragged(true);
   };
 
@@ -173,6 +177,10 @@ export function MarketPage() {
 
           const latestPrice = data.currentPrice;
           if (latestPrice) {
+            setCurrentPrice(latestPrice);
+            setChangePrice(data.changePrice ?? 0);
+            setChangeRate(data.changeRate ?? 0);
+
             setChartData(prev => {
               const lastPrice = prev.length > 0 ? prev[prev.length - 1].price : latestPrice;
               if (latestPrice > lastPrice) setMarketTrend("up");
@@ -190,11 +198,16 @@ export function MarketPage() {
         try {
           const chartRes = await MarketAPI.getMarketChart(itemId);
           const cData = chartRes.data?.data ?? chartRes.data;
-          if (Array.isArray(cData)) {
-            setChartData(cData.map((d: any) => ({
-              time: d.time || d.createdAt || "",
-              price: d.price ?? 0
-            })));
+          if (cData && Array.isArray(cData.points)) {
+            const uniqueMap = new Map();
+            cData.points.forEach((d: any) => {
+              const t = d.timestamp ? new Date(d.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : "";
+              if (t) {
+                uniqueMap.set(t, { time: t, price: d.price ?? 0 });
+              }
+            });
+            const deduplicated = Array.from(uniqueMap.values()) as { time: string; price: number }[];
+            setChartData(deduplicated);
           }
         } catch (e) {
           console.warn("차트 조회 실패:", e);
@@ -228,7 +241,7 @@ export function MarketPage() {
             orders = pendingData;
           }
           // COMPLETED나 CANCELED가 아닌, 잔량이 남아있는 주문만 대기중으로 표시
-          setPendingOrders(orders.filter((o: any) => 
+          setPendingOrders(orders.filter((o: any) =>
             o.status !== 'COMPLETED' && o.status !== 'CANCELED' && o.orderStatus !== 'COMPLETED' && o.orderStatus !== 'CANCELED' && (o.remainingQuantity ?? o.totalQuantity) > 0
           ));
         } catch {
@@ -296,38 +309,90 @@ export function MarketPage() {
     }
   };
 
-  const currentMarketPrice = chartData.length > 0 ? chartData[chartData.length - 1].price : 0;
-  const startPrice = chartData.length > 0 ? chartData[0].price : 0;
-  const diff = currentMarketPrice - startPrice;
+  const currentMarketPrice = currentPrice || (chartData.length > 0 ? chartData[chartData.length - 1].price : 0);
+  const getDisplayChartData = () => {
+    if (chartData.length === 0) {
+      const result = [];
+      const now = new Date();
+      for (let i = 59; i >= 0; i--) {
+        const d = new Date(now.getTime() - i * 60000);
+        result.push({ time: `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`, price: null as any });
+      }
+      return result;
+    }
+
+    const map = new Map<string, number>();
+    chartData.forEach(d => map.set(d.time, d.price));
+
+    const firstStr = chartData[0].time;
+    const now = new Date();
+    const currStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+
+    const [fh, fm] = firstStr.split(':').map(Number);
+    let iterDate = new Date();
+    iterDate.setHours(fh, fm, 0, 0);
+
+    const diffMins = Math.floor((now.getTime() - iterDate.getTime()) / 60000);
+    if (diffMins < 59) {
+      iterDate = new Date(now.getTime() - 59 * 60000);
+    }
+
+    const result = [];
+    let lastKnownPrice = chartData[0].price;
+
+    while (iterDate <= now) {
+      const tStr = `${iterDate.getHours().toString().padStart(2, '0')}:${iterDate.getMinutes().toString().padStart(2, '0')}`;
+      if (map.has(tStr)) lastKnownPrice = map.get(tStr)!;
+      result.push({ time: tStr, price: lastKnownPrice });
+      iterDate = new Date(iterDate.getTime() + 60000);
+    }
+
+    if (result.length > 0 && result[result.length - 1].time !== currStr) {
+      if (map.has(currStr)) lastKnownPrice = map.get(currStr)!;
+      result.push({ time: currStr, price: lastKnownPrice });
+    }
+
+    return result;
+  };
+
+  const displayChartData = getDisplayChartData();
+  const visibleDataLen = displayChartData.length;
+  const chartWidthPct = Math.max(100, (visibleDataLen / 10) * 100);
+  const diff = changePrice;
   const isUpTrend = diff >= 0;
+  
+  useEffect(() => {
+    if (!scrollRef.current || hasDragged) return;
+    const el = scrollRef.current;
+    const scrollToEnd = () => { if (el) el.scrollLeft = 999999; };
+    
+    const observer = new ResizeObserver(() => {
+      scrollToEnd();
+      setTimeout(scrollToEnd, 50);
+    });
+    
+    if (el.firstChild) {
+      observer.observe(el.firstChild as Element);
+    }
+    
+    scrollToEnd(); // initial
+    return () => observer.disconnect();
+  }, [hasDragged, displayChartData.length]);
   const diffSign = diff > 0 ? "+" : diff < 0 ? "-" : "";
-  const pctStr = startPrice > 0 ? Math.abs((diff / startPrice) * 100).toFixed(1) : "0.0";
+  const pctStr = Math.abs(changeRate).toFixed(1);
   const diffStr = `${diffSign}${Math.abs(diff).toLocaleString()}원 (${diffSign}${pctStr}%)`;
 
   const getPriceColor = (p: number) => {
-    if (startPrice <= 0) return "text-slate-800";
-    if (p > startPrice) return "text-rose-500";
-    if (p < startPrice) return "text-blue-500";
-    return "text-slate-800";
+    const defaultPriceColor = "text-slate-800";
+    if (currentPrice <= 0) return defaultPriceColor;
+    const sPrice = currentPrice - changePrice;
+    if (sPrice <= 0) return defaultPriceColor;
+    if (p > sPrice) return "text-rose-500";
+    if (p < sPrice) return "text-blue-500";
+    return defaultPriceColor;
   };
 
-  const getDisplayChartData = () => {
-    const data = [...chartData];
-    if (data.length > 0 && data.length < 10) {
-      let [h, m] = data[data.length - 1].time.split(':').map(Number);
-      for (let i = data.length; i < 10; i++) {
-        m++;
-        if (m >= 60) { m -= 60; h = (h + 1) % 24; }
-        data.push({
-          time: `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`,
-          price: null as any
-        });
-      }
-    }
-    return data;
-  };
-  const displayChartData = getDisplayChartData();
-  const chartWidthPct = Math.max(100, (chartData.length / 10) * 100);
+
 
   const formatPrice = (value: number) => {
     if (!value) return "0";
@@ -415,75 +480,89 @@ export function MarketPage() {
                   </div>
                 </div>
               </div>
-              <div className="flex-1 w-full relative flex flex-col">
-                {chartData.length < 2 ? (
-                  <div className="flex-1 h-full flex flex-col items-center justify-center text-slate-300 gap-3">
-                    <Activity className="w-12 h-12 animate-pulse" />
-                    <span className="text-sm font-bold">1분봉 데이터 수집 중...</span>
-                    <span className="text-xs text-slate-400">분봉 차트는 가격 변동이 쌓일수록 선명해집니다.</span>
+              <div className="flex-1 w-full flex flex-col pt-1">
+                {/* 📊 차트 합성(Scrolling body + Fixed Y-axis) 영역 */}
+                <div className="flex-1 w-full relative box-border">
+                  {/* 스크롤 가능한 차트 영역 */}
+                  <div
+                    ref={scrollRef}
+                    className="absolute inset-0 overflow-x-auto overflow-y-hidden cursor-grab active:cursor-grabbing [&::-webkit-scrollbar]:hidden focus:outline-none"
+                    onMouseEnter={() => scrollRef.current?.focus()}
+                    onMouseDown={(e) => {
+                      scrollRef.current?.focus();
+                      handleDragStart(e);
+                    }}
+                    onMouseLeave={handleDragLeave}
+                    onMouseUp={handleDragEnd}
+                    onMouseMove={handleDragMove}
+                    onScroll={() => setHasDragged(true)}
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (!scrollRef.current) return;
+                      const step = 80;
+                      if (e.key === 'ArrowLeft') { scrollRef.current.scrollLeft -= step; setHasDragged(true); e.preventDefault(); }
+                      if (e.key === 'ArrowRight') { scrollRef.current.scrollLeft += step; setHasDragged(true); e.preventDefault(); }
+                    }}
+                  >
+                    <div style={{ width: `${chartWidthPct}%`, height: '100%', paddingLeft: '60px' }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={displayChartData} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
+                          <defs>
+                            <linearGradient id="colorPriceUp" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.4} />
+                              <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
+                            </linearGradient>
+                            <linearGradient id="colorPriceDown" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
+                              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <XAxis dataKey="time" stroke="#cbd5e1" tick={{ fill: '#94a3b8', fontSize: 11 }} interval="preserveStartEnd" minTickGap={30} />
+                          <YAxis domain={[(dataMin: number) => (dataMin ? Math.max(0, dataMin - 100) : 'auto'), (dataMax: number) => (dataMax ? dataMax + 100 : 'auto')]} hide />
+                          <Tooltip
+                            contentStyle={{ borderRadius: '12px', border: '2px solid #e2e8f0', fontWeight: 'bold' }}
+                            formatter={(value: any) => [`₩${Number(value).toLocaleString()}`, '가격']}
+                            labelFormatter={(label) => `시간: ${label}`}
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="price"
+                            stroke={isUpTrend ? "#f43f5e" : "#3b82f6"}
+                            strokeWidth={3}
+                            fill={isUpTrend ? "url(#colorPriceUp)" : "url(#colorPriceDown)"}
+                            dot={false}
+                            connectNulls={false}
+                            animationDuration={0}
+                            isAnimationActive={false}
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
-                ) : (
-                  <>
-                    <div 
-                      ref={scrollRef}
-                      className="flex-1 w-full overflow-x-auto overflow-y-hidden cursor-grab active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
-                      onMouseDown={handleDragStart}
-                      onMouseLeave={handleDragLeave}
-                      onMouseUp={handleDragEnd}
-                      onMouseMove={handleDragMove}
-                      onScroll={() => setHasDragged(true)}
-                    >
-                      <div style={{ width: `${chartWidthPct}%`, height: '100%' }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={displayChartData} margin={{ top: 10, right: 10, left: -20, bottom: 30 }}>
-                            <defs>
-                              <linearGradient id="colorPriceUp" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.4} />
-                                <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
-                              </linearGradient>
-                              <linearGradient id="colorPriceDown" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
-                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                              </linearGradient>
-                            </defs>
-                            <XAxis
-                              dataKey="time"
-                              stroke="#cbd5e1"
-                              tick={{ fill: '#94a3b8', fontSize: 11 }}
-                              interval="preserveStartEnd"
-                            />
-                            <YAxis 
-                              domain={['auto', 'auto']} 
-                              stroke="#cbd5e1" 
-                              tick={{ fill: '#94a3b8', fontSize: 11 }} 
-                              tickFormatter={formatPrice}
-                              width={45}
-                            />
-                            <Tooltip
-                              contentStyle={{ borderRadius: '12px', border: '2px solid #e2e8f0', fontWeight: 'bold' }}
-                              formatter={(value: any) => [`₩${Number(value).toLocaleString()}`, '가격']}
-                              labelFormatter={(label) => `시간: ${label}`}
-                            />
-                            <Area
-                              type="monotone"
-                              dataKey="price"
-                              stroke={isUpTrend ? "#f43f5e" : "#3b82f6"}
-                              strokeWidth={3}
-                              fill={isUpTrend ? "url(#colorPriceUp)" : "url(#colorPriceDown)"}
-                              dot={false}
-                              connectNulls={false}
-                              animationDuration={500}
-                              isAnimationActive={true}
-                            />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-                    <div className={`text-center text-xs mt-2 font-bold transition-opacity duration-500 absolute bottom-3 left-1/2 -translate-x-1/2 ${hasDragged ? "opacity-0 pointer-events-none" : "text-slate-400 opacity-100"}`}>
-                      💡 좌우로 드래그하여 과거 기록을 확인하세요
-                    </div>
-                  </>
-                )}
+
+                  {/* 좌측 고정 Y축 (Fixed YAxis Overlay) */}
+                  <div className="absolute top-0 left-0 bottom-[24px] w-[60px] z-10 bg-white/95 backdrop-blur shadow-[2px_0_5px_rgba(0,0,0,0.03)] pointer-events-none select-none overflow-hidden pb-1">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={displayChartData} margin={{ top: 10, right: 0, left: -20, bottom: 5 }}>
+                        <YAxis
+                          domain={[(dataMin: number) => (dataMin ? Math.max(0, dataMin - 100) : 'auto'), (dataMax: number) => (dataMax ? dataMax + 100 : 'auto')]}
+                          stroke="#cbd5e1"
+                          tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 'bold' }}
+                          tickFormatter={formatPrice}
+                          width={80}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <Area dataKey="price" fill="none" stroke="none" activeDot={false} isAnimationActive={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* 그래프 하단 안내 텍스트 */}
+                <div className={`text-center text-xs mt-3 font-extrabold transition-opacity duration-500 rounded-lg p-1.5 ${hasDragged ? "opacity-0 pointer-events-none" : "text-slate-500 bg-slate-50 opacity-100 border border-slate-200"}`}>
+                  💡 그래프를 드래그해서 과거 기록을 확인하세요!
+                </div>
               </div>
             </div>
 
@@ -499,73 +578,73 @@ export function MarketPage() {
                   {[...orderBook.asks].reverse().map((ask, idx) => {
                     const isCurrent = ask.price === currentMarketPrice;
                     return (
-                    <div
-                      key={`ask-${idx}`}
-                      className={`grid grid-cols-[1fr_110px_1fr] items-center cursor-pointer transition-colors ${
-                        isCurrent ? 'h-[64px] my-1 border-y-2 border-slate-300 bg-slate-50/50 hover:bg-slate-100 shadow-sm' : 'h-[48px] hover:bg-slate-50'
-                      }`}
-                      onClick={() => { setPrice(ask.price); setQuantity(q => q === 0 ? 1 : q); }}
-                    >
-                      <div className="relative h-full flex items-center justify-end pr-4">
-                        <div className="absolute right-0 top-1.5 bottom-1.5 bg-blue-100/40 rounded-l transition-all" style={{ width: `${(ask.quantity / 400) * 100}%` }} />
-                        <span className="text-blue-500 font-bold text-[17px] z-10 tracking-tight">{ask.quantity.toLocaleString()}</span>
+                      <div
+                        key={`ask-${idx}`}
+                        className={`grid grid-cols-[1fr_110px_1fr] items-center cursor-pointer transition-colors ${isCurrent ? 'h-[64px] my-1 border-y-2 border-slate-300 bg-slate-50/50 hover:bg-slate-100 shadow-sm' : 'h-[48px] hover:bg-slate-50'
+                          }`}
+                        onClick={() => { setPrice(ask.price); setQuantity(q => q === 0 ? 1 : q); }}
+                      >
+                        <div className="relative h-full flex items-center justify-end pr-4">
+                          <div className="absolute right-0 top-1.5 bottom-1.5 bg-blue-100/40 rounded-l transition-all" style={{ width: `${(ask.quantity / 400) * 100}%` }} />
+                          <span className="text-blue-500 font-bold text-[17px] z-10 tracking-tight">{ask.quantity.toLocaleString()}</span>
+                        </div>
+                        <div className="h-full flex items-center justify-center relative z-10">
+                          <span className={`font-black ${isCurrent ? 'text-[30px] text-slate-800' : 'text-[22px] text-blue-500'}`}>{ask.price.toLocaleString()}</span>
+                        </div>
+                        <div className="h-full flex items-center justify-start pl-4">
+                          {isCurrent && <span className="text-slate-600 text-[16px] font-bold tracking-tight">현재가</span>}
+                        </div>
                       </div>
-                      <div className="h-full flex items-center justify-center relative z-10">
-                        <span className={`font-black ${isCurrent ? `text-[30px] ${getPriceColor(currentMarketPrice)}` : 'text-[22px] text-blue-500'}`}>{ask.price.toLocaleString()}</span>
-                      </div>
-                      <div className="h-full flex items-center justify-start pl-4">
-                        {isCurrent && <span className="text-slate-600 text-[16px] font-bold tracking-tight">현재가</span>}
-                      </div>
-                    </div>
-                  )})}
+                    )
+                  })}
                 </div>
 
                 {/* 현재가가 호가 잔량 배열에 아예 없어서 사라졌을 경우 가운데에 따로 표시 */}
-                {!orderBook.asks.some(a => a.price === currentMarketPrice) && 
-                 !orderBook.bids.some(b => b.price === currentMarketPrice) && currentMarketPrice > 0 && (
-                  <div
-                    ref={currentPriceRef}
-                    className="grid grid-cols-[1fr_110px_1fr] items-center h-[64px] shrink-0 my-1 border-y-2 border-slate-300 hover:bg-slate-100 bg-slate-50/50 relative z-10 transition-colors cursor-pointer shadow-sm"
-                    onClick={() => { setPrice(currentMarketPrice); setQuantity(q => q === 0 ? 1 : q); }}
-                  >
-                    <div className="h-full" />
-                    <div className="h-full flex items-center justify-center relative z-10">
-                      <span className={`font-black text-[30px] ${getPriceColor(currentMarketPrice)}`}>
-                        {currentMarketPrice.toLocaleString()}
-                      </span>
+                {!orderBook.asks.some(a => a.price === currentMarketPrice) &&
+                  !orderBook.bids.some(b => b.price === currentMarketPrice) && currentMarketPrice > 0 && (
+                    <div
+                      ref={currentPriceRef}
+                      className="grid grid-cols-[1fr_110px_1fr] items-center h-[64px] shrink-0 my-1 border-y-2 border-slate-300 hover:bg-slate-100 bg-slate-50/50 relative z-10 transition-colors cursor-pointer shadow-sm"
+                      onClick={() => { setPrice(currentMarketPrice); setQuantity(q => q === 0 ? 1 : q); }}
+                    >
+                      <div className="h-full" />
+                      <div className="h-full flex items-center justify-center relative z-10">
+                        <span className="font-black text-[30px] text-slate-800">
+                          {currentMarketPrice.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="h-full flex items-center justify-start pl-4">
+                        <span className="text-slate-600 text-[16px] font-bold tracking-tight">현재가</span>
+                      </div>
                     </div>
-                    <div className="h-full flex items-center justify-start pl-4">
-                      <span className="text-slate-600 text-[16px] font-bold tracking-tight">현재가</span>
-                    </div>
-                  </div>
-                )}
+                  )}
 
                 {/* 매수 (Bids) 영역 */}
                 <div className="flex flex-col shrink-0">
                   {orderBook.bids.map((bid, idx) => {
                     // 💡 매도(asks)에 현재가 항목이 이미 가동 중이라면 매수에서는 일반 스타일로 처리해 중복 표기 방지
-                    const isCurrent = bid.price === currentMarketPrice && 
-                                      !orderBook.asks.some(a => a.price === currentMarketPrice);
+                    const isCurrent = bid.price === currentMarketPrice &&
+                      !orderBook.asks.some(a => a.price === currentMarketPrice);
                     return (
-                    <div
-                      key={`bid-${idx}`}
-                      className={`grid grid-cols-[1fr_110px_1fr] items-center cursor-pointer transition-colors ${
-                        isCurrent ? 'h-[64px] my-1 border-y-2 border-slate-300 bg-slate-50/50 hover:bg-slate-100 shadow-sm' : 'h-[48px] hover:bg-slate-50'
-                      }`}
-                      onClick={() => { setPrice(bid.price); setQuantity(q => q === 0 ? 1 : q); }}
-                    >
-                      <div className="h-full flex items-center justify-end pr-4">
-                        {isCurrent && <span className="text-slate-600 text-[16px] font-bold tracking-tight">현재가</span>}
+                      <div
+                        key={`bid-${idx}`}
+                        className={`grid grid-cols-[1fr_110px_1fr] items-center cursor-pointer transition-colors ${isCurrent ? 'h-[64px] my-1 border-y-2 border-slate-300 bg-slate-50/50 hover:bg-slate-100 shadow-sm' : 'h-[48px] hover:bg-slate-50'
+                          }`}
+                        onClick={() => { setPrice(bid.price); setQuantity(q => q === 0 ? 1 : q); }}
+                      >
+                        <div className="h-full flex items-center justify-end pr-4">
+                          {isCurrent && <span className="text-slate-600 text-[16px] font-bold tracking-tight">현재가</span>}
+                        </div>
+                        <div className="h-full flex items-center justify-center relative z-10">
+                          <span className={`font-black ${isCurrent ? 'text-[30px] text-slate-800' : 'text-[22px] text-rose-500'}`}>{bid.price.toLocaleString()}</span>
+                        </div>
+                        <div className="relative h-full flex items-center justify-start pl-4">
+                          <div className="absolute left-0 top-1.5 bottom-1.5 bg-rose-100/40 rounded-r transition-all" style={{ width: `${(bid.quantity / 400) * 100}%` }} />
+                          <span className="text-rose-500 font-bold text-[17px] z-10 tracking-tight">{bid.quantity.toLocaleString()}</span>
+                        </div>
                       </div>
-                      <div className="h-full flex items-center justify-center relative z-10">
-                        <span className={`font-black ${isCurrent ? `text-[30px] ${getPriceColor(currentMarketPrice)}` : 'text-[22px] text-rose-500'}`}>{bid.price.toLocaleString()}</span>
-                      </div>
-                      <div className="relative h-full flex items-center justify-start pl-4">
-                        <div className="absolute left-0 top-1.5 bottom-1.5 bg-rose-100/40 rounded-r transition-all" style={{ width: `${(bid.quantity / 400) * 100}%` }} />
-                        <span className="text-rose-500 font-bold text-[17px] z-10 tracking-tight">{bid.quantity.toLocaleString()}</span>
-                      </div>
-                    </div>
-                  )})}
+                    )
+                  })}
                 </div>
               </div>
             </div>
@@ -638,10 +717,9 @@ export function MarketPage() {
                         value={quantity || ""}
                         onChange={(e) => setQuantity(Number(e.target.value))}
                         placeholder="수량 입력"
-                        className={`w-full bg-slate-50 border-2 rounded-xl px-4 py-3 text-right text-xl font-black focus:outline-none transition-colors ${
-                          mode === 'sell' && quantity > warehouseItems.filter(i => i.type === 'product').reduce((a, i) => a + i.quantity, 0)
+                        className={`w-full bg-slate-50 border-2 rounded-xl px-4 py-3 text-right text-xl font-black focus:outline-none transition-colors ${mode === 'sell' && quantity > warehouseItems.filter(i => i.type === 'product').reduce((a, i) => a + i.quantity, 0)
                             ? 'border-rose-400 focus:border-rose-500' : 'border-slate-200 focus:border-slate-400'
-                        }`}
+                          }`}
                       />
                       {mode === 'sell' && (() => {
                         const owned = warehouseItems.filter(i => i.type === 'product').reduce((a, i) => a + i.quantity, 0);
@@ -661,11 +739,10 @@ export function MarketPage() {
                       <button
                         onClick={handleConfirm}
                         disabled={price <= 0 || quantity <= 0 || isProcessing}
-                        className={`w-full py-4 rounded-3xl font-black text-lg transition-all transform active:scale-95 flex items-center justify-center gap-2 shadow-lg cursor-pointer ${
-                          price > 0 && quantity > 0 && !isProcessing
+                        className={`w-full py-4 rounded-3xl font-black text-lg transition-all transform active:scale-95 flex items-center justify-center gap-2 shadow-lg cursor-pointer ${price > 0 && quantity > 0 && !isProcessing
                             ? mode === "buy" ? "bg-rose-500 hover:bg-rose-600 text-white shadow-rose-200" : "bg-blue-500 hover:bg-blue-600 text-white shadow-blue-200"
                             : "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
-                        }`}
+                          }`}
                       >
                         <ShoppingCart className="w-5 h-5" />
                         {isProcessing ? "처리중..." : "주문 접수"}

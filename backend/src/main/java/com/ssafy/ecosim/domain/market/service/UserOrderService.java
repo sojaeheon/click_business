@@ -142,6 +142,8 @@ public class UserOrderService {
                 }
             }
         }
+    }
+
     /**
      * 특정 아이템에 대해 내 회사가 낸 미체결 주문 목록을 조회합니다.
      */

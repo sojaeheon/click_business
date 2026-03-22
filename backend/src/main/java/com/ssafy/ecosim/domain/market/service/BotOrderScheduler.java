@@ -208,7 +208,7 @@ public class BotOrderScheduler {
         // 시가를 Redis에 저장하여 OrderBookService에서 변동률 계산 시 사용
         redisTemplate.opsForValue().set("market:price:open:" + itemId, String.valueOf(currentMarketPrice));
         // 새 사이클 시작 시 이전 차트 데이터 초기화
-        orderBookManager.clearChartData(itemId);
+        orderBookManager.clearChartData(itemId.intValue());
 
         // DB 등락률(Decimal 5,2)을 변동률 값(0.01 = 1%)으로 변환 (게임적 재미를 위해 외부 지표의 10배 변동성 부여)
         state.targetOpenFluct = 0.0; // 시가는 전일 종가와 이어진다고 가정
