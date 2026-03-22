@@ -136,14 +136,23 @@ public class WorkstationService {
          * 재료 예약: 창고(MATERIAL) → 워크스테이션 예약석
          */
         @Transactional
-        public void reserveMaterials(Long companyId, Long workstationId, Long quantity) {
+        public void reserveMaterials(Long companyId, Long workstationId, Long outputQuantity) {
                 Workstation workstation = findWorkstation(companyId, workstationId);
                 Long inputItemId = workstation.getCompany().getInputItemId();
 
                 if (inputItemId == null) throw new IllegalArgumentException("회사의 생산 재료 설정이 되어있지 않습니다.");
 
-                warehouseService.removeItem(companyId, inputItemId, quantity);
-                workstation.addReservedQuantity(quantity);
+                int baseYield = workstation.getCompany().getIndustryType().getBaseYield();
+                int baseRequirement = workstation.getCompany().getIndustryType().getBaseRequirement();
+
+                // 나머지는 버림 처리 (손해 감수)
+                long laps = outputQuantity / baseYield;
+                if (laps == 0) throw new IllegalArgumentException("생산 수량이 너무 적습니다. 최소 " + baseYield + "개 이상 입력하세요.");
+
+                long requiredMaterials = laps * baseRequirement;
+
+                warehouseService.removeItem(companyId, inputItemId, requiredMaterials);
+                workstation.addReservedQuantity(requiredMaterials);
         }
 
         /**
