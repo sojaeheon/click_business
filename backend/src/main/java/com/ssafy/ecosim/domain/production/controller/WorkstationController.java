@@ -62,7 +62,7 @@ public class WorkstationController {
     }
 
     @Operation(summary = "일꾼 장착 해제", description = "공장에 장착된 일꾼을 해제합니다.")
-    @DeleteMapping("/{workstationId}/equip-worker")
+    @PostMapping("/{workstationId}/unequip-worker")
     public ApiResponse<String> unequipWorker(
             @AuthenticationPrincipal UserDetails userDetails,
             @Parameter(description = "공장 ID", example = "1") @PathVariable Long workstationId) {

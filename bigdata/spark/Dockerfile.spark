@@ -33,3 +33,9 @@ ENV PATH="/opt/spark/bin:${PATH}"
 
 # Spark 작업 디렉토리
 WORKDIR /opt/spark-apps
+
+COPY spark/scripts/spark_start.sh /opt/spark-apps/scripts/spark_start.sh
+RUN chmod +x /opt/spark-apps/scripts/spark_start.sh
+
+CMD ["/bin/bash", "/opt/spark-apps/scripts/spark_start.sh"]
+
