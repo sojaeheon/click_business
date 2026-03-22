@@ -17,6 +17,11 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * 인벤토리 API
+ * - EQUIPMENT (일꾼), TICKET (확장권) 아이템 보관
+ * - 미니게임 보상 수령 시 이곳에 저장됨
+ */
 @Tag(name = "인벤토리", description = "EQUIPMENT/TICKET 아이템 보관 인벤토리 — 슬롯 조회, 이동, 수량 감소")
 @RestController
 @RequestMapping("/api/v1/inventory")
@@ -67,6 +72,35 @@ public class InventoryController {
         return ApiResponse.success("슬롯 아이템 수량이 감소되었습니다.");
     }
 
+    @Operation(summary = "인벤토리 슬롯 확장", description = "인벤토리 확장권(TICKET)을 소비해 슬롯 수를 1칸 늘립니다.")
+    @PostMapping("/expand")
+    public ApiResponse<String> expandInventory(@AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = "확장권이 있는 슬롯 인덱스", example = "3") @RequestParam int ticketSlotIndex) {
+        Company company = getCompany(userDetails);
+        inventoryService.expandInventory(company.getId(), ticketSlotIndex);
+        return ApiResponse.success("인벤토리 슬롯이 1칸 확장되었습니다.");
+    }
+
+    @Operation(summary = "일꾼 장착", description = "인벤토리 슬롯의 일꾼을 장착합니다.")
+    @PostMapping("/equip")
+    public ApiResponse<String> equipWorker(@AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = "장착할 일꾼이 있는 슬롯 인덱스", example = "0") @RequestParam int slotIndex) {
+        Company company = getCompany(userDetails);
+        inventoryService.equipWorker(company.getId(), slotIndex);
+        return ApiResponse.success("일꾼이 장착되었습니다.");
+    }
+
+    @Operation(summary = "일꾼 장착 해제", description = "장착된 일꾼을 해제합니다.")
+    @PostMapping("/unequip")
+    public ApiResponse<String> unequipWorker(@AuthenticationPrincipal UserDetails userDetails) {
+        Company company = getCompany(userDetails);
+        inventoryService.unequipWorker(company.getId());
+        return ApiResponse.success("일꾼 장착이 해제되었습니다.");
+    }
+
+    /**
+     * 인증된 유저의 기업 정보 조회
+     */
     private Company getCompany(UserDetails userDetails) {
         Long userId = Long.parseLong(userDetails.getUsername());
         return companyRepository.findByUser_Id(userId)

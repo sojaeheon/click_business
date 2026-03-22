@@ -3,8 +3,10 @@ package com.ssafy.ecosim.domain.production.service;
 import com.ssafy.ecosim.domain.company.entity.Company;
 import com.ssafy.ecosim.domain.company.repository.CompanyRepository;
 import com.ssafy.ecosim.domain.inventory.entity.EquipmentInventory;
+import com.ssafy.ecosim.domain.inventory.entity.Inventory;
 import com.ssafy.ecosim.domain.inventory.entity.InventorySlot;
 import com.ssafy.ecosim.domain.inventory.repository.EquipmentInventoryRepository;
+import com.ssafy.ecosim.domain.inventory.repository.InventoryRepository;
 import com.ssafy.ecosim.domain.inventory.repository.InventorySlotRepository;
 import com.ssafy.ecosim.domain.inventory.service.WarehouseService;
 import com.ssafy.ecosim.domain.item.entity.ItemType;
@@ -30,6 +32,7 @@ public class WorkstationService {
         private final WorkstationRepository workstationRepository;
         private final EquipmentInventoryRepository equipmentInventoryRepository;
         private final InventorySlotRepository inventorySlotRepository;
+        private final InventoryRepository inventoryRepository;
         private final CompanyRepository companyRepository;
         private final ItemRepository itemRepository;
         private final WarehouseService warehouseService;
@@ -85,6 +88,14 @@ public class WorkstationService {
                 if (slot.getItem().getWorkerLevel() == null)
                         throw new IllegalArgumentException("해당 아이템은 일꾼이 아닙니다.");
 
+                // ✅ 기존 장착 해제 (인벤토리 내 모든 슬롯)
+                Inventory inventory = inventoryRepository.findByCompanyId(companyId)
+                        .orElseThrow(() -> new IllegalArgumentException("인벤토리를 찾을 수 없습니다."));
+                inventory.getSlots().forEach(InventorySlot::unequip);
+
+                // ✅ 새 슬롯 장착 상태 업데이트
+                slot.equip();
+
                 workstation.equipWorker(slotIndex);
         }
 
@@ -93,6 +104,14 @@ public class WorkstationService {
          */
         @Transactional
         public void unequipWorker(Long companyId, Long workstationId) {
+                // findWorkstation(companyId, workstationId).unequipWorker();
+                // InventoryService에서 처리하도록 위임하거나, 여기서 직접 인벤토리 슬롯을 찾아 해제할 수도 있습니다.
+                // 여기서는 Workstation의 unequipWorker는 레거시로 두고, InventoryService를 통해 관리하는 방향으로 구현합니다.
+                Inventory inventory = inventoryRepository.findByCompanyId(companyId)
+                        .orElseThrow(() -> new IllegalArgumentException("인벤토리를 찾을 수 없습니다."));
+                inventory.getSlots().forEach(InventorySlot::unequip);
+                
+                // Workstation 엔티티 상태도 동기화 (레거시 필드 유지용)
                 findWorkstation(companyId, workstationId).unequipWorker();
         }
 
@@ -149,13 +168,15 @@ public class WorkstationService {
 
                 // 일꾼 속도 배율 적용 (장착된 슬롯의 일꾼 workerLevel로 계산)
                 double workerMult = 1.0;
-                if (workstation.getEquippedWorkerSlotIndex() != null) {
-                        workerMult = inventorySlotRepository
-                                .findByInventory_Company_IdAndSlotIndex(companyId, workstation.getEquippedWorkerSlotIndex())
-                                .filter(s -> s.getItem() != null && s.getItem().getWorkerLevel() != null)
-                                .map(s -> getWorkerSpeedMultiplier(s.getItem().getWorkerLevel()))
-                                .orElse(1.0);
-                }
+                Inventory inventory = inventoryRepository.findByCompanyId(companyId)
+                        .orElseThrow(() -> new IllegalArgumentException("인벤토리를 찾을 수 없습니다."));
+                
+                workerMult = inventory.getSlots().stream()
+                        .filter(InventorySlot::isEquipped)
+                        .filter(s -> s.getItem() != null && s.getItem().getWorkerLevel() != null)
+                        .map(s -> getWorkerSpeedMultiplier(s.getItem().getWorkerLevel()))
+                        .findFirst()
+                        .orElse(1.0);
 
                 // 잠재 생산량 = 경과 초 × (분당 생산량 / 60) × 일꾼 배율
                 long potentialProduction = (long) (secondsPassed * productionPerMinute / 60.0 * workerMult);
@@ -236,13 +257,17 @@ public class WorkstationService {
                                .equipmentLevel(workstation.getEquipmentInventory().getLevel());
                 }
 
-                if (workstation.getEquippedWorkerSlotIndex() != null) {
-                        builder.equippedWorkerSlotIndex(workstation.getEquippedWorkerSlotIndex());
-                        inventorySlotRepository
-                                .findByInventory_Company_IdAndSlotIndex(companyId, workstation.getEquippedWorkerSlotIndex())
-                                .filter(s -> s.getItem() != null && s.getItem().getWorkerLevel() != null)
-                                .ifPresent(s -> builder.equippedWorkerLevel(s.getItem().getWorkerLevel()));
-                }
+                Inventory inventory = inventoryRepository.findByCompanyId(companyId)
+                        .orElseThrow(() -> new IllegalArgumentException("인벤토리를 찾을 수 없습니다."));
+                
+                inventory.getSlots().stream()
+                        .filter(InventorySlot::isEquipped)
+                        .filter(s -> s.getItem() != null && s.getItem().getWorkerLevel() != null)
+                        .findFirst()
+                        .ifPresent(s -> {
+                                builder.equippedWorkerSlotIndex(s.getSlotIndex());
+                                builder.equippedWorkerLevel(s.getItem().getWorkerLevel());
+                        });
 
                 return builder.build();
         }

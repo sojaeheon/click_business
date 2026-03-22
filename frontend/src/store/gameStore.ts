@@ -44,6 +44,8 @@ export interface InventoryItem {
   quantity: number;
   level?: number;
   slotIndex?: number;
+  slotId?: number;    // ✅ 백엔드 PK
+  equipped?: boolean;  // ✅ 장착 여부
 }
 
 
@@ -86,6 +88,9 @@ export interface GameState {
   hasNewWorker: boolean;
   setEquippedWorkerId: (id: string | null) => void;
   setHasNewWorker: (v: boolean) => void;
+
+  equipWorker: (slotIndex: number) => Promise<void>;
+  unequipWorker: () => Promise<void>;
 
   // 작업장 로컬 상태 캐시
   workstationState: {
@@ -153,6 +158,26 @@ export const useGameStore = create<GameState>()(
       hasNewWorker: false,
       setEquippedWorkerId: (id) => set({ equippedWorkerId: id }),
       setHasNewWorker: (v) => set({ hasNewWorker: v }),
+
+      equipWorker: async (slotIndex: number) => {
+        try {
+          await WorkstationAPI.equipWorker(slotIndex);
+          await get().fetchCompanyData(1); // 데이터 동기화
+        } catch (error) {
+          console.error("일꾼 장착 실패:", error);
+          throw error;
+        }
+      },
+
+      unequipWorker: async () => {
+        try {
+          await WorkstationAPI.unequipWorker();
+          await get().fetchCompanyData(1); // 데이터 동기화
+        } catch (error) {
+          console.error("일꾼 장착 해제 실패:", error);
+          throw error;
+        }
+      },
 
       workstationState: {
         isStarting: false,
@@ -233,9 +258,61 @@ export const useGameStore = create<GameState>()(
 
           const realData = companyRes.data;
 
-          // 모든 아이템(티켓 / 일꾼 구분 없이)을 inventoryItems에 그대로 저장
-          // 관련 UI(InventoryModal)에서 type.startsWith("ticket_")로 구분한다
-          const allItems: InventoryItem[] = inventoryRes.data.map((item: any) => item);
+          // ✅ 백엔드 응답을 모든 가능한 필드명 규격(중첩 가능성 포함)에 맞게 초강력 방어적으로 매핑
+          const allItems: InventoryItem[] = inventoryRes.data.map((item: any) => {
+            // 1. 중첩된 item 객체가 있을 경우를 대비해 병합
+            const source = item.item ? { ...item, ...item.item } : item;
+
+            // 2. 모든 필드에 대해 백엔드의 가능한 모든 변수명 체크 (CamelCase, SnakeCase, 간단 이름 등)
+            const slotId = source.slotId ?? source.slot_id ?? source.id;
+            const slotIndex = source.slotIndex ?? source.slot_index;
+            const itemType = source.itemType ?? source.item_type ?? source.type;
+            const itemName = source.itemName ?? source.item_name ?? source.name;
+            const workerLevel = source.workerLevel ?? source.worker_level ?? source.level;
+            const quantity = source.quantity ?? source.amount ?? 1;
+            const equipped = source.equipped ?? source.isEquipped ?? source.is_equipped ?? false;
+            const itemId = source.itemId ?? source.item_id ?? source.id;
+
+            // 3. 정밀 Type 판별 로직 (TICKET 우선 판별)
+            let type: InventoryItemType = "worker_lv1";
+            
+            // rawItemType: 문자열, 숫자(Ordinal), 또는 객체 형태({name: 'TICKET'}) 대응
+            const rawType = source.itemType ?? source.item_type ?? source.type;
+            const typeStr = (typeof rawType === 'object' && rawType !== null) ? (rawType.name || rawType.type) : String(rawType).toUpperCase();
+            const typeIdx = Number(rawType);
+            const itmId = Number(itemId);
+            const nameStr = String(itemName || "");
+
+            const isTicketType = typeStr === "TICKET" || typeIdx === 3 || itmId === 11 || itmId === 12 || nameStr.includes("확장권");
+            const isEquipmentType = typeStr === "EQUIPMENT" || typeIdx === 2;
+
+            if (isTicketType) {
+              if (nameStr.includes("인벤토리") || itmId === 11 || nameStr.toLowerCase().includes("inventory")) {
+                type = "ticket_inventory";
+              } else {
+                type = "ticket_warehouse";
+              }
+            } else if (isEquipmentType) {
+              type = `worker_lv${workerLevel || 1}` as InventoryItemType;
+            } else {
+              // 🚨 타입 판별 실패 시 기본 폴백 (이름 기반 추가 시도)
+              if (nameStr.includes("일꾼") || nameStr.toLowerCase().includes("worker")) {
+                type = `worker_lv${workerLevel || 1}` as InventoryItemType;
+              }
+            }
+
+            return {
+              id: slotId ? slotId.toString() : `slot_${Math.random().toString(36).substr(2, 9)}`,
+              slotId: slotId,
+              slotIndex: slotIndex,
+              type: type,
+              name: itemName || (itemId === 11 ? "인벤토리 확장권" : (itemId === 12 ? "창고 확장권" : "아이템")),
+              icon: "", 
+              quantity: quantity,
+              level: workerLevel || 1,
+              equipped: !!equipped
+            };
+          });
 
           // ✅ 더미 아이템 삽입 제거: 이제 실제 DB에 있는 데이터만 보여줌 (빈 DB일 경우 400 에러 혼동 방지)
           const finalIndustry = realData?.industry_type ?? get().industry;
@@ -278,6 +355,8 @@ export const useGameStore = create<GameState>()(
               storedCount: wsStatusRes.data?.producedQuantity ?? 0, 
               requestedQty: wsStatusRes.data?.totalQuantity ?? 0,
             },
+            // ✅ 장착된 일꾼 ID 동기화 (equipped: true인 아이템의 id 사용)
+            equippedWorkerId: allItems.find(i => i.equipped)?.id ?? null,
             isLoading: false
           });
         } catch (error) {

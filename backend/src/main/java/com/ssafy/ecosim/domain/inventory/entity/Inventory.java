@@ -34,4 +34,8 @@ public class Inventory {
         this.company = company;
         this.maxSlot = initialMaxSlot;
     }
+
+    public void expandSlots(Integer amount) {
+        this.maxSlot += amount;
+    }
 }
