@@ -77,6 +77,15 @@ export const WorkstationAPI = {
     return { data: res.data?.data ?? { success: true } };
   },
 
+  /**
+   * /workstations/my 응답 구조 (백엔드 합의 기준):
+   * {
+   *   workstationId, isActive, outputQuantity, reservedQuantity, expectedEndTime,
+   *   minuteOutput,     ← 분당 생산량 (정수)
+   *   workerLevel,      ← 장착 캐릭터 레벨 (1~6)
+   *   speedMultiplier,  ← 속도 가중치 (1.0 / 1.5 / 2.0 등)
+   * }
+   */
   getStatus: async () => {
     const res = await apiClient.get('/workstations/my');
     const data = res.data.data;
@@ -87,21 +96,23 @@ export const WorkstationAPI = {
         progress: data.progress ?? 0,
         producedQuantity: data.outputQuantity ?? data.producedQuantity ?? 0,
         totalQuantity: data.reservedQuantity ?? data.totalQuantity ?? 0,
-        expectedEndTime: data.expectedEndTime, // ✅ 백엔드 계산 시각 추가
+        expectedEndTime: data.expectedEndTime,
         remainingMs: null as number | null,
+        // ✅ 백엔드 production 관련 추가 필드
+        minuteOutput: data.minuteOutput ?? null,      // 분당 생산량
+        workerLevel: data.workerLevel ?? null,        // 장착 캐릭터 레벨
+        speedMultiplier: data.speedMultiplier ?? null, // 속도 가중치
+        reservedQuantity: data.reservedQuantity ?? 0, // 예약 수량 (재료 기반)
       }
     };
   },
 
   start: async (data: { companyId: number; recipeId: number; quantity: number; workerId: number }) => {
     const wsId = await WorkstationAPI.getMyId();
-    // 1. 재료 예약 실시 (Back: /api/v1/workstations/{id}/reserve)
-    // 주의: quantity는 각 산업군별 baseYield(40, 6, 2 등)의 배수여야 400 에러가 나지 않습니다.
+    // 1. 재료 예약 (Back: /api/v1/workstations/{id}/reserve)
     await apiClient.post(`/workstations/${wsId}/reserve`, { quantity: data.quantity });
 
     // 2. 가동 시작 (Back: /api/v1/workstations/{id}/toggle)
-    // 리저브 이후에 활성화되어야 Tick이 돌기 시작합니다. 
-    // 이미 켜져있는 상태에서 다시 누르면 꺼질 수 있으므로, 상태 체크 후 토글하는 것이 안전합니다.
     const status = await WorkstationAPI.getStatus();
     if (!status.data?.isWorking) {
       await apiClient.post(`/workstations/${wsId}/toggle`);
@@ -122,7 +133,6 @@ export const WorkstationAPI = {
 
   stop: async () => {
     const wsId = await WorkstationAPI.getMyId();
-    // 켜져있을 때만 토글해서 끕니다.
     const status = await WorkstationAPI.getStatus();
     if (status.data?.isWorking) {
       return await apiClient.post(`/workstations/${wsId}/toggle`);
@@ -131,8 +141,27 @@ export const WorkstationAPI = {
 
   collect: async () => {
     const wsId = await WorkstationAPI.getMyId();
-    // 결과물 수확 (Back: /api/v1/workstations/{id}/harvest)
     return await apiClient.post(`/workstations/${wsId}/harvest`);
+  },
+
+  equipWorker: async (slotIndex: number) => {
+    try {
+      const wsId = await WorkstationAPI.getMyId();
+      await apiClient.post(`/workstations/${wsId}/equip-worker?slotIndex=${slotIndex}`);
+      return { data: { success: true } };
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  unequipWorker: async () => {
+    try {
+      const wsId = await WorkstationAPI.getMyId();
+      await apiClient.post(`/workstations/${wsId}/unequip-worker`);
+      return { data: { success: true } };
+    } catch (err) {
+      throw err;
+    }
   },
 };
 
@@ -154,7 +183,6 @@ export const MarketAPI = {
 
   cancelOrder: (orderId: number) => apiClient.delete(`/market/orders/${orderId}`),
 
-  /** 내 미체결 주문 목록 조회 (develop에서 추가) */
   getMyOrders: async (itemId: number) => {
     return apiClient.get('/market/orders/me', { params: { item_id: itemId } });
   },
@@ -265,13 +293,17 @@ export const InventoryAPI = {
       data: allSlots
         .filter((slot: any) => slot.itemId != null)
         .map((slot: any) => ({
-          id: slot.itemId ? `inv_${slot.itemId}_${slot.slotIndex}` : `inv_slot_${slot.slotIndex * 1000}`,
+          id: slot.slotId ? `inv_${slot.slotId}` : `inv_${slot.itemId}_${slot.slotIndex}`,
+          slotId: slot.slotId,
           name: slot.itemName || undefined,
-          level: slot.itemType === 'EQUIPMENT' ? Math.max(1, slot.quantity) : 1,
+          level: slot.workerLevel ?? (slot.itemType === 'EQUIPMENT' ? Math.max(1, slot.quantity) : 1),
           locked: false,
           quantity: slot.quantity,
           slotIndex: slot.slotIndex,
-          type: slot.itemType === 'TICKET' ? `ticket_${slot.itemName?.includes("창고") ? "warehouse" : "inventory"}` : `worker_${slot.itemName?.replace(/ /g, "_")}`
+          equipped: slot.equipped ?? false,
+          type: slot.itemType === 'TICKET'
+            ? `ticket_${slot.itemName?.includes("창고") ? "warehouse" : "inventory"}`
+            : `worker_lv${slot.workerLevel ?? 1}`
         })),
       maxSlots: allSlots.length
     };
@@ -295,6 +327,16 @@ export const InventoryAPI = {
   decreaseItem: async (data: { slotIndex: number, amount: number }) => {
     await apiClient.delete('/inventory/decrease', { data });
     return { data: { success: true } };
+  },
+
+  equipWorker: async (slotIndex: number) => {
+    await apiClient.post('/inventory/equip', null, { params: { slotIndex } });
+    return { data: { success: true } };
+  },
+
+  unequipWorker: async () => {
+    await apiClient.post('/inventory/unequip');
+    return { data: { success: true } };
   }
 };
 
@@ -310,9 +352,8 @@ export const NotificationAPI = {
   },
 };
 
-// ==================== News (develop에서 추가) ====================
+// ==================== News ====================
 export const NewsAPI = {
-  /** 뉴스 목록 조회 (/api/news) */
   getNews: async (): Promise<any[]> => {
     const res = await apiClient.get('/api/news', { baseURL: '/' });
     return res.data?.data ?? [];

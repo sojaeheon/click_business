@@ -74,18 +74,31 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
   if (data.type === "workstation") {
     const { material, product, reqMat } = state.getIndustryItemNames();
     const warehouseStock = liveMatStock ?? (state.warehouseItems.find(i => i.type === "material")?.quantity || 0);
+    const wsState = state.workstationState;
 
     const laps = Math.floor(qty / resProd);
     const totalMaterial = laps * reqMat;
     const totalProduced = laps * resProd;
 
+    // ✅ 속도 가중치: 백엔드에서 받은 값 우선, 없으면 로컬 일꾼 정의에서 계산
     const industryName = state.industry as IndustryKey;
     let speedMult = 1.0;
-    if (equippedWorker) {
+    if (wsState.speedMultiplier) {
+      // 백엔드에서 이미 가중치를 내려줌 (가장 정확)
+      speedMult = wsState.speedMultiplier;
+    } else if (equippedWorker) {
+      // 폴백: 로컬 정의 기반 계산
       const def = getWorkerDefByLevel(equippedWorker.level);
       speedMult = def.speedMultiplier[industryName] || 1.0;
     }
-    const totalSecs = Math.ceil((laps * 60) / speedMult);
+
+    // ✅ 분당 생산량: 백엔드 minuteOutput 우선, 없으면 resProd(산업 기본값)
+    const effMinuteOutput = wsState.minuteOutput ?? resProd;
+
+    // 총 소요 시간(초) = (총 생산량 / 분당생산량) * 60초 / 속도가중치
+    const totalSecs = effMinuteOutput > 0
+      ? Math.ceil((totalProduced / effMinuteOutput) * 60 / speedMult)
+      : Math.ceil((laps * 60) / speedMult);
     const mins = Math.floor(totalSecs / 60);
     const secs = totalSecs % 60;
     const timeLabel = mins > 0 ? (secs === 0 ? `${mins}분` : `${mins}분 ${secs}초`) : `${secs}초`;
@@ -241,7 +254,26 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                   const isEquipped = item.id === equippedWorkerId;
                   return (
                     <div key={item.id} className="w-full relative">
-                      <WorkerCard item={item} isSmall={false} onClick={() => { if (isEquipped) { setEquippedWorkerId(null); } else { setEquippedWorkerId(item.id); } setIsInventoryOpen(false); }} />
+                      <WorkerCard
+                        item={item}
+                        isSmall={false}
+                        onClick={async () => {
+                          try {
+                            if (isEquipped) {
+                              await useGameStore.getState().unequipWorker();
+                              useAlertStore.getState().openAlert("일꾼 장착이 해제되었습니다.", "안내");
+                            } else {
+                              if (item.slotIndex !== undefined) {
+                                await useGameStore.getState().equipWorker(item.slotIndex);
+                                useAlertStore.getState().openAlert(`${item.name}이(가) 배치되었습니다.`, "배치 완료");
+                              }
+                            }
+                          } catch (e: any) {
+                            useAlertStore.getState().openAlert("장착 상태 변경에 실패했습니다.", "오류");
+                          }
+                          setIsInventoryOpen(false);
+                        }}
+                      />
                       {isEquipped && (
                         <div className="absolute inset-0 bg-black/50 border border-white/20 rounded-2xl flex flex-col items-center justify-center pointer-events-none z-10 backdrop-blur-[3px]">
                           <div className="flex items-center px-5 py-1.5 bg-white/15 rounded-full shadow-[0_4px_12px_rgba(0,0,0,0.5)] border border-white/30 mb-2 backdrop-blur-md"><span className="text-white font-black text-sm tracking-widest drop-shadow-md">장착중</span></div>

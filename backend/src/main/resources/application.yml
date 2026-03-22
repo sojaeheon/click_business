@@ -50,15 +50,23 @@ jwt:
 # 미니게임 보상 가중치 (아이템 이름: 가중치, 합계가 100이 되도록 맞출 것)
 # 가중치를 수정하면 다음 서버 재시작부터 반영됩니다
 minigame:
-  reward-weights:
-    "초보 일꾼": 59.5
-    "인벤토리 확장권": 10.5
-    "창고 확장권": 10.5
-    "견습 일꾼": 10.0
-    "숙련 일꾼": 5.0
-    "마스터 일꾼": 3.0
-    "에픽 일꾼": 1.0
-    "레전드 일꾼": 0.5
+  rewards:
+    - item-name: "초보 일꾼"
+      weight: 59.5
+    - item-name: "인벤토리 확장권"
+      weight: 10.5
+    - item-name: "창고 확장권"
+      weight: 10.5
+    - item-name: "견습 일꾼"
+      weight: 10.0
+    - item-name: "숙련 일꾼"
+      weight: 5.0
+    - item-name: "마스터 일꾼"
+      weight: 3.0
+    - item-name: "에픽 일꾼"
+      weight: 1.0
+    - item-name: "레전드 일꾼"
+      weight: 0.5
 
 # 창고 설정 (MATERIAL/PRODUCT)
 warehouse:

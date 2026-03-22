@@ -25,7 +25,6 @@ export interface WarehouseItem {
 }
 
 // ─── 인벤토리 아이템 종류 ────────────────────────────────────────────────
-// 캐릭터(일꾼) Lv1~6 + 창고 슬롯 확장권 + 인벤토리 슬롯 확장권
 export type InventoryItemType =
   | "worker_lv1"
   | "worker_lv2"
@@ -44,6 +43,8 @@ export interface InventoryItem {
   quantity: number;
   level?: number;
   slotIndex?: number;
+  slotId?: number;    // ✅ 백엔드 PK
+  equipped?: boolean;  // ✅ 장착 여부
 }
 
 
@@ -87,6 +88,9 @@ export interface GameState {
   setEquippedWorkerId: (id: string | null) => void;
   setHasNewWorker: (v: boolean) => void;
 
+  equipWorker: (slotIndex: number) => Promise<void>;
+  unequipWorker: () => Promise<void>;
+
   // 작업장 로컬 상태 캐시
   workstationState: {
     isStarting?: boolean;
@@ -97,6 +101,10 @@ export interface GameState {
     requestedQty: number;
     storedCount: number;
     producedCount: number;
+    // ✅ 백엔드에서 받는 생산 관련 추가 필드
+    minuteOutput: number | null;      // 분당 생산량 (백엔드에서 산업별로 계산)
+    workerLevel: number | null;       // 장착 캐릭터 레벨
+    speedMultiplier: number | null;   // 속도 가중치 (레벨별 1.0, 1.5, 2.0 등)
   };
   setWorkstationState: (updater: Partial<GameState["workstationState"]>) => void;
 
@@ -114,7 +122,7 @@ export interface GameState {
 
   // 은행 데이터 동기화
   updateBankData: (data: Partial<BankData>) => void;
-  updateDebt: (amount: number) => void; // 양수 = 부칄 증가, 음수 = 부칄 감소
+  updateDebt: (amount: number) => void; // 양수 = 부채 증가, 음수 = 부채 감소
 
   getWarehouseUsage: () => { usedSlots: number; percent: number };
   getIndustryItemNames: (indOverride?: string) => { material: string; product: string; reqMat: number; resProd: number; batchSize: number };
@@ -156,6 +164,26 @@ export const useGameStore = create<GameState>()(
     setEquippedWorkerId: (id) => set({ equippedWorkerId: id }),
     setHasNewWorker: (v) => set({ hasNewWorker: v }),
 
+    equipWorker: async (slotIndex: number) => {
+      try {
+        await WorkstationAPI.equipWorker(slotIndex);
+        await get().fetchCompanyData(1);
+      } catch (error) {
+        console.error("일꾼 장착 실패:", error);
+        throw error;
+      }
+    },
+
+    unequipWorker: async () => {
+      try {
+        await WorkstationAPI.unequipWorker();
+        await get().fetchCompanyData(1);
+      } catch (error) {
+        console.error("일꾼 장착 해제 실패:", error);
+        throw error;
+      }
+    },
+
     workstationState: {
       isStarting: false,
       isWorking: false,
@@ -165,6 +193,9 @@ export const useGameStore = create<GameState>()(
       requestedQty: 0,
       storedCount: 0,
       producedCount: 0,
+      minuteOutput: null,
+      workerLevel: null,
+      speedMultiplier: null,
     },
     setWorkstationState: (updater) => set(s => ({
       workstationState: { ...s.workstationState, ...updater }
@@ -234,7 +265,24 @@ export const useGameStore = create<GameState>()(
 
         const realData = companyRes.data;
 
-        const allItems: InventoryItem[] = inventoryRes.data.map((item: any) => item);
+        // ✅ 인벤토리 아이템 매핑 (백엔드 필드명 방어적으로 처리)
+        const allItems: InventoryItem[] = (inventoryRes.data as any[]).map((item: any) => {
+          const workerLevel = item.level ?? item.workerLevel ?? item.worker_level ?? 1;
+          const itemType: InventoryItemType = item.type?.startsWith('ticket_')
+            ? item.type
+            : `worker_lv${workerLevel}` as InventoryItemType;
+          return {
+            id: item.id ?? `slot_${Math.random().toString(36).substr(2, 9)}`,
+            slotId: item.slotId,
+            slotIndex: item.slotIndex,
+            type: itemType,
+            name: item.name ?? "아이템",
+            icon: item.icon ?? "",
+            quantity: item.quantity ?? 1,
+            level: workerLevel,
+            equipped: !!item.equipped
+          };
+        });
 
         const finalIndustry = realData?.industry_type ?? get().industry;
         const { material, product } = get().getIndustryItemNames(finalIndustry);
@@ -247,38 +295,58 @@ export const useGameStore = create<GameState>()(
         const warehouseMaxSlotsFromApi = (warehouseRes as any).maxSlots;
         const inventoryMaxSlotsFromApi = (inventoryRes as any).maxSlots;
 
-        // ★ 작업장 상태: endTime을 폴링 시 덮어쓰지 않도록 보호
+        // ─── 작업장 상태 결정 ──────────────────────────────────────────
         const backendIsWorking = wsStatusRes.data?.isWorking ?? false;
-        const currentEndTime = get().workstationState.endTime;
+        const currentState = get().workstationState;
 
-        // endTime 결정 로직:
-        // 1. 작업 안 하면 → null (리셋)
-        // 2. 작업 중이고 이미 endTime 있으면 → 기존 값 유지 (폴링이 덮어쓰지 않음)
-        // 3. 작업 중인데 endTime 없으면 → 백엔드에서 받아옴 (최초 1회)
+        // ★★★ 핵심: 프론트에서 이미 "완료"로 판정해 isWorking=false로 세팅한 경우,
+        //   백엔드가 아직 isActive=true를 반환해도 덮어쓰지 않음 (타이머 재시작 방지)
+        const locallyCompleted = !currentState.isWorking && currentState.startTime > 0;
+        const resolvedIsWorking = locallyCompleted ? false : backendIsWorking;
+
+        // endTime 결정 로직
         let resolvedEndTime: number | null;
-        if (!backendIsWorking) {
-          resolvedEndTime = null;
-        } else if (currentEndTime) {
-          resolvedEndTime = currentEndTime;
+        if (!resolvedIsWorking) {
+          // 작업이 끝났거나 로컬에서 완료 판정 → endTime 초기화
+          resolvedEndTime = locallyCompleted ? null : currentState.endTime;
+        } else if (currentState.endTime) {
+          // 작업 중이고 이미 endTime 있으면 → 기존 값 유지 (폴링이 덮어쓰지 않음)
+          resolvedEndTime = currentState.endTime;
         } else {
+          // 작업 중인데 endTime 없으면 → 백엔드에서 받아옴 (최초 1회)
           resolvedEndTime = wsStatusRes.data?.expectedEndTime
             ? new Date(wsStatusRes.data.expectedEndTime).getTime()
             : null;
         }
 
-        // ★ requestedQty 역산: 백엔드는 reservedQuantity(남은 재료)만 주므로
-        // 산업별 비율로 "총 생산품 수량"을 계산
-        // 예: 제조업 - 재료 20개 → 생산품 2개, reservedQty=0 + producedQty=2 → 총 2개
+        // ★★★ requestedQty: 프론트에서 작업 시작 시 세팅한 값 우선 유지
+        //   백엔드의 reservedQuantity는 재료 수량이므로 산업별 비율로 역산
         const { reqMat, resProd } = get().getIndustryItemNames(finalIndustry);
-        const reserved = wsStatusRes.data?.reservedQuantity ?? 0;
         const produced = wsStatusRes.data?.producedQuantity ?? 0;
+        const reserved = wsStatusRes.data?.reservedQuantity ?? 0;
         const consumedLaps = resProd > 0 ? Math.floor(produced / resProd) : 0;
         const remainingLaps = reqMat > 0 ? Math.floor(reserved / reqMat) : 0;
-        const totalExpectedOutput = (consumedLaps + remainingLaps) * resProd;
-        // 이미 설정된 값이 있으면 유지 (작업 시작 시 프론트에서 직접 세팅한 값)
-        const resolvedRequestedQty = totalExpectedOutput > 0
-          ? totalExpectedOutput
-          : get().workstationState.requestedQty;
+        const backendTotalOutput = (consumedLaps + remainingLaps) * resProd;
+
+        // 이미 프론트에서 세팅된 requestedQty가 있으면 유지, 없으면 백엔드 역산값 사용
+        const resolvedRequestedQty = currentState.requestedQty > 0
+          ? currentState.requestedQty
+          : (backendTotalOutput > 0 ? backendTotalOutput : 0);
+
+        // startTime/totalMs: 작업 중인데 없으면 백엔드 endTime 기반으로 역산
+        let resolvedStartTime = currentState.startTime;
+        let resolvedTotalMs = currentState.totalMs;
+        if (resolvedIsWorking && resolvedStartTime === 0 && resolvedEndTime) {
+          // 폴링 초기 진입 시: 현재 시각과 endTime으로 대략적인 startTime+totalMs 추정
+          // (정확한 값은 start 시 프론트에서 직접 세팅)
+          resolvedEndTime = resolvedEndTime; // already set above
+        }
+
+        // ★ 수확(harvest) 이후 producedCount/storedCount 처리:
+        //   백엔드가 harvest 직후에도 isActive=true로 응답할 수 있음.
+        //   storedCount는 백엔드 producedQuantity 기준으로 갱신 (harvest 후 0이 됨).
+        const resolvedProducedCount = resolvedIsWorking ? produced : 0;
+        const resolvedStoredCount = wsStatusRes.data?.producedQuantity ?? 0;
 
         set({
           money: realData?.cash ?? get().money,
@@ -300,13 +368,20 @@ export const useGameStore = create<GameState>()(
           },
           debt: bankRes.data.currentLoan,
           workstationId: typeof workstationIdRes === "number" ? workstationIdRes : (workstationIdRes as any)?.data ?? 0,
+          equippedWorkerId: allItems.find(i => i.equipped)?.id ?? null,
           workstationState: {
-            ...get().workstationState,
-            isWorking: backendIsWorking,
-            producedCount: produced,
-            storedCount: produced,
-            requestedQty: resolvedRequestedQty,
+            ...currentState,
+            isWorking: resolvedIsWorking,
+            startTime: resolvedStartTime,
+            totalMs: resolvedTotalMs,
             endTime: resolvedEndTime,
+            producedCount: resolvedProducedCount,
+            storedCount: resolvedStoredCount,
+            requestedQty: resolvedRequestedQty,
+            // ✅ 백엔드 production 메타데이터 갱신 (없으면 기존값 유지)
+            minuteOutput: wsStatusRes.data?.minuteOutput ?? currentState.minuteOutput,
+            workerLevel: wsStatusRes.data?.workerLevel ?? currentState.workerLevel,
+            speedMultiplier: wsStatusRes.data?.speedMultiplier ?? currentState.speedMultiplier,
           },
           isLoading: false
         });

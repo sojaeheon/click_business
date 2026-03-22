@@ -33,6 +33,9 @@ public class InventorySlot {
     @Column(nullable = false)
     private Long quantity = 0L;
 
+    @Column(name = "equipped", nullable = false)
+    private boolean equipped = false;
+
     public InventorySlot(Inventory inventory, Integer slotIndex) {
         this.inventory = inventory;
         this.slotIndex = slotIndex;
@@ -53,5 +56,13 @@ public class InventorySlot {
     public void setItemAndQuantity(Item item, Long quantity) {
         this.item = item;
         this.quantity = quantity;
+    }
+
+    public void equip() {
+        this.equipped = true;
+    }
+
+    public void unequip() {
+        this.equipped = false;
     }
 }
