@@ -142,6 +142,20 @@ public class UserOrderService {
                 }
             }
         }
+    /**
+     * 특정 아이템에 대해 내 회사가 낸 미체결 주문 목록을 조회합니다.
+     */
+    public java.util.List<com.ssafy.ecosim.domain.market.dto.response.UserOrderResponseDto> getMyPendingOrders(Long userId, Integer itemId) {
+        Company company = companyRepository.findByUser_Id(userId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 유저에게 소속된 회사가 없습니다. userId=" + userId));
+
+        return marketOrderRepository.findByCompanyIdAndItemIdAndStatusInOrderByCreatedAtDesc(
+                company.getId(),
+                itemId,
+                java.util.List.of(com.ssafy.ecosim.domain.market.entity.OrderStatus.PENDING, com.ssafy.ecosim.domain.market.entity.OrderStatus.PARTIALLY_COMPLETED)
+        ).stream()
+         .map(com.ssafy.ecosim.domain.market.dto.response.UserOrderResponseDto::new)
+         .toList();
     }
 }
 
