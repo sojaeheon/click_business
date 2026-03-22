@@ -3,8 +3,11 @@ package com.ssafy.ecosim.domain.production.service;
 import com.ssafy.ecosim.domain.company.entity.Company;
 import com.ssafy.ecosim.domain.company.repository.CompanyRepository;
 import com.ssafy.ecosim.domain.inventory.entity.EquipmentInventory;
+import com.ssafy.ecosim.domain.inventory.entity.InventorySlot;
 import com.ssafy.ecosim.domain.inventory.repository.EquipmentInventoryRepository;
+import com.ssafy.ecosim.domain.inventory.repository.InventorySlotRepository;
 import com.ssafy.ecosim.domain.inventory.service.WarehouseService;
+import com.ssafy.ecosim.domain.item.entity.ItemType;
 import com.ssafy.ecosim.domain.item.repository.ItemRepository;
 import com.ssafy.ecosim.domain.notification.dto.NotificationEvent;
 import com.ssafy.ecosim.domain.notification.entity.NotificationType;
@@ -26,10 +29,24 @@ public class WorkstationService {
 
         private final WorkstationRepository workstationRepository;
         private final EquipmentInventoryRepository equipmentInventoryRepository;
+        private final InventorySlotRepository inventorySlotRepository;
         private final CompanyRepository companyRepository;
         private final ItemRepository itemRepository;
         private final WarehouseService warehouseService;
         private final ApplicationEventPublisher eventPublisher;
+
+        // 일꾼 레벨별 생산 속도 배율 (프론트 workers.ts의 speedMultiplier와 동일)
+        private static double getWorkerSpeedMultiplier(int workerLevel) {
+                return switch (workerLevel) {
+                        case 1 -> 1.00;
+                        case 2 -> 1.15;
+                        case 3 -> 1.35;
+                        case 4 -> 1.60;
+                        case 5 -> 2.00;
+                        case 6 -> 3.00;
+                        default -> 1.00;
+                };
+        }
 
         @Transactional
         public Long createWorkstation(Long companyId) {
@@ -51,6 +68,32 @@ public class WorkstationService {
                 Workstation workstation = findWorkstation(companyId, workstationId);
                 workstation.toggleActive();
                 return workstation.getIsActive();
+        }
+
+        /**
+         * 일꾼 장착: 인벤토리 슬롯 인덱스를 Workstation에 연결
+         */
+        @Transactional
+        public void equipWorker(Long companyId, Long workstationId, Integer slotIndex) {
+                Workstation workstation = findWorkstation(companyId, workstationId);
+
+                InventorySlot slot = inventorySlotRepository
+                        .findByInventory_Company_IdAndSlotIndex(companyId, slotIndex)
+                        .orElseThrow(() -> new IllegalArgumentException("해당 슬롯을 찾을 수 없습니다."));
+
+                if (slot.getItem() == null) throw new IllegalArgumentException("슬롯이 비어있습니다.");
+                if (slot.getItem().getWorkerLevel() == null)
+                        throw new IllegalArgumentException("해당 아이템은 일꾼이 아닙니다.");
+
+                workstation.equipWorker(slotIndex);
+        }
+
+        /**
+         * 일꾼 장착 해제
+         */
+        @Transactional
+        public void unequipWorker(Long companyId, Long workstationId) {
+                findWorkstation(companyId, workstationId).unequipWorker();
         }
 
         @Transactional
@@ -94,16 +137,28 @@ public class WorkstationService {
                 if (!workstation.getIsActive()) return;
 
                 LocalDateTime now = LocalDateTime.now();
-                long secondsPassed = ChronoUnit.MINUTES.between(workstation.getLastTickTime(), now);
+                long secondsPassed = ChronoUnit.SECONDS.between(workstation.getLastTickTime(), now);
 
                 if (secondsPassed <= 0) return;
 
-                long productionPerSecond = 1L;
+                // 기본 생산량: 장비(EquipmentInventory) 레벨 기반 (없으면 분당 1회)
+                long productionPerMinute = 1L;
                 if (workstation.getEquipmentInventory() != null) {
-                        productionPerSecond = workstation.getEquipmentInventory().getLevel() * 1L;
+                        productionPerMinute = workstation.getEquipmentInventory().getLevel();
                 }
 
-                long potentialProduction = secondsPassed * productionPerSecond;
+                // 일꾼 속도 배율 적용 (장착된 슬롯의 일꾼 workerLevel로 계산)
+                double workerMult = 1.0;
+                if (workstation.getEquippedWorkerSlotIndex() != null) {
+                        workerMult = inventorySlotRepository
+                                .findByInventory_Company_IdAndSlotIndex(companyId, workstation.getEquippedWorkerSlotIndex())
+                                .filter(s -> s.getItem() != null && s.getItem().getWorkerLevel() != null)
+                                .map(s -> getWorkerSpeedMultiplier(s.getItem().getWorkerLevel()))
+                                .orElse(1.0);
+                }
+
+                // 잠재 생산량 = 경과 초 × (분당 생산량 / 60) × 일꾼 배율
+                long potentialProduction = (long) (secondsPassed * productionPerMinute / 60.0 * workerMult);
                 Company company = workstation.getCompany();
                 int requirement = company.getIndustryType().getBaseRequirement();
                 int yield = company.getIndustryType().getBaseYield();
@@ -128,9 +183,13 @@ public class WorkstationService {
 
         /**
          * 결과물 수확: 워크스테이션 → 창고(PRODUCT)
+         * 수확 전 processProduction을 실행하여 미처리된 생산량을 반영합니다.
          */
         @Transactional
         public void harvestOutput(Long companyId, Long workstationId) {
+                // 수확 전 지연 평가 실행 (생산 시간이 경과했다면 producedQuantity 증가)
+                processProduction(companyId, workstationId);
+
                 Workstation workstation = findWorkstation(companyId, workstationId);
 
                 long harvestQuantity = workstation.getProducedQuantity();
@@ -141,6 +200,15 @@ public class WorkstationService {
 
                 warehouseService.addItem(companyId, harvestItemId, harvestQuantity);
                 workstation.clearProducedQuantity();
+        }
+
+        public WorkstationStatusResponse getMyWorkstationStatus(Long companyId) {
+                Workstation workstation = workstationRepository.findAllByCompanyId(companyId)
+                                .stream()
+                                .findFirst()
+                                .orElseThrow(() -> new IllegalArgumentException("공장이 존재하지 않습니다."));
+                processProduction(companyId, workstation.getId());
+                return getWorkstationStatus(companyId, workstation.getId());
         }
 
         public WorkstationStatusResponse getWorkstationStatus(Long companyId, Long workstationId) {
@@ -166,6 +234,14 @@ public class WorkstationService {
                         builder.equipmentId(workstation.getEquipmentInventory().getId())
                                .equipmentName(workstation.getEquipmentInventory().getItem().getName())
                                .equipmentLevel(workstation.getEquipmentInventory().getLevel());
+                }
+
+                if (workstation.getEquippedWorkerSlotIndex() != null) {
+                        builder.equippedWorkerSlotIndex(workstation.getEquippedWorkerSlotIndex());
+                        inventorySlotRepository
+                                .findByInventory_Company_IdAndSlotIndex(companyId, workstation.getEquippedWorkerSlotIndex())
+                                .filter(s -> s.getItem() != null && s.getItem().getWorkerLevel() != null)
+                                .ifPresent(s -> builder.equippedWorkerLevel(s.getItem().getWorkerLevel()));
                 }
 
                 return builder.build();

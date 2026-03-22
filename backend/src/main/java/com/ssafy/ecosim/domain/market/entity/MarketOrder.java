@@ -46,14 +46,15 @@ public class MarketOrder extends BaseEntity {
     private Boolean isVirtual;
 
     @Builder
-    public MarketOrder(Integer itemId, Long companyId, OrderType orderType, Long price, Long totalQuantity, Boolean isVirtual) {
+    public MarketOrder(Long id, Integer itemId, Long companyId, OrderType orderType, Long price, Long totalQuantity, Long remainingQuantity, OrderStatus status, Boolean isVirtual) {
+        this.id = id;
         this.itemId = itemId;
         this.companyId = companyId;
         this.orderType = orderType;
         this.price = price;
         this.totalQuantity = totalQuantity;
-        this.remainingQuantity = totalQuantity; // 초기 미체결 잔량은 총 주문 수량과 동일
-        this.status = OrderStatus.PENDING;      // 초기 상태
+        this.remainingQuantity = remainingQuantity != null ? remainingQuantity : totalQuantity;
+        this.status = status != null ? status : OrderStatus.PENDING;
         this.isVirtual = isVirtual != null ? isVirtual : false;
     }
 

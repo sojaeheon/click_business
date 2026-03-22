@@ -63,11 +63,11 @@ public class WarehouseService {
         return saved;
     }
 
-    public List<WarehouseSlotResponse> getWarehouse(Long companyId) {
+    public List<WarehouseSlotResponse> getWarehouse(Long companyId, Long inputItemId, Long outputItemId) {
         Warehouse warehouse = findWarehouse(companyId);
         return warehouse.getSlots().stream()
                 .sorted(Comparator.comparingInt(WarehouseSlot::getSlotIndex))
-                .map(WarehouseSlotResponse::new)
+                .map(slot -> new WarehouseSlotResponse(slot, inputItemId, outputItemId))
                 .collect(Collectors.toList());
     }
 
@@ -219,14 +219,12 @@ public class WarehouseService {
     @Transactional
     public void swapOrMergeSlots(Long companyId, int fromIndex, int toIndex) {
         Warehouse warehouse = findWarehouse(companyId);
-        if (fromIndex == toIndex)
-            return;
+        if (fromIndex == toIndex) return;
 
         WarehouseSlot from = getSlotByIndex(warehouse, fromIndex);
         WarehouseSlot to = getSlotByIndex(warehouse, toIndex);
 
-        if (from.getItem() == null)
-            throw new IllegalArgumentException("출발 슬롯이 비어있습니다.");
+        if (from.getItem() == null) throw new IllegalArgumentException("출발 슬롯이 비어있습니다.");
 
         if (to.getItem() == null) {
             to.setItemAndQuantity(from.getItem(), from.getQuantity());
@@ -240,10 +238,8 @@ public class WarehouseService {
                 long move = Math.min(space, from.getQuantity());
                 to.addItem(to.getItem(), move);
                 long left = from.getQuantity() - move;
-                if (left <= 0)
-                    from.clearSlot();
-                else
-                    from.setItemAndQuantity(from.getItem(), left);
+                if (left <= 0) from.clearSlot();
+                else from.setItemAndQuantity(from.getItem(), left);
             }
             return;
         }
@@ -266,10 +262,8 @@ public class WarehouseService {
         warehouse.expandSlots(expandSlotAmount, maxExpandableLimit);
 
         long left = ticketSlot.getQuantity() - 1;
-        if (left <= 0)
-            ticketSlot.clearSlot();
-        else
-            ticketSlot.setItemAndQuantity(ticketSlot.getItem(), left);
+        if (left <= 0) ticketSlot.clearSlot();
+        else ticketSlot.setItemAndQuantity(ticketSlot.getItem(), left);
 
         List<WarehouseSlot> newSlots = new ArrayList<>();
         for (int i = current; i < current + expandSlotAmount; i++) {
@@ -280,49 +274,46 @@ public class WarehouseService {
 
     @Transactional
     public void decreaseQuantity(Long companyId, Integer slotIndex, Long amount) {
-        if (amount <= 0)
-            throw new IllegalArgumentException("차감할 수량은 1 이상이어야 합니다.");
+        if (amount <= 0) throw new IllegalArgumentException("차감할 수량은 1 이상이어야 합니다.");
 
         Warehouse warehouse = findWarehouse(companyId);
         WarehouseSlot slot = getSlotByIndex(warehouse, slotIndex);
 
-        if (slot.getItem() == null)
-            throw new IllegalArgumentException("해당 슬롯이 비어있습니다.");
-        if (slot.getQuantity() < amount)
-            throw new IllegalStateException("슬롯의 수량이 부족합니다.");
+        if (slot.getItem() == null) throw new IllegalArgumentException("해당 슬롯이 비어있습니다.");
+        if (slot.getQuantity() < amount) throw new IllegalStateException("슬롯의 수량이 부족합니다.");
 
         long left = slot.getQuantity() - amount;
-        if (left == 0)
-            slot.clearSlot();
-        else
-            slot.setItemAndQuantity(slot.getItem(), left);
+        if (left == 0) slot.clearSlot();
+        else slot.setItemAndQuantity(slot.getItem(), left);
     }
 
+    /**
+     * 회사 config 기준으로 MATERIAL(input) 또는 PRODUCT(output) 아이템을 폐기합니다.
+     * 아이템의 DB 타입이 아닌 inputItemId/outputItemId로 대상 아이템을 결정합니다.
+     */
     @Transactional
-    public void discardByItemType(Long companyId, ItemType itemType, Long amount) {
-        if (amount <= 0)
-            throw new IllegalArgumentException("폐기 수량은 1 이상이어야 합니다.");
-        if (itemType != ItemType.MATERIAL && itemType != ItemType.PRODUCT)
-            throw new IllegalArgumentException("폐기 가능한 아이템 종류가 아닙니다: " + itemType);
+    public void discardByItemType(Long companyId, ItemType itemType, Long amount,
+                                  Long inputItemId, Long outputItemId) {
+        if (amount <= 0) throw new IllegalArgumentException("폐기 수량은 1 이상이어야 합니다.");
+
+        Long targetItemId = (itemType == ItemType.MATERIAL) ? inputItemId : outputItemId;
+        if (targetItemId == null)
+            throw new IllegalArgumentException("회사의 생산 아이템 설정이 되어있지 않습니다.");
 
         Warehouse warehouse = findWarehouse(companyId);
         List<WarehouseSlot> slots = warehouse.getSlots().stream()
-                .filter(s -> s.getItem() != null && s.getItem().getType() == itemType)
+                .filter(s -> s.getItem() != null && s.getItem().getId().equals(targetItemId))
                 .collect(Collectors.toList());
 
         long total = slots.stream().mapToLong(WarehouseSlot::getQuantity).sum();
-        if (total < amount)
-            throw new IllegalStateException("해당 아이템의 수량이 부족합니다.");
+        if (total < amount) throw new IllegalStateException("해당 아이템의 수량이 부족합니다.");
 
         long remaining = amount;
         for (WarehouseSlot slot : slots) {
-            if (remaining <= 0)
-                break;
+            if (remaining <= 0) break;
             long take = Math.min(slot.getQuantity(), remaining);
-            if (slot.getQuantity() - take == 0)
-                slot.clearSlot();
-            else
-                slot.setItemAndQuantity(slot.getItem(), slot.getQuantity() - take);
+            if (slot.getQuantity() - take == 0) slot.clearSlot();
+            else slot.setItemAndQuantity(slot.getItem(), slot.getQuantity() - take);
             remaining -= take;
         }
     }

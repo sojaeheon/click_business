@@ -5,7 +5,8 @@ import { useGame } from "../../../store/gameStore";
 import { useAlertStore } from "../../../store/useAlertStore";
 import { getWorkerIcon, WorkerCard } from "../ui/WorkerCard";
 import { useGameStore } from "../../../store/gameStore";
-import { getWorkerDefByLevel, WORKER_LEVEL_IMAGES, IndustryKey } from "../../../constants/workers";
+import { getWorkerDefByLevel, IndustryKey } from "../../../constants/workers";
+import { WarehouseAPI } from "../../../api/gameApi";
 
 // 다른 곳에서도 쓸 수 있게 export 해줍니다.
 export interface ConfirmData {
@@ -28,7 +29,7 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
   // 장착 일꾼 데이터 전역 연동
   const { equippedWorkerId, setEquippedWorkerId, hasNewWorker, setHasNewWorker } = useGameStore();
   const slots = useGameStore(s => s.inventoryItems);
-  
+
   const equippedItem = slots.find(i => i.id === equippedWorkerId);
   const equippedWorker = equippedItem ? { id: equippedItem.id, name: equippedItem.name, level: equippedItem.level || 1 } : null;
 
@@ -57,9 +58,21 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
     }
   }, [data.type, data.isWorking, resProd]);
 
+  // 작업장 모달 열릴 때 창고 재료 수량 백엔드에서 직접 조회
+  const [liveMatStock, setLiveMatStock] = useState<number | null>(null);
+  useEffect(() => {
+    if (data.type !== "workstation") return;
+    WarehouseAPI.getWarehouseItems(0).then(res => {
+      const total = res.data
+        .filter((i: any) => i.type === "material")
+        .reduce((sum: number, i: any) => sum + (i.quantity || 0), 0);
+      setLiveMatStock(total);
+    }).catch(() => { });
+  }, [data.type]);
+
   if (data.type === "workstation") {
     const { material, product, reqMat } = state.getIndustryItemNames();
-    const warehouseStock = state.warehouseItems.find(i => i.type === "material")?.quantity || 0;
+    const warehouseStock = liveMatStock ?? (state.warehouseItems.find(i => i.type === "material")?.quantity || 0);
 
     // qty = 유저가 자유롭게 입력한 생산 개수
     // 시간/재료는 개수에 비례 계산 (1분에 resProd개 생산 기준)
@@ -143,10 +156,10 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                 }
               }}
               className={`relative w-[88px] h-[88px] flex flex-col items-center justify-center rounded-2xl shadow-inner border-[3px] transition-all overflow-hidden group flex-shrink-0 ${equippedWorker
-                  ? "bg-gradient-to-br from-blue-100 to-indigo-50 border-blue-300"
-                  : data.isWorking
-                    ? "bg-slate-100 border-slate-300 opacity-50 cursor-not-allowed grayscale"
-                    : "bg-slate-50 border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 cursor-pointer"
+                ? "bg-gradient-to-br from-blue-100 to-indigo-50 border-blue-300"
+                : data.isWorking
+                  ? "bg-slate-100 border-slate-300 opacity-50 cursor-not-allowed grayscale"
+                  : "bg-slate-50 border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 cursor-pointer"
                 }`}
             >
               {equippedWorker ? (
@@ -243,9 +256,9 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                 ].map((btn, i) => (
                   <button
                     key={i}
-                    onClick={(e) => { 
-                      e.stopPropagation(); 
-                      setQty(q => Math.max(1, q + btn.val)); 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setQty(q => Math.max(1, q + btn.val));
                     }}
                     className="flex-1 px-1 py-2 rounded-lg text-xs font-black border-2 border-b-4 transition-all cursor-pointer select-none bg-indigo-50 text-indigo-500 border-indigo-200 border-b-indigo-300 hover:bg-indigo-100 active:translate-y-1 active:border-b-2"
                   >

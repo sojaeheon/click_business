@@ -41,4 +41,10 @@ public class WorkstationStatusResponse {
 
     @Schema(description = "장착된 장비 레벨", example = "2")
     private Integer equipmentLevel;
+
+    @Schema(description = "장착된 일꾼 레벨 (null = 미장착)", example = "3")
+    private Integer equippedWorkerLevel;
+
+    @Schema(description = "장착된 일꾼 슬롯 인덱스 (null = 미장착)", example = "0")
+    private Integer equippedWorkerSlotIndex;
 }

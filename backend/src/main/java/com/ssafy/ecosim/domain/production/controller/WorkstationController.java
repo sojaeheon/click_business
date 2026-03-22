@@ -49,6 +49,29 @@ public class WorkstationController {
         return ApiResponse.success("공장이 " + status + " 상태로 변경되었습니다.");
     }
 
+    @Operation(summary = "일꾼 장착", description = "인벤토리 슬롯의 일꾼을 공장에 장착합니다.")
+    @PostMapping("/{workstationId}/equip-worker")
+    public ApiResponse<String> equipWorker(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = "공장 ID", example = "1") @PathVariable Long workstationId,
+            @Parameter(description = "장착할 일꾼이 있는 인벤토리 슬롯 인덱스", example = "0") @RequestParam Integer slotIndex) {
+        Long userId = Long.parseLong(userDetails.getUsername());
+        Company company = getCompanyByUserId(userId);
+        workstationService.equipWorker(company.getId(), workstationId, slotIndex);
+        return ApiResponse.success("일꾼이 장착되었습니다.");
+    }
+
+    @Operation(summary = "일꾼 장착 해제", description = "공장에 장착된 일꾼을 해제합니다.")
+    @DeleteMapping("/{workstationId}/equip-worker")
+    public ApiResponse<String> unequipWorker(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Parameter(description = "공장 ID", example = "1") @PathVariable Long workstationId) {
+        Long userId = Long.parseLong(userDetails.getUsername());
+        Company company = getCompanyByUserId(userId);
+        workstationService.unequipWorker(company.getId(), workstationId);
+        return ApiResponse.success("일꾼 장착이 해제되었습니다.");
+    }
+
     @Operation(summary = "장비 장착", description = "공장에 장비 아이템을 장착합니다.")
     @PostMapping("/{workstationId}/equip/{equipmentId}")
     public ApiResponse<String> equipEquipment(
@@ -98,6 +121,16 @@ public class WorkstationController {
 
         workstationService.harvestOutput(company.getId(), workstationId);
         return ApiResponse.success("결과물을 성공적으로 수확하였습니다.");
+    }
+
+    @Operation(summary = "내 공장 상태 조회", description = "현재 로그인한 유저의 공장 상태를 반환합니다. (ID 불필요)")
+    @GetMapping("/my")
+    public ApiResponse<WorkstationStatusResponse> getMyWorkstationStatus(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        Long userId = Long.parseLong(userDetails.getUsername());
+        Company company = getCompanyByUserId(userId);
+        WorkstationStatusResponse response = workstationService.getMyWorkstationStatus(company.getId());
+        return ApiResponse.success(response);
     }
 
     @Operation(summary = "공장 상태 조회", description = "공장의 현재 상태(가동 여부, 장비, 재료 예약량, 생산량 등)를 반환합니다.")

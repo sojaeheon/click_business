@@ -44,6 +44,9 @@ public class Workstation {
     @Column(name = "produced_quantity", nullable = false)
     private Long producedQuantity; // 생산 완료된 결과물량
 
+    @Column(name = "equipped_worker_slot_index")
+    private Integer equippedWorkerSlotIndex; // 장착된 일꾼의 인벤토리 슬롯 인덱스 (null = 미장착)
+
     @Builder
     public Workstation(Company company, Integer workstationLevel) {
         this.company = company;
@@ -83,6 +86,14 @@ public class Workstation {
             this.equipmentInventory.unequip();
             this.equipmentInventory = null;
         }
+    }
+
+    public void equipWorker(Integer slotIndex) {
+        this.equippedWorkerSlotIndex = slotIndex;
+    }
+
+    public void unequipWorker() {
+        this.equippedWorkerSlotIndex = null;
     }
 
     public void toggleActive() {

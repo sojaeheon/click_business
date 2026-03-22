@@ -3,12 +3,14 @@ package com.ssafy.ecosim.domain.market.repository.redis;
 import com.ssafy.ecosim.domain.market.entity.MarketOrder;
 import com.ssafy.ecosim.domain.market.entity.OrderType;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class OrderDetailsCacheManager {
@@ -28,14 +30,14 @@ public class OrderDetailsCacheManager {
     public void saveOrderCache(MarketOrder order) {
         String key = getKey(order.getId());
         Map<String, String> fields = Map.of(
-            "itemId",            String.valueOf(order.getItemId()),
-            "orderType",         order.getOrderType().name(),
-            "price",             String.valueOf(order.getPrice()),
-            "remainingQuantity", String.valueOf(order.getRemainingQuantity()),
-            "totalQuantity",     String.valueOf(order.getTotalQuantity()),
-            "status",            order.getStatus().name(),
-            "isVirtual",         String.valueOf(order.getIsVirtual())
-        );
+                "itemId", String.valueOf(order.getItemId()),
+                "orderType", order.getOrderType().name(),
+                "price", String.valueOf(order.getPrice()),
+                "remainingQuantity", String.valueOf(order.getRemainingQuantity()),
+                "totalQuantity", String.valueOf(order.getTotalQuantity()),
+                "status", order.getStatus().name(),
+                "companyId", String.valueOf(order.getCompanyId()),
+                "isVirtual", String.valueOf(order.getIsVirtual()));
         redisTemplate.opsForHash().putAll(key, fields);
         redisTemplate.expire(key, CACHE_TTL_HOURS, TimeUnit.HOURS);
     }
@@ -48,25 +50,45 @@ public class OrderDetailsCacheManager {
         String key = getKey(orderId);
         Map<Object, Object> map = redisTemplate.opsForHash().entries(key);
 
-        if (map == null || map.isEmpty()) return null;
+        if (map == null || map.isEmpty())
+            return null;
 
         try {
-            Integer itemId        = Integer.parseInt(String.valueOf(map.getOrDefault("itemId", "1")));
-            OrderType orderType   = OrderType.valueOf(String.valueOf(map.getOrDefault("orderType", "BUY")));
-            Long price            = Long.parseLong(String.valueOf(map.getOrDefault("price", "0")));
-            Long remainingQty     = Long.parseLong(String.valueOf(map.getOrDefault("remainingQuantity", "0")));
-            Long totalQty         = Long.parseLong(String.valueOf(map.getOrDefault("totalQuantity", remainingQty.toString())));
-            Boolean isVirtual     = Boolean.parseBoolean(String.valueOf(map.getOrDefault("isVirtual", "false")));
+            Long parsedOrderId = Long.parseLong(String.valueOf(map.getOrDefault("orderId", orderId.toString())));
+            Integer itemId = Integer.parseInt(String.valueOf(map.getOrDefault("itemId", "1")));
+            OrderType orderType = OrderType.valueOf(String.valueOf(map.getOrDefault("orderType", "BUY")));
+            Long price = Long.parseLong(String.valueOf(map.getOrDefault("price", "0")));
+            Long remainingQty = Long.parseLong(String.valueOf(map.getOrDefault("remainingQuantity", "0")));
+            Long totalQty = Long.parseLong(String.valueOf(map.getOrDefault("totalQuantity", remainingQty.toString())));
+            String isVirtualStr = String.valueOf(map.getOrDefault("isVirtual", "0"));
+            Boolean isVirtual = "1".equals(isVirtualStr) || "true".equalsIgnoreCase(isVirtualStr);
+
+            String companyIdStr = String.valueOf(map.getOrDefault("companyId", "0"));
+            if (companyIdStr.startsWith("c")) companyIdStr = companyIdStr.substring(1);
+            Long companyId = Long.parseLong(companyIdStr);
+            
+            String statusStr = String.valueOf(map.get("status"));
+            com.ssafy.ecosim.domain.market.entity.OrderStatus status;
+            try {
+                status = com.ssafy.ecosim.domain.market.entity.OrderStatus.valueOf(statusStr.toUpperCase());
+            } catch (IllegalArgumentException ex) {
+                log.error("Invalid OrderStatus in Redis cache for orderId={}: '{}'. Allowed values are PENDING, PARTIALLY_COMPLETED, COMPLETED, CANCELED.", parsedOrderId, statusStr);
+                throw ex; // Re-throw to ensure cache parsing fails and returns null
+            }
 
             return MarketOrder.builder()
+                    .id(parsedOrderId)
                     .itemId(itemId)
-                    .companyId(0L)   // 조회 목적 전용 (companyId 불필요)
+                    .companyId(companyId)
                     .orderType(orderType)
                     .price(price)
                     .totalQuantity(totalQty)
+                    .remainingQuantity(remainingQty)
+                    .status(status)
                     .isVirtual(isVirtual)
                     .build();
         } catch (Exception e) {
+            log.error("Failed to parse OrderDetails from Redis cache for orderId={}: {}", orderId, e.getMessage());
             return null;
         }
     }
