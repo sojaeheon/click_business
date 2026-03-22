@@ -232,6 +232,9 @@ services:
     build:
       context: ../bigdata
       dockerfile: dockerfile/dockerfile.hdfs
+    restart: always
+    depends_on:
+      - kafka
     env_file:
       - .env
     command: python consumers/hdfs_raw_sink_consumer.py
