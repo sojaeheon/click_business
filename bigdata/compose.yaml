@@ -37,78 +37,33 @@ services:
     networks:
       - ecosim-network
 
-  # spark-market-news:
-  #   build:
-  #     context: .
-  #     dockerfile: ./spark/Dockerfile.spark
-  #   container_name: spark-market-news
-  #   depends_on:
-  #     - spark-master
-  #     - spark-worker
-  #     - namenode
-  #     - datanode
-  #   restart: unless-stopped
-  #   volumes:
-  #     - ./spark/jobs:/opt/spark-apps
-  #   env_file:
-  #     - ../data/.env
-  #   command: >
-  #     /bin/bash -lc '
-  #     until (echo > /dev/tcp/spark-master/7077) >/dev/null 2>&1; do sleep 2; done;
-  #     until (echo > /dev/tcp/namenode/9000) >/dev/null 2>&1; do sleep 2; done;
-  #     /opt/spark/bin/spark-submit
-  #     --master spark://spark-master:7077
-  #     /opt/spark-apps/market_news_stream.py
-  #     --trigger-interval "10 minutes"
-  #     --window-minutes 10
-  #     --checkpoint-path /tmp/checkpoints/market-news-stream
-  #     '
-  #   networks:
-  #     - ecosim-network
-
-  # -----------------------------
-  # HDFS NameNode
-  # 파일 시스템 메타데이터 관리
-  # -----------------------------
-  namenode:
-    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
-    container_name: namenode
-
-    ports:
-      # NameNode Web UI
-      - "9870:9870"
-
-      # HDFS client 접속 포트
-      - "9000:9000"
-
-    environment:
-      # HDFS 클러스터 이름
-      CLUSTER_NAME: ecosim-hdfs
-
-    env_file:
-      # Hadoop 환경 변수 파일
-      - ./hdfs/conf/hadoop.env
-
+  spark-market-news:
+    build:
+      context: .
+      dockerfile: ./spark/Dockerfile.spark
+    container_name: spark-market-news
+    depends_on:
+      - spark-master
+      - spark-worker
+    restart: unless-stopped
     volumes:
-      # NameNode 메타데이터 저장
-      - ./hdfs/storage/namenode:/hadoop/dfs/name
-
-      # 초기화 스크립트
-      - ./hdfs/init:/init
-
-      # 샘플 데이터 폴더
-      - ./hdfs/sample-data:/sample-data
-
+      - ./spark/jobs:/opt/spark-apps
+    env_file:
+      - ../data/.env
+    command: >
+      /bin/bash -lc '
+      until (echo > /dev/tcp/spark-master/7077) >/dev/null 2>&1; do sleep 2; done;
+      until (echo > /dev/tcp/namenode/9000) >/dev/null 2>&1; do sleep 2; done;
+      until (echo > /dev/tcp/postgres-db/5432) >/dev/null 2>&1; do sleep 2; done;
+      /opt/spark/bin/spark-submit
+      --master spark://spark-master:7077
+      /opt/spark-apps/market_news_stream.py
+      --trigger-interval "10 minute"
+      --window-minutes 10
+      --checkpoint-path /tmp/checkpoints/market-news-stream
+      '
     networks:
       - ecosim-network
-
-  # -----------------------------
-  # HDFS DataNode
-  # 실제 데이터 블록 저장
-  # -----------------------------
-  datanode:
-    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
-    container_name: datanode
 
   
   spark-submit-valuation:
@@ -124,9 +79,15 @@ services:
     env_file:
       - ../data/.env
     command: >
+      /bin/bash -lc '
+      until (echo > /dev/tcp/spark-master/7077) >/dev/null 2>&1; do sleep 2; done;
+      until (echo > /dev/tcp/kafka/29092) >/dev/null 2>&1; do sleep 2; done;
+      until (echo > /dev/tcp/postgres-db/5432) >/dev/null 2>&1; do sleep 2; done;
+      until (echo > /dev/tcp/analytics-postgres/5432) >/dev/null 2>&1; do sleep 2; done;
       /opt/spark/bin/spark-submit
       --master spark://spark-master:7077
       /opt/spark-apps/company_valutation_stream.py
+      '
     networks:
       - ecosim-network
 

@@ -25,7 +25,7 @@ while True:
         consumer = KafkaConsumer(
             'market.trade.events',
             bootstrap_servers='kafka:29092',
-            auto_offset_reset='earliest',
+            auto_offset_reset='latest',
             enable_auto_commit=False,
             group_id='trade-db-consumer',
             value_deserializer=lambda x: json.loads(x.decode('utf-8'))
@@ -48,7 +48,7 @@ def to_datetime(iso_time_str):
 # -----------------------------
 # order 존재 확인 (retry)
 # -----------------------------
-def wait_for_order(cur, order_id, retries=5, delay=0.2):
+def wait_for_order(cur, order_id, retries=100, delay=0.2):
     for i in range(retries):
         cur.execute("""
             SELECT 1 FROM market_order WHERE market_order_id = %s

@@ -214,7 +214,7 @@ services:
   order-redis-consumer:
     build:
       context: ../bigdata
-      dockerfile: dockerfile/Dockerfile.kafka
+      dockerfile: kafka/Dockerfile.kafka
     container_name: order-redis-consumer
     restart: always
     depends_on:
@@ -228,7 +228,7 @@ services:
   order-db-consumer:
     build:
       context: ../bigdata
-      dockerfile: dockerfile/Dockerfile.kafka
+      dockerfile: kafka/Dockerfile.kafka
     container_name: order-db-consumer
     restart: always
     depends_on:
@@ -242,7 +242,7 @@ services:
   order-hdfs-consumer:
     build:
       context: ../bigdata
-      dockerfile: dockerfile/Dockerfile.kafka
+      dockerfile: kafka/Dockerfile.kafka
     container_name: order-hdfs-consumer
     restart: always
     depends_on:
@@ -262,7 +262,7 @@ services:
   trade-db-consumer:
     build:
       context: ../bigdata
-      dockerfile: dockerfile/Dockerfile.kafka
+      dockerfile: kafka/Dockerfile.kafka
     container_name: trade-db-consumer
     restart: always
     depends_on:
@@ -276,7 +276,7 @@ services:
   trade-hdfs-consumer:
     build:
       context: ../bigdata
-      dockerfile: dockerfile/Dockerfile.kafka
+      dockerfile: kafka/Dockerfile.kafka
     container_name: trade-hdfs-consumer
     restart: always
     depends_on:
@@ -299,7 +299,7 @@ services:
   hdfs-raw-sink-consumer:
     build:
       context: ../bigdata
-      dockerfile: dockerfile/Dockerfile.kafka
+      dockerfile: kafka/Dockerfile.kafka
     container_name: hdfs-raw-sink-consumer
     restart: always
     depends_on:
