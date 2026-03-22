@@ -1,6 +1,7 @@
 package com.ssafy.ecosim.domain.company.controller;
 
 import com.ssafy.ecosim.domain.company.dto.request.CompanyCreateRequest;
+import com.ssafy.ecosim.domain.company.dto.response.CompanyProfileResponse;
 import com.ssafy.ecosim.domain.company.dto.response.CompanyResponse;
 import com.ssafy.ecosim.domain.company.dto.response.GameStatusResponse;
 import com.ssafy.ecosim.domain.company.entity.Company;
@@ -58,5 +59,12 @@ public class CompanyController {
             @Parameter(description = "기업 ID", example = "1") @PathVariable Long id) {
         Company company = companyService.getCompanyById(id);
         return ApiResponse.success(new GameStatusResponse(company));
+    }
+
+    @Operation(summary = "내 기업 프로필 조회", description = "기업 프로필 페이지에 필요한 정보(레벨, 자산, 창고/인벤토리 슬롯 현황 등)를 반환합니다.")
+    @GetMapping("/me/profile")
+    public ApiResponse<CompanyProfileResponse> getMyCompanyProfile(@AuthenticationPrincipal UserDetails userDetails) {
+        Long userId = Long.parseLong(userDetails.getUsername());
+        return ApiResponse.success(companyService.getCompanyProfile(userId));
     }
 }
