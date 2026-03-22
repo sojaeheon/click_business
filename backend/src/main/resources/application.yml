@@ -10,9 +10,10 @@ spring:
     driver-class-name: org.postgresql.Driver
     username: ${SPRING_DATASOURCE_USERNAME:ecosim}
     password: ${SPRING_DATASOURCE_PASSWORD:ecosim}
-  redis:
-    host: redis
-    port: 6379
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:redis}
+      port: 6379
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
@@ -89,5 +90,8 @@ management:
 
 springdoc:
   swagger-ui:
+    path: /api/swagger-ui.html
     config-url: /api/v3/api-docs/swagger-config
     url: /api/v3/api-docs
+  api-docs:
+    path: /api/v3/api-docs

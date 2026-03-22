@@ -75,7 +75,8 @@ public class MarketMatchingService {
 
             // 3. 매칭 검사 (매수 최고가 >= 매도 최저가)
             if (buyOrder.getPrice() < sellOrder.getPrice()) {
-                log.info("Top buy price {} < top sell price {}. Cannot match further.", buyOrder.getPrice(), sellOrder.getPrice()); //
+                log.info("Top buy price {} < top sell price {}. Cannot match further.", buyOrder.getPrice(),
+                        sellOrder.getPrice()); //
                 break; // 가격이 맞지 않으면 더 이상 매칭 불가
             }
 
@@ -120,13 +121,13 @@ public class MarketMatchingService {
 
         // TradeEvent 발행
         TradeEventDto tradeEvent = TradeEventDto.builder()
-                .makerOrderId(sellOrder.getId()) // 가상의 Maker 설정 (매도자)
-                .takerOrderId(buyOrder.getId()) // 가상의 Taker 설정 (매수자)
+                .buyOrderId(buyOrder.getId())
+                .sellOrderId(sellOrder.getId())
                 .itemId(itemId)
                 .makerOrderType(OrderType.SELL)
-                .matchedPrice(matchedPrice)
-                .matchedQuantity(matchedQuantity)
-                .timestamp(System.currentTimeMillis())
+                .price(matchedPrice)
+                .quantity(matchedQuantity)
+                .executedAt(System.currentTimeMillis())
                 .build();
 
         try {
@@ -147,8 +148,7 @@ public class MarketMatchingService {
                 eventPublisher.publishEvent(new NotificationEvent(
                         company.getUser().getId(),
                         String.format("[체결] 상품이 %d개 구매되었습니다. (가격: %d)", quantity, price),
-                        NotificationType.TRADE
-                ));
+                        NotificationType.TRADE));
             });
         }
         // 매도자 알림
@@ -157,11 +157,10 @@ public class MarketMatchingService {
                 eventPublisher.publishEvent(new NotificationEvent(
                         company.getUser().getId(),
                         String.format("[체결] 상품이 %d개 판매되었습니다. (가격: %d)", quantity, price),
-                        NotificationType.TRADE
-                ));
+                        NotificationType.TRADE));
             });
         }
-        
+
     }
 
     private void updateOrRemoveCache(MarketOrder order) {

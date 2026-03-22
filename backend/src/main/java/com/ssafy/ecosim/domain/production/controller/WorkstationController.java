@@ -123,6 +123,16 @@ public class WorkstationController {
         return ApiResponse.success("결과물을 성공적으로 수확하였습니다.");
     }
 
+    @Operation(summary = "내 공장 상태 조회", description = "현재 로그인한 유저의 공장 상태를 반환합니다. (ID 불필요)")
+    @GetMapping("/my")
+    public ApiResponse<WorkstationStatusResponse> getMyWorkstationStatus(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        Long userId = Long.parseLong(userDetails.getUsername());
+        Company company = getCompanyByUserId(userId);
+        WorkstationStatusResponse response = workstationService.getMyWorkstationStatus(company.getId());
+        return ApiResponse.success(response);
+    }
+
     @Operation(summary = "공장 상태 조회", description = "공장의 현재 상태(가동 여부, 장비, 재료 예약량, 생산량 등)를 반환합니다.")
     @GetMapping("/{workstationId}")
     public ApiResponse<WorkstationStatusResponse> getWorkstationStatus(

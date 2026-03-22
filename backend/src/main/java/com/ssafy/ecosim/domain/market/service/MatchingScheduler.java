@@ -14,15 +14,20 @@ public class MatchingScheduler {
 
     private final MarketMatchingService marketMatchingService;
 
+    // 매칭 대상 아이템 ID (1: 금석, 2: 금괴석, 3: 금 드릴)
+    private static final java.util.List<Integer> TARGET_ITEM_IDS = java.util.List.of(1, 2, 3);
+
     /**
-     * 1초마다 금(itemId=1) 아이템에 대한 매칭을 실행합니다.
+     * 1초마다 모든 대상 아이템(1, 2, 3)에 대해 매칭을 실행합니다.
      */
     @Scheduled(fixedRate = 1000)
     public void runMatching() {
-        try {
-            marketMatchingService.matchItem(1);
-        } catch (Exception e) {
-            log.error("[MatchingScheduler] 매칭 실행 중 오류 발생", e);
+        for (Integer itemId : TARGET_ITEM_IDS) {
+            try {
+                marketMatchingService.matchItem(itemId);
+            } catch (Exception e) {
+                log.error("[MatchingScheduler] 아이템 {} 매칭 실행 중 오류 발생", itemId, e);
+            }
         }
     }
 }
