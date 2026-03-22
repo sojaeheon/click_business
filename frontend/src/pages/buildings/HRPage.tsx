@@ -8,23 +8,15 @@ import { WORKER_LEVEL_NAMES, WORKER_LEVEL_ICONS, WORKER_LEVEL_IMAGES, getWorkerD
 
 // ── 강화 확률 (내부 전용) ──
 const UPGRADE_TABLE: Record<number, { success: number; stay: number; down: number; reset: number }> = {
-  1: { success: 0.45, stay: 0.55, down: 0, reset: 0 },
-  2: { success: 0.30, stay: 0.45, down: 0.25, reset: 0 },
+  1: { success: 0.7, stay: 0.3, down: 0.0, reset: 0 },
+  2: { success: 0.5, stay: 0.35, down: 0.15, reset: 0 },
   3: { success: 0.15, stay: 0.40, down: 0.35, reset: 0.10 },
-  4: { success: 0.07, stay: 0.33, down: 0.40, reset: 0.20 },
-  5: { success: 0.03, stay: 0.17, down: 0.50, reset: 0.30 },
+  4: { success: 0.05, stay: 0.35, down: 0.40, reset: 0.20 },
+  5: { success: 0.01, stay: 0.3, down: 0.5, reset: 0.19 },
 };
 type UpgradeResult = "success" | "stay" | "down" | "reset";
 
-function rollUpgrade(lv: number): { result: UpgradeResult; newLevel: number } {
-  const t = UPGRADE_TABLE[lv];
-  if (!t || lv >= 6) return { result: "stay", newLevel: lv };
-  const r = Math.random();
-  if (r < t.success) return { result: "success", newLevel: lv + 1 };
-  if (r < t.success + t.stay) return { result: "stay", newLevel: lv };
-  if (r < t.success + t.stay + t.down) return { result: "down", newLevel: Math.max(1, lv - 1) };
-  return { result: "reset", newLevel: 1 };
-}
+
 
 // ── 레벨별 테두리 색상 ──
 const LEVEL_COLORS: Record<number, string> = {
@@ -57,8 +49,8 @@ export function HRPage() {
 
   const countOf = useCallback((w: any) => {
     if (!w) return 0;
-    return slots.filter(s => s.name === w.name && (s.level || 1) === (w.level || 1)).reduce((a, s) => a + (s.quantity || 1), 0);
-  }, [slots]);
+    return slots.filter(s => s.name === w.name && (s.level || 1) === (w.level || 1) && s.id !== equippedWorkerId).reduce((a, s) => a + (s.quantity || 1), 0);
+  }, [slots, equippedWorkerId]);
 
   // 전체 워커를 균일+식별 키로 그룹화
   const allWorkerGroups = useMemo(() => {
@@ -104,35 +96,26 @@ export function HRPage() {
     let res: { result: UpgradeResult; newLevel: number };
     try {
       const api = await HRAPI.upgradeWorker({ companyId: 1, currentLevel: lv });
-      if (api.data?.result && api.data?.newLevel != null) res = { result: api.data.result, newLevel: api.data.newLevel };
-      else throw new Error();
-    } catch {
-      res = rollUpgrade(lv);
+      res = { result: api.data.result, newLevel: api.data.newLevel };
+    } catch (e: any) {
+      useAlertStore.getState().openAlert(e?.response?.data?.message || "서버 연동 실패. (미구현 또는 오류)", "경고");
+      setPhase("idle");
+      setShakeClass("");
+      setBusy(false);
+      return;
     }
 
     // 4) 결과 표시
     setLastResult(res);
     setPhase("result");
 
-    // ★ Zustand 스토어에 결과 반영
-    // stay 포함 모든 결과에서 호출 → 재료 2개 소모 후 결과 레벨 1개 반환
-    if (selected) {
-      const upgradeWorkerLevel = useGameStore.getState().upgradeWorkerLevel;
-      if (upgradeWorkerLevel) {
-        upgradeWorkerLevel(selected.name, lv, res.result === "reset" ? 0 : res.newLevel);
-      }
-    }
+    // ★ 서버와 동기화
+    // 백엔드 API에서 아이템을 소모하고 결과를 저장했을 것이므로, 프론트엔드는 서버 데이터를 그대로 땡겨옴
+    await useGameStore.getState().fetchCompanyData(1);
 
-    // selected 동기화: upgradeWorkerLevel이 새 아이템을 getWorkerDefByLevel(newLevel).displayName으로 생성하므로
-    // selected의 name과 level을 모두 새 값으로 맞춰줘야 countOf()가 0이 안 됨
-    if (res.result === "success" || res.result === "down") {
-      const newDef = getWorkerDefByLevel(res.newLevel);
-      setSelected((p: any) => p ? { ...p, level: res.newLevel, name: newDef.displayName } : null);
-    } else if (res.result === "stay") {
-      // stay: 같은 레벨 1개가 남아있으므로 selected 유지 (name·level 변화 없음)
-    } else if (res.result === "reset") {
-      setTimeout(() => setSelected(null), 1500);
-    }
+    // 유저 피드백: "강화 성공 시에도 기존 캐릭터 화면을 그대로 유지하고, 다음 레벨은 유저가 직접 변경하게 해달라"
+    // 따라서 setSelected를 통한 자동 레벨업 추적이나 팝업 강제종료를 수행하지 않습니다.
+    // 기존 선택된(lower level) 캐릭터가 남아 수량이 차감된 것(예: 0/2)을 화면에 그대로 보여줍니다.
 
     setTimeout(() => { setPhase("idle"); setLastResult(null); setBusy(false); }, 1800);
   };
@@ -301,7 +284,7 @@ export function HRPage() {
       {phase === "result" && lastResult && (() => {
         const c = {
           success: { text: "LEVEL UP!", emoji: "🎉", color: "#f59e0b", bg: "rgba(0,0,0,0.85)" },
-          stay: { text: "변화 없음", emoji: "🤔", color: "#94a3b8", bg: "rgba(0,0,0,0.85)" },
+          stay: { text: "레벨 유지", emoji: "🤔", color: "#94a3b8", bg: "rgba(0,0,0,0.85)" },
           down: { text: "레벨 하락", emoji: "📉", color: "#ef4444", bg: "rgba(0,0,0,0.85)" },
           reset: { text: "파괴!", emoji: "💥", color: "#dc2626", bg: "rgba(0,0,0,0.85)" },
         }[lastResult.result];

@@ -17,7 +17,7 @@ export function useNotificationSocket() {
   const clientRef = useRef<Client | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
+    const token = sessionStorage.getItem('accessToken');
     if (!token) return; // 비로그인 시 연결하지 않음
 
     const client = new Client({

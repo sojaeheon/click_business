@@ -24,7 +24,7 @@ function getSingleStackLevel(count: number, cap: number): number {
 }
 
 // ─── 더미 단계별 모델 (산업별 분기) ─────────────────────────────
-function ProductStack({ stackLevel, industry }: { stackLevel: number; industry: string }) {
+function ProductStack({ stackLevel, industry, count = 0 }: { stackLevel: number; industry: string; count?: number }) {
     if (stackLevel <= 0) return null;
 
     if (industry === "GOLD_MINING" || industry === "금광업") {
@@ -47,7 +47,7 @@ function ProductStack({ stackLevel, industry }: { stackLevel: number; industry: 
         );
     }
 
-    if (industry === "MANUFACTURING" || industry === "제조업") {
+    if (industry === "제조업") {
         // 드릴 차곡차곡 쌓기 (고정 위치·회전)
         const rotations: [number, number, number][] = [
             [0, 0, Math.PI / 2],
@@ -57,13 +57,20 @@ function ProductStack({ stackLevel, industry }: { stackLevel: number; industry: 
         ];
         return (
             <group>
-                {Array.from({ length: Math.min(stackLevel, 4) }).map((_, i) => (
-                    <group key={i} position={[0, (i * 0.45) + 0.3, 0]} rotation={rotations[i % rotations.length]}>
-                        <React.Suspense fallback={null}>
-                            <EnvModel url="/models/props/drill.glb" scale={TILE_S * 0.4} />
-                        </React.Suspense>
-                    </group>
-                ))}
+                {Array.from({ length: drillCount }).map((_, i) => {
+                    const layer = Math.floor(i / 4);
+                    const idxInLayer = i % 4;
+                    const offsetX = (idxInLayer % 2 === 0 ? 0.35 : -0.35) * (1 - layer * 0.1);
+                    const offsetZ = (Math.floor(idxInLayer / 2) === 0 ? 0.35 : -0.35) * (1 - layer * 0.1);
+                    const rotationY = (Math.PI / 4) * idxInLayer + (layer * Math.PI / 6);
+                    return (
+                        <group key={i} position={[offsetX, layer * 0.2 + 0.1, offsetZ]} rotation={[0, rotationY, Math.PI / 2]}>
+                            <React.Suspense fallback={null}>
+                                <EnvModel url="/models/props/drill.glb" scale={TILE_S * 0.4} />
+                            </React.Suspense>
+                        </group>
+                    );
+                })}
             </group>
         );
     }
@@ -162,9 +169,9 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
     // ── refs ──────────────────────────────────────────────────────
     const flyIdRef = useRef(0);
 
-    // ── 파생 상태 (스토어 기반) ───────────────────────────────────
+    // ── 파생 상태 (스토어 기반 순수 연산 제거) ─────────────────────
     const isWorking = wsState.isWorking;
-    const progress = wsState.totalMs > 0 && isWorking ? Math.min(100, ((Date.now() - wsState.startTime) / wsState.totalMs) * 100) : (wsState.isWorking ? 0 : 0);
+    const progress = wsState.requestedQty > 0 ? Math.min(100, (wsState.producedCount / wsState.requestedQty) * 100) : 0;
     const isCompleted = progress >= 100;
     const isFull = wsState.storedCount >= maxCapacity;
     const isWarehouseFull = usedSlots >= warehouseMaxSlots;
@@ -198,48 +205,19 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
                 [0.75 - 0.5 * BELT_S, TW * 0.12 + 0.8, 1 - 1.0 * BELT_S]; // 금제련(Machine1) 컨베이어 끝
 
 
-    // ── 로컬 프레임 업데이트 (생산 진행 상태 & 스택 증가) ──────────
-    useFrame(() => {
-        // 최신 상태를 참조하도록 getState 사용 (클로저 문제 방지 및 무한 렌더 방지)
-        const currentWsState = useGameStore.getState().workstationState;
-        if (currentWsState.isWorking && !cannotProduce) {
-            const now = Date.now();
-            let p = ((now - currentWsState.startTime) / currentWsState.totalMs) * 100;
-            if (p >= 100) p = 100;
-
-            const expectedProduced = Math.min(currentWsState.requestedQty, Math.floor(currentWsState.requestedQty * (p / 100)));
-            const diff = expectedProduced - currentWsState.producedCount;
-
-            if (diff > 0) {
-                // flying bar 트리거
-                const numFly = Math.min(diff, 3);
-                for (let i = 0; i < numFly; i++) {
-                    setTimeout(() => {
-                        flyIdRef.current++;
-                        setFlyingBars(fb => [...fb, flyIdRef.current]);
-                    }, i * 250);
-                }
-
-                // 스토어 업데이트 (누적 쌓임)
-                // 최신 상태 기준으로 저장해야 무한루프를 방지함.
-                useGameStore.getState().setWorkstationState({
-                    producedCount: expectedProduced,
-                    storedCount: currentWsState.storedCount + diff
-                });
-            }
-
-            // 완료 감지
-            if (p >= 100) {
-                setRemainingSec(0);
-                const { product } = useGameStore.getState().getIndustryItemNames();
-                useGameStore.getState().addAlert({
-                    message: "작업 완료! 🎉",
-                    detail: `${product} 생산이 완료되었습니다. 클릭하여 창고에 저장하세요!`
-                });
-                useGameStore.getState().setWorkstationState({ isWorking: false });
-            }
+    // ── 백엔드 정보 폴링 (프론트 단독 계산 금지) ──────────
+    useEffect(() => {
+        let interval: ReturnType<typeof setInterval>;
+        if (isWorking) {
+            // 작업 중일 때만 5초마다 백엔드 상태를 갱신합니다.
+            interval = setInterval(() => {
+                useGameStore.getState().fetchCompanyData(1);
+            }, 5000);
         }
-    });
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [isWorking]);
 
     // isWorking 종료 시 UI 타이머 리셋
     useEffect(() => {
@@ -416,17 +394,16 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
                     if (wsState.storedCount > 0) {
                         try {
                             await WorkstationAPI.collect(1);
-                            // 수령 성공 후 백엔드에서 창고 상태 동기화 (생산물 반영)
                             await useGameStore.getState().fetchCompanyData(1);
-                            setWsState({ storedCount: 0, producedCount: 0, isWorking: false });
                             useGameStore.getState().addAlert({
                                 message: "수령 완료 ✅",
-                                detail: `창고에 저장되었습니다.`
+                                detail: `창고에 성공적으로 저장했습니다.`
                             });
-                            useAlertStore.getState().openAlert("창고에 저장되었습니다.", "수령 완료 ✅");
+                            useAlertStore.getState().openAlert(`창고에 아이템을 저장했습니다.`, "수령 완료 ✅");
                         } catch (err: any) {
-                            const msg = err?.response?.data?.message || err?.message || "수령에 실패했습니다.";
-                            useAlertStore.getState().openAlert(msg, "수령 실패");
+                            const msg = err?.response?.data?.message || err.message || "오류가 발생했습니다.";
+                            useGameStore.getState().addAlert({ message: "수령 불가", detail: msg });
+                            useAlertStore.getState().openAlert(msg, "수령 불가");
                         }
                     }
                 }}
@@ -439,7 +416,7 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
 
                 {/* 더미 스택 — 단일 */}
                 <group position={stackPos}>
-                    <ProductStack stackLevel={singleStackLevel} industry={industry} />
+                    <ProductStack stackLevel={singleStackLevel} industry={industry} count={wsState.storedCount} />
                 </group>
             </group>
 

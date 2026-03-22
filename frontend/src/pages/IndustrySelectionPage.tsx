@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGameStore } from "../store/gameStore";
 import { useAlertStore } from "../store/useAlertStore";
 import { preloadGameModels } from "../app/components/game/preload";
-import { CompanyAPI } from "../api/gameApi";
+import { CompanyAPI, WorkstationAPI } from "../api/gameApi";
 import { Canvas } from '@react-three/fiber';
 import { useGLTF, OrbitControls, Environment } from '@react-three/drei';
 
@@ -135,12 +135,18 @@ export const IndustrySelectionPage = () => {
     if (selectedIndustry === '제조업') mappedIndustry = 'MANUFACTURING';
 
     try {
-      await CompanyAPI.create({
+      const created = await CompanyAPI.create({
         companyName: companyName.trim(),
         industryType: mappedIndustry,
       });
+      // 프론트엔드에서 회사 생성 직후 직접 작업장 생성 API 호출! (백엔드 CompanyService.java 수정을 피하기 위함)
+      if (created.data && created.data.id != null) {
+        await WorkstationAPI.create({ companyId: created.data.id });
+      } else {
+        await WorkstationAPI.create({ companyId: 1 });
+      }
     } catch (e) {
-      console.warn("회사 생성 API 실패, 목업으로 진행:", e);
+      console.warn("회사 또는 작업장 생성 API 실패:", e);
     } finally {
       setCompanyInfo(companyName.trim(), selectedIndustry);
       setIsSubmitting(false);

@@ -8,6 +8,7 @@ import { getPropsImage } from "../../constants/workers";
 
 interface SlotData {
   id: number;
+  dbSlotIndex: number; // ✅ 실제 DB의 slotIndex (스왓 API에 이걸 보내야 함)
   item: null | {
     type: "material" | "product";
     quantity: number;
@@ -186,26 +187,53 @@ export function WarehousePage() {
     const totalDisplay = backendMaxSlots + (6 - (backendMaxSlots % 6 === 0 ? 6 : backendMaxSlots % 6)) + 6;
     const displaySlots: SlotData[] = Array(totalDisplay).fill(null).map((_, i) => ({
       id: i,
+      dbSlotIndex: i, // 기본값: UI와 DB 인덱스가 같다고 가정
       item: null,
       locked: i >= backendMaxSlots,
     }));
-    rawSlots.forEach(slot => {
-      if (slot.slotIndex < displaySlots.length && slot.itemId != null) {
-        displaySlots[slot.slotIndex].item = {
-          type: slot.itemType === "MATERIAL" ? "material" : "product",
-          quantity: slot.quantity,
-          name: slot.itemName ?? "",
-          id_: `w_${slot.itemId}`,
-        };
+    // ✅ warehouseItems의 실제 slotIndex를 사용해 정확한 슬롯에 배치
+    rawSlots.forEach((slot: any) => {
+      // slotIndex가 존재하면 해당 DB 슬롯에 직접 잘라넣음
+      if (slot.slotIndex !== undefined && slot.slotIndex < totalDisplay) {
+        const si = slot.slotIndex as number;
+        displaySlots[si].dbSlotIndex = si;
+        if (slot.itemId != null) {
+          displaySlots[si].item = {
+            type: slot.itemType === "MATERIAL" ? "material" : "product",
+            quantity: slot.quantity,
+            name: slot.itemName ?? "",
+            id_: `w_${slot.itemId}`,
+          };
+        }
       }
     });
+
     return displaySlots;
   };
 
   const fetchSlots = async () => {
     try {
-      const rawSlots = await WarehouseAPI.getSlots();
-      setSlots(buildSlots(rawSlots));
+      const res = await WarehouseAPI.getWarehouseItems(1);
+      await useGameStore.getState().fetchCompanyData(1);
+      const items = useGameStore.getState().warehouseItems;
+      const maxSlots = useGameStore.getState().warehouseMaxSlots || 6;
+      const totalDisplay = maxSlots + 6; 
+      const displaySlots: SlotData[] = Array(totalDisplay).fill(null).map((_, i) => ({
+        id: i, dbSlotIndex: i, item: null, locked: i >= maxSlots 
+      }));
+      items.forEach(item => {
+        const si = (item as any).slotIndex;
+        if (si !== undefined && si < totalDisplay) {
+          displaySlots[si].dbSlotIndex = si;
+          displaySlots[si].item = {
+            type: item.type,
+            quantity: item.quantity,
+            name: item.name ?? "",
+            id_: item.id,
+          };
+        }
+      });
+      setSlots(displaySlots);
     } catch (err) {
       console.warn("창고 데이터 로드 실패", err);
     }
@@ -220,17 +248,24 @@ export function WarehousePage() {
       useAlertStore.getState().openAlert("창고 확장권이 부족합니다. 미니게임에서 획득할 수 있습니다.", "확장 불가");
       return;
     }
+    const ticketItem = useGameStore.getState().inventoryItems.find((i: any) => i.type === "ticket_warehouse");
+    if (!ticketItem || ticketItem.slotIndex === undefined) {
+      useAlertStore.getState().openAlert("창고 확장권의 슬롯 정보를 찾을 수 없습니다.", "에러");
+      return;
+    }
+
     try {
-      await WarehouseAPI.unlockSlot({ companyId: 0, maxSlot: slotId });
+      await WarehouseAPI.unlockSlot({ companyId: 1, maxSlot: ticketItem.slotIndex });
       await fetchSlots();
       useAlertStore.getState().openAlert("창고 슬롯이 확장되었습니다!", "확장 완료");
-    } catch {
-      useAlertStore.getState().openAlert("슬롯 확장에 실패했습니다.", "확장 실패");
+    } catch (e) {
+      useAlertStore.getState().openAlert("슬롯 확장에 실패했습니다.", "API 오류");
     }
   };
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
-    e.dataTransfer.setData("text/plain", index.toString());
+    // ✅ UI 인덱스가 아니라 실제 DB slotIndex를 전송
+    e.dataTransfer.setData("text/plain", slots[index].dbSlotIndex.toString());
     setDraggingIndex(index);
   };
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
@@ -238,34 +273,33 @@ export function WarehousePage() {
     e.preventDefault();
     setDragOverIndex(null);
     setDraggingIndex(null);
-    const sourceIndexStr = e.dataTransfer.getData("text/plain");
-    if (!sourceIndexStr) return;
-    const sourceIndex = parseInt(sourceIndexStr, 10);
-    if (sourceIndex === targetIndex) return;
+    const sourceDbIdxStr = e.dataTransfer.getData("text/plain");
+    if (!sourceDbIdxStr) return;
+    const sourceDbIdx = parseInt(sourceDbIdxStr, 10);
+    const targetDbIdx = slots[targetIndex].dbSlotIndex;
+    if (sourceDbIdx === targetDbIdx) return;
 
-    // 잠긴 슬롯으로 이동 불가
-    const targetSlot = slots[targetIndex];
-    if (targetSlot?.locked) return;
+    if (slots[targetIndex].locked) return;
 
-    // 낙관적 UI 업데이트 (즉각 반영)
+    // 낙관적 UI 업데이트
     setSlots((prev) => {
       const newSlots = [...prev];
-      const src = newSlots[sourceIndex];
+      const srcIdx = newSlots.findIndex(s => s.dbSlotIndex === sourceDbIdx);
+      if (srcIdx < 0) return prev;
+      const src = newSlots[srcIdx];
       const tgt = newSlots[targetIndex];
-      if (tgt.locked) return prev;
       const tempItem = src.item;
       src.item = tgt.item;
       tgt.item = tempItem;
       return newSlots;
     });
 
-    // 백엔드 동기화
     try {
-      await WarehouseAPI.moveSlot({ companyId: 0, fromIdx: sourceIndex, toIdx: targetIndex });
-    } catch {
-      // 실패 시 서버 상태로 롤백
+      await WarehouseAPI.moveSlot({ fromIdx: sourceDbIdx, toIdx: targetDbIdx }); // ✅ DB slotIndex 전송
       await fetchSlots();
-      useAlertStore.getState().openAlert("슬롯 이동에 실패했습니다.", "이동 실패");
+    } catch (err) {
+      await fetchSlots();
+      useAlertStore.getState().openAlert("아이템 이동에 실패했습니다.", "오류");
     }
   };
 
@@ -289,6 +323,30 @@ export function WarehousePage() {
   const localPercent = localUnlocked > 0 ? Math.min((localUsed / localUnlocked) * 100, 100) : 0;
   const visibleCount = Math.max(15, Math.ceil(localUnlocked / 3) * 3 + (localUnlocked % 3 === 0 && localUnlocked >= 15 ? 3 : 0));
   const hasAnyItem = totalMaterial > 0 || totalProduct > 0;
+  const industry = useGameStore(s => s.industry);
+
+  const handleGetTestItems = async () => {
+    try {
+      let itemId = 3; // 금광업 (MINING) -> 금 드릴
+      let addAmount = 10; // 금 드릴은 10개가 1슬롯 최대
+
+      if (industry === "금 제련업" || industry === "SMELTING") { 
+        itemId = 1; // 금광석
+        addAmount = 50; // 금광석 최대적재량 고려
+      } else if (industry === "제조업" || industry === "MANUFACTURING") { 
+        itemId = 2; // 금괴
+        addAmount = 50; 
+      }
+
+      await WarehouseAPI.addTestItem({ itemId, amount: addAmount });
+      await fetchSlots(); // 👈 추가된 부분: 로컬 슬롯 상태도 새로고침
+      await useGameStore.getState().fetchCompanyData(1);
+      useAlertStore.getState().openAlert(`테스트 자재 ${addAmount}개가 창고에 지급되었습니다!`, "성공");
+    } catch (e: any) {
+      console.error("Test item fail:", e);
+      useAlertStore.getState().openAlert(e?.response?.data?.message || "창고 빈 슬롯 부족 혹은 통신 오류로 실패했습니다.", "오류");
+    }
+  };
 
   return (
     <div
@@ -301,7 +359,18 @@ export function WarehousePage() {
         backgroundColor: '#cee7be'
       }}
     >
-      <BackButton onClick={closeBuildingPage} className="absolute top-6 left-6" />
+      <div className="absolute top-6 left-6 flex items-center gap-4 z-10">
+        <BackButton onClick={closeBuildingPage} />
+        {/* ✅ 테스트용 자원 지급 버튼 추가 */}
+        <button
+          onClick={handleGetTestItems}
+          className="flex-1 max-w-[120px] bg-[#8b4513] hover:bg-[#a0522d] text-white font-black py-2 rounded-xl border-4 border-[#5f2c09] shadow-[0_4px_0_#3e1c05] hover:shadow-none hover:translate-y-1 hover:border-[#3e1c05] transition-all flex items-center justify-center gap-1.5"
+        >
+          <span className="text-xl">🛠️</span>
+          <span className="text-sm">테스트 지급</span>
+        </button>
+      </div>
+
 
       {/* 우측 상단 인디케이터 */}
       <div className="absolute top-6 right-6 flex gap-4 items-center z-10">
@@ -367,7 +436,8 @@ export function WarehousePage() {
               return (
                 <div
                   key={slot.id}
-                  draggable={!slot.locked && hasItem}
+                  style={{ aspectRatio: "1/1" }}
+                  draggable={!slot.locked && slot.item !== null}
                   onDragStart={(e) => handleDragStart(e, idx)}
                   onDragOver={handleDragOver}
                   onDragEnter={() => !slot.locked && setDragOverIndex(idx)}

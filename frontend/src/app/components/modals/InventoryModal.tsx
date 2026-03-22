@@ -4,9 +4,10 @@ import { useGameStore } from "../../../store/gameStore";
 import { useAlertStore } from "../../../store/useAlertStore";
 import type { InventoryItem } from "../../../store/gameStore";
 import { WORKER_LEVEL_IMAGES } from "../../../constants/workers";
+import { InventoryAPI } from "../../../api/gameApi";
 
 export function InventoryModal() {
-  const { inventoryItems, inventoryExpandTickets, inventoryMax, useInventoryTicket, removeInventoryItem, purchaseInventorySlot, money } = useGameStore();
+  const { inventoryItems, inventoryExpandTickets, inventoryMax, money } = useGameStore();
   const inventoryPurchaseCount = useGameStore(s => s.inventoryPurchaseCount);
 
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
@@ -36,7 +37,7 @@ export function InventoryModal() {
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
     const isLocked = index >= inventoryMax;  // ← inventoryMax 사용
-    const item = localItems[index];
+    const item = localItems.find((itm) => itm.slotIndex === index);
     if (isLocked || !item) {
       e.preventDefault();
       return;
@@ -48,50 +49,58 @@ export function InventoryModal() {
     e.preventDefault();
   };
 
-  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
+  const handleDrop = async (e: React.DragEvent, targetIndex: number) => {
     e.preventDefault();
     if (draggingIndex === null || draggingIndex === targetIndex) return;
-    const isLocked = targetIndex >= inventoryMax;  // ← inventoryMax 사용
+    const isLocked = targetIndex >= inventoryMax;
     if (isLocked) return;
 
-    const newItems = [...localItems];
-    const temp = newItems[draggingIndex];
-    newItems[draggingIndex] = newItems[targetIndex];
-    newItems[targetIndex] = temp;
-
-    setLocalItems(newItems);
+    try {
+      await InventoryAPI.moveSlot({ fromIdx: draggingIndex, toIdx: targetIndex });
+      await useGameStore.getState().fetchCompanyData(1);
+    } catch {
+      useAlertStore.getState().openAlert("슬롯 이동에 실패했습니다.", "오류");
+    }
     setDraggingIndex(null);
     setDragOverIndex(null);
   };
 
-  const handleUnlockSlot = () => {
+  const handleUnlockSlot = async () => {
     if (inventoryExpandTickets <= 0) {
       useAlertStore.getState().openAlert("확장권이 부족합니다.", "경고");
       return;
     }
-    const success = useInventoryTicket();
-    if (success) {
+    const ticketItem = inventoryItems.find((i: any) => i.type === "ticket_inventory");
+    if (!ticketItem || ticketItem.slotIndex === undefined) {
+      useAlertStore.getState().openAlert("확장권 아이템의 슬롯 정보를 찾을 수 없습니다.", "에러");
+      return;
+    }
+
+    try {
+      await InventoryAPI.unlockSlot({ ticketSlotIndex: ticketItem.slotIndex });
+      await useGameStore.getState().fetchCompanyData(1);
       useAlertStore.getState().openAlert("인벤토리 슬롯이 확장되었습니다.", "안내");
+    } catch (e) {
+      useAlertStore.getState().openAlert("인벤토리 확장에 실패했습니다.", "오류");
     }
   };
 
   const handlePurchaseConfirm = () => {
-    const result = purchaseInventorySlot();
     setShowPurchaseConfirm(false);
-    if (result.success) {
-      useAlertStore.getState().openAlert(`${result.cost.toLocaleString()}원을 지불하고 슬롯을 확장했습니다.`, "슬롯 구매 완료");
-    } else {
-      useAlertStore.getState().openAlert(`잔액이 부족합니다. 필요 금액: ${result.cost.toLocaleString()}원`, "잔액 부족");
-    }
+    useAlertStore.getState().openAlert("현금 확장 기능은 현재 백엔드 서버 개편 중으로 사용이 제한됩니다.", "점검 중");
   };
 
-  const handleDeleteItem = () => {
-    if (confirmDelete) {
-      removeInventoryItem(confirmDelete.id);
-      setLocalItems((prev) => prev.filter((item) => item?.id !== confirmDelete.id));
-      if (selectedSlot === confirmDelete.id) setSelectedSlot(null);
-      useAlertStore.getState().openAlert(`${confirmDelete.name}을(를) 버렸습니다.`, "아이템 폐기");
-      setConfirmDelete(null);
+  const handleDeleteItem = async () => {
+    if (confirmDelete && confirmDelete.slotIndex !== undefined) {
+      try {
+        await InventoryAPI.decreaseItem({ slotIndex: confirmDelete.slotIndex, amount: confirmDelete.quantity });
+        await useGameStore.getState().fetchCompanyData(1);
+        if (selectedSlot === confirmDelete.id) setSelectedSlot(null);
+        useAlertStore.getState().openAlert(`${confirmDelete.name}을(를) 버렸습니다.`, "아이템 폐기");
+        setConfirmDelete(null);
+      } catch {
+        useAlertStore.getState().openAlert("아이템 버리기에 실패했습니다.", "오류");
+      }
     }
   };
 
@@ -144,14 +153,15 @@ export function InventoryModal() {
               {slotsToDisplay.map((_, idx) => {
                 const isLocked = idx >= inventoryMax;
                 const isExpandable = isLocked && idx === inventoryMax;
-                const item = localItems[idx];
+                // 실제 백엔드 DB의 slotIndex를 가진 아이템을 찾아서 해당 칸에 렌더링
+                const item = localItems.find((itm) => itm.slotIndex === idx);
                 const isSelected = item && selectedSlot === item.id;
                 const hasTickets = inventoryExpandTickets > 0;
                 const isDragOver = dragOverIndex === idx;
                 const canAffordPurchase = money >= nextSlotCost;
 
                 return (
-                  <button
+                  <div
                     key={'slot-' + idx}
                     draggable={!isLocked && !!item}
                     onDragStart={(e) => handleDragStart(e, idx)}
@@ -253,7 +263,7 @@ export function InventoryModal() {
                         <Trash2 className="w-4 h-4 text-red-500" />
                       </button>
                     )}
-                  </button>
+                  </div>
                 );
               })}
             </div>

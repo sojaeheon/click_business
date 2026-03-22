@@ -138,21 +138,7 @@ export function MarketPage() {
 
   const handleConfirm = async () => {
     if (quantity <= 0 || price <= 0 || !mode) return;
-
-    // 로컬 프리체크 (UX용, 실제 검증은 백엔드에서 수행)
-    if (mode === "buy") {
-      if (money < totalAmount) {
-        useAlertStore.getState().openAlert("잔액이 부족합니다.", "안내");
-        return;
-      }
-    } else if (mode === "sell") {
-      const prodList = warehouseItems.filter(i => i.type === "product");
-      const currentCount = prodList.reduce((acc, i) => acc + i.quantity, 0);
-      if (currentCount < quantity) {
-        useAlertStore.getState().openAlert("창고에 판매할 생산품이 부족합니다.", "판매 불가");
-        return;
-      }
-    }
+    setIsProcessing(true);
 
     setIsProcessing(true);
     try {
@@ -166,13 +152,13 @@ export function MarketPage() {
         qty: quantity
       });
 
-      // 주문 접수 후 서버 상태 동기화 (현금/창고 수량 최신화)
-      await fetchCompanyData(1);
+      // 스토어 업데이트: 백엔드에서 잔고/창고 물품을 정확히 차감하므로 서버 데이터를 그대로 땡겨옴
+      await useGameStore.getState().fetchCompanyData(1);
 
       setShowPopup(true);
       useGameStore.getState().addAlert({
-        message: mode === "buy" ? "구매 주문 완료" : "판매 주문 완료",
-        detail: `${mode === "buy" ? material : product} ${quantity}개 / 총 ₩${totalAmount.toLocaleString()}`
+        message: mode === "buy" ? "구매 주문 등록 (미수령)" : "판매 주문 등록 (미수령)",
+        detail: "주문이 시장에 등록되었습니다. 체결 내역에서 수령해주세요!"
       });
 
       setTimeout(() => {
@@ -486,13 +472,14 @@ export function MarketPage() {
                                     e.stopPropagation();
                                     try {
                                       await MarketAPI.collectTrade(trade.tradeHistoryId);
-                                      await fetchCompanyData(1);
+                                      // 수령 후 지갑 상태 등 모두 동기화 (창고 및 현금 갱신)
+                                      await useGameStore.getState().fetchCompanyData(1);
                                       useGameStore.getState().addAlert({
                                         message: "체결 결과 수령 완료",
                                         detail: `${trade.executionQuantity}개가 정산되었습니다.`
                                       });
                                     } catch (err: any) {
-                                      const msg = err.response?.data?.message || "수령에 실패했습니다.";
+                                      const msg = err.response?.data?.message || err.message || "수령에 실패했습니다.";
                                       useAlertStore.getState().openAlert(msg, "수령 오류");
                                     }
                                   }}

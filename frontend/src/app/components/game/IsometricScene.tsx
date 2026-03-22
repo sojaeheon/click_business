@@ -177,7 +177,7 @@ function PlayerCharacter({
             return;
           }
         }
-        
+
         // 1-2. 작업장 상호작용 (요청에 따라 스페이스바에서 상호작용 해제)
         // if (lastInWorkstation.current && !isWorking_ref.current) {
         //   onOpenWorkstationModal?.();
@@ -379,7 +379,7 @@ function PlayerCharacter({
     const prevInWorkstation = lastInWorkstation.current;
     lastInWorkstation.current = inWorkstation;
     onInWorkstation?.(inWorkstation);
-    
+
     // 작업장 진입함(오직 false -> true 순간) & 작업 중이 아닐 때 자동으로 모달 오픈
     if (!prevInWorkstation && inWorkstation && !isWorkstationWorking) {
       onOpenWorkstationModal?.();

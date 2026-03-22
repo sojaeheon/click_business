@@ -91,6 +91,7 @@ export function BankPage() {
     setStep("confirm");
   };
 
+  // ★ 수정된 processTransaction — 프론트 자체 계산 제거, 서버 응답만 신뢰
   const processTransaction = async () => {
     const amount = Number(inputValue);
     setIsProcessing(true);
@@ -98,46 +99,8 @@ export function BankPage() {
       const mappedType = mode === "loan" ? "BORROW" : mode === "repay" ? "REPAY" : mode === "deposit" ? "DEPOSIT" : "WITHDRAW";
       await BankAPI.processLoan({ companyId: 1, type: mappedType, amount });
 
-      // store 돈/부채 연동
-      if (mode === "loan") {
-        // 대출: 돈이 들어오고 부채가 증가함
-        useGameStore.getState().updateMoney(amount);
-        useGameStore.getState().updateDebt(amount);
-      } else if (mode === "repay") {
-        // 상환: 돈이 나가고 부채가 감소함
-        const success = useGameStore.getState().updateMoney(-amount);
-        if (!success) {
-          useAlertStore.getState().openAlert("보유 금액이 부족합니다.", "경고");
-          setStep("input");
-          setIsProcessing(false);
-          return;
-        }
-        useGameStore.getState().updateDebt(-amount);
-      } else if (mode === "deposit") {
-        // 예금: 돈이 나가고 예금이 증가함
-        const success = useGameStore.getState().updateMoney(-amount);
-        if (!success) {
-          useAlertStore.getState().openAlert("보유 금액이 부족합니다.", "경고");
-          setStep("input");
-          setIsProcessing(false);
-          return;
-        }
-        useGameStore.getState().updateBankData({ 
-          currentDeposit: (bankData.currentDeposit || 0) + amount 
-        });
-      } else if (mode === "withdraw") {
-        // 인출: 돈이 들어오고 예금이 감소함
-        if ((bankData.currentDeposit || 0) < amount) {
-          useAlertStore.getState().openAlert("예금 잔액이 부족합니다.", "경고");
-          setStep("input");
-          setIsProcessing(false);
-          return;
-        }
-        useGameStore.getState().updateMoney(amount);
-        useGameStore.getState().updateBankData({ 
-          currentDeposit: (bankData.currentDeposit || 0) - amount 
-        });
-      }
+      // ★ 서버가 성공(200)했으면 서버 데이터로 전체 갱신
+      await useGameStore.getState().fetchCompanyData(1);
 
       setStep("done");
 
@@ -152,7 +115,8 @@ export function BankPage() {
 
     } catch (e: any) {
       console.error(e);
-      useAlertStore.getState().openAlert(e?.response?.data?.message || "서버 통신 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.", "경고");
+      // ★ 서버가 400/500 줬으면 에러 메시지만 표시 (프론트가 잔액 체크 안 함)
+      useAlertStore.getState().openAlert(e?.response?.data?.message || "서버 통신 중 오류가 발생했습니다.", "경고");
       setStep("input");
     } finally {
       setIsProcessing(false);
@@ -237,7 +201,7 @@ export function BankPage() {
         {/* 전체 화면 차단 오버레이 (회색 불투명) + 끄기 버튼 */}
         {showOverlay && (
           <div className="absolute inset-0 z-[60] bg-slate-900/40 backdrop-blur-[1px] cursor-not-allowed pointer-events-auto">
-            <button 
+            <button
               onClick={(e) => {
                 e.stopPropagation();
                 setShowOverlay(false);
