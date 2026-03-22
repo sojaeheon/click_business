@@ -37,7 +37,7 @@ services:
     networks:
       - ecosim-network
   
-  park-submit-valuation:
+  spark-submit-valuation:
     build:
       context: .
       dockerfile: ./spark/Dockerfile.spark
