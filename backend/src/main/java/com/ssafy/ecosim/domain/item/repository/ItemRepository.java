@@ -8,4 +8,5 @@ import java.util.Optional;
 public interface ItemRepository extends JpaRepository<Item, Long> {
     boolean existsByName(String name);
     Optional<Item> findByName(String name);
+    Optional<Item> findByWorkerLevel(Integer workerLevel);
 }
