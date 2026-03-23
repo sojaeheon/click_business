@@ -24,10 +24,12 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
   const [isCollecting, setIsCollecting] = useState(false);
   const [particles, setParticles] = useState<{ id: number, x: number, y: number, tx: number, ty: number, delay: number }[]>([]);
 
-  const { equippedWorkerId, setEquippedWorkerId, hasNewWorker, setHasNewWorker } = useGameStore();
+  const { hasNewWorker, setHasNewWorker } = useGameStore();
   const slots = useGameStore(s => s.inventoryItems);
 
-  const equippedItem = slots.find(i => i.id === equippedWorkerId);
+  // ✅ equipped 플래그를 직접 읽음 (equippedWorkerId 기반 매칭보다 정확)
+  const equippedItem = slots.find(i => i.equipped && i.type.startsWith('worker_'));
+  const equippedWorkerId = equippedItem?.id ?? null;
   const equippedWorker = equippedItem ? { id: equippedItem.id, name: equippedItem.name, level: equippedItem.level || 1 } : null;
 
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
@@ -76,7 +78,8 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
     const warehouseStock = liveMatStock ?? (state.warehouseItems.find(i => i.type === "material")?.quantity || 0);
     const wsState = state.workstationState;
 
-    const laps = Math.floor(qty / resProd);
+    const ratio = qty / resProd;
+    const laps = Math.ceil(ratio);
     const totalMaterial = laps * reqMat;
     const totalProduced = laps * resProd;
 
@@ -84,21 +87,14 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
     const industryName = state.industry as IndustryKey;
     let speedMult = 1.0;
     if (wsState.speedMultiplier) {
-      // 백엔드에서 이미 가중치를 내려줌 (가장 정확)
       speedMult = wsState.speedMultiplier;
     } else if (equippedWorker) {
-      // 폴백: 로컬 정의 기반 계산
       const def = getWorkerDefByLevel(equippedWorker.level);
       speedMult = def.speedMultiplier[industryName] || 1.0;
     }
 
-    // ✅ 분당 생산량: 백엔드 minuteOutput 우선, 없으면 resProd(산업 기본값)
-    const effMinuteOutput = wsState.minuteOutput ?? resProd;
-
-    // 총 소요 시간(초) = (총 생산량 / 분당생산량) * 60초 / 속도가중치
-    const totalSecs = effMinuteOutput > 0
-      ? Math.ceil((totalProduced / effMinuteOutput) * 60 / speedMult)
-      : Math.ceil((laps * 60) / speedMult);
+    // 총 소요 시간(초) = (laps * 60초) / 속도가중치 — 백엔드 정수 랩 기준
+    const totalSecs = Math.ceil((laps * 60) / speedMult);
     const mins = Math.floor(totalSecs / 60);
     const secs = totalSecs % 60;
     const timeLabel = mins > 0 ? (secs === 0 ? `${mins}분` : `${mins}분 ${secs}초`) : `${secs}초`;
@@ -153,7 +149,7 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                   onClick={(e) => { e.stopPropagation(); setQty(q => Math.max(resProd, q - resProd)); }}>−</button>
                 <div className="relative group flex-1">
                   <input type="number" min={resProd} step={resProd} value={qty}
-                    onChange={e => { const val = parseInt(e.target.value, 10); if (!isNaN(val) && val >= resProd) setQty(val); else if (e.target.value === '') setQty(resProd); }}
+                    onChange={e => { const val = parseInt(e.target.value, 10); if (!isNaN(val) && val >= resProd) setQty(Math.round(val / resProd) * resProd); else if (e.target.value === '') setQty(resProd); }}
                     onKeyDown={e => e.stopPropagation()} onKeyUp={e => e.stopPropagation()}
                     onFocus={e => { e.stopPropagation(); e.target.select(); }} onClick={e => e.stopPropagation()}
                     style={{ MozAppearance: 'textfield' } as React.CSSProperties}
@@ -167,7 +163,7 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
 
               <div className="flex gap-2 justify-center relative z-10 w-full px-2">
                 {[{ label: `- ${batchSize}`, val: -batchSize }, { label: `+ ${batchSize}`, val: batchSize }].map((btn, i) => (
-                  <button key={i} onClick={(e) => { e.stopPropagation(); setQty(q => Math.max(1, q + btn.val)); }}
+                  <button key={i} onClick={(e) => { e.stopPropagation(); setQty(q => { const raw = Math.max(resProd, q + btn.val); return Math.round(raw / resProd) * resProd || resProd; }); }}
                     className="flex-1 px-1 py-2 rounded-lg text-xs font-black border-2 border-b-4 transition-all cursor-pointer select-none bg-indigo-50 text-indigo-500 border-indigo-200 border-b-indigo-300 hover:bg-indigo-100 active:translate-y-1 active:border-b-2">{btn.label}개</button>
                 ))}
               </div>
@@ -212,7 +208,15 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                   <div className="mt-3 flex items-center gap-2 bg-white px-4 py-1.5 rounded-full border border-orange-200 shadow-sm">
                     <div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping" />
                     <span className="text-[11px] text-slate-400 font-black">
-                      {state.workstationState.producedCount} / {state.workstationState.requestedQty > 0 ? state.workstationState.requestedQty : '?'} 생산 완료
+                      {(() => {
+                        const ws = state.workstationState;
+                        if (ws.startTime && ws.totalMs && ws.requestedQty > 0) {
+                          const elapsed = Date.now() - ws.startTime;
+                          const r = Math.min(1, Math.max(0, elapsed / ws.totalMs));
+                          return Math.floor(r * ws.requestedQty);
+                        }
+                        return ws.producedCount;
+                      })()} / {state.workstationState.requestedQty > 0 ? state.workstationState.requestedQty : '?'} 생산 완료
                     </span>
                   </div>
                 </div>

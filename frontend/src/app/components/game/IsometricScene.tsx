@@ -488,34 +488,39 @@ export function GameScene({
         try {
           const store = useGameStore.getState();
           const { reqMat, resProd } = store.getIndustryItemNames();
-          const ratio = qty / resProd;
-          const materialNeeded = Math.ceil(ratio * reqMat);
+          // ★ resProd 배수로 강제 (UI에서도 제한하지만, 최종 방어)
+          const safeQty = Math.round(qty / resProd) * resProd || resProd;
+          const laps = safeQty / resProd;
+          const materialNeeded = laps * reqMat;
 
           const def = getWorkerDefByLevel(workerLevel || 1);
           const industryName = store.industry as IndustryKey;
           const speedMult = def.speedMultiplier[industryName] || 1.0;
-          const totalMsNeeded = Math.ceil((ratio * 60000) / speedMult);
+          // ★ 타이머는 정수 laps 기준 (백엔드가 정수 랩 단위로만 생산하므로 일치시킴)
+          const actualProduced = laps * resProd;
+          const totalMsNeeded = Math.ceil((laps * 60000) / speedMult);
 
           setWorkstationState({ isStarting: true });
 
-          await WorkstationAPI.start({ companyId: 1, recipeId: 1, quantity: qty, workerId: 1 });
+          await WorkstationAPI.start({ companyId: 1, recipeId: 1, quantity: safeQty, workerId: 1 });
           await store.fetchCompanyData(1);
 
-          // ★ requestedQty = qty (생산품 개수, 재료 개수 아님!)
+          // ★ requestedQty = actualProduced (정수 랩 기준 실제 생산량)
           setWorkstationState({
             isStarting: false,
             isWorking: true,
             startTime: Date.now(),
             totalMs: totalMsNeeded,
-            requestedQty: qty,
+            requestedQty: actualProduced,
             producedCount: 0,
+            collectedTotal: 0,
           });
 
-          const timeSec = Math.ceil((ratio * 60) / speedMult);
+          const timeSec = Math.ceil((laps * 60) / speedMult);
           const timeStr = timeSec >= 60
             ? `${Math.floor(timeSec / 60)}분 ${timeSec % 60 > 0 ? timeSec % 60 + '초' : ''}`
             : `${timeSec}초`;
-          store.addAlert({ message: "생산 시작 🏭", detail: `재료 ${materialNeeded}개 소모 • ${qty}개 생산 예정 (${timeStr})` });
+          store.addAlert({ message: "생산 시작 🏭", detail: `재료 ${materialNeeded}개 소모 • ${actualProduced}개 생산 예정 (${timeStr})` });
         } catch (e) {
           console.error(e);
           setWorkstationState({ isStarting: false });
@@ -527,6 +532,15 @@ export function GameScene({
       },
     });
   }, [onDialog, isWorkstationWorking, setWorkstationState]);
+
+  // ★ Issue 3 fix: 작업 완료 시 작업장 내에 있으면 모달 자동 오픈
+  const prevWorkingRef = useRef(isWorkstationWorking);
+  useEffect(() => {
+      if (prevWorkingRef.current && !isWorkstationWorking && inWorkstation) {
+          handleWorkstationClick();
+      }
+      prevWorkingRef.current = isWorkstationWorking;
+  }, [isWorkstationWorking, inWorkstation, handleWorkstationClick]);
 
   return (
     <>

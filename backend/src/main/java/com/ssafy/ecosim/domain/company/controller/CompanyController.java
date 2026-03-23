@@ -29,11 +29,14 @@ public class CompanyController {
     public ApiResponse<CompanyResponse> createCompany(
             @AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody CompanyCreateRequest request) {
-
-        Long userId = Long.parseLong(userDetails.getUsername());
-        Company company = companyService.createCompanyForUser(userId, request.getName(), request.getIndustryType());
-
-        return ApiResponse.success(new CompanyResponse(company));
+        try {
+            Long userId = Long.parseLong(userDetails.getUsername());
+            Company company = companyService.createCompanyForUser(userId, request.getName(), request.getIndustryType());
+            return ApiResponse.success(new CompanyResponse(company));
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw e;
+        }
     }
 
     @Operation(summary = "내 기업 조회", description = "현재 로그인한 유저의 기업 정보를 반환합니다.")

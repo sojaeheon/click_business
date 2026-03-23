@@ -137,9 +137,9 @@ public class WorkstationService {
                 int baseYield = workstation.getCompany().getIndustryType().getBaseYield();
                 int baseRequirement = workstation.getCompany().getIndustryType().getBaseRequirement();
 
-                // 나머지는 버림 처리 (손해 감수)
-                long laps = outputQuantity / baseYield;
-                if (laps == 0) throw new IllegalArgumentException("생산 수량이 너무 적습니다. 최소 " + baseYield + "개 이상 입력하세요.");
+                // 올림 처리: 3개 요청 / baseYield 2 = 2 laps (약간의 과잉 생산 허용)
+                long laps = (long) Math.ceil((double) outputQuantity / baseYield);
+                if (laps == 0) throw new IllegalArgumentException("생산 수량이 너무 적습니다. 최소 1개 이상 입력하세요.");
 
                 long requiredMaterials = laps * baseRequirement;
 
@@ -188,12 +188,15 @@ public class WorkstationService {
                                 workstation.consumeReservedQuantity(actualLaps * requirement);
                                 workstation.addProducedQuantity(actualLaps * yield);
 
-                                eventPublisher.publishEvent(new NotificationEvent(
-                                                company.getUser().getId(),
-                                                String.format("[%s] 생산이 %d개 완료되었습니다!",
-                                                              company.getIndustryType().name(), actualLaps * yield),
-                                                NotificationType.PRODUCTION
-                                ));
+                                // ★ 알림은 모든 재료 소진(전체 완료) 시에만 전송
+                                if (workstation.getReservedQuantity() <= 0) {
+                                        eventPublisher.publishEvent(new NotificationEvent(
+                                                        company.getUser().getId(),
+                                                        String.format("[%s] 생산이 %d개 완료되었습니다!",
+                                                                      company.getIndustryType().name(), workstation.getProducedQuantity()),
+                                                        NotificationType.PRODUCTION
+                                        ));
+                                }
                         }
 
                         long secondsUsed = (long) (potentialProduction * 60.0 / (productionPerMinute * workerMult));

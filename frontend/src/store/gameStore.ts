@@ -101,6 +101,8 @@ export interface GameState {
     requestedQty: number;
     storedCount: number;
     producedCount: number;
+    collectedTotal: number;
+    uncollectedPile: number;
     // ✅ 백엔드에서 받는 생산 관련 추가 필드
     minuteOutput: number | null;      // 분당 생산량 (백엔드에서 산업별로 계산)
     workerLevel: number | null;       // 장착 캐릭터 레벨
@@ -167,7 +169,15 @@ export const useGameStore = create<GameState>()(
     equipWorker: async (slotIndex: number) => {
       try {
         await WorkstationAPI.equipWorker(slotIndex);
-        await get().fetchCompanyData(1);
+        // ✅ 낙관적 업데이트: API 성공 즉시 로컬 상태 반영 (fetchCompanyData 기다리지 않고)
+        set(s => ({
+          inventoryItems: s.inventoryItems.map(item => ({
+            ...item,
+            equipped: item.slotIndex === slotIndex
+          }))
+        }));
+        // 서버 상태와 동기화 (백그라운드)
+        get().fetchCompanyData(0).catch(() => {});
       } catch (error) {
         console.error("일꾼 장착 실패:", error);
         throw error;
@@ -177,7 +187,12 @@ export const useGameStore = create<GameState>()(
     unequipWorker: async () => {
       try {
         await WorkstationAPI.unequipWorker();
-        await get().fetchCompanyData(1);
+        // ✅ 낙관적 업데이트: 장착 해제 즉시 반영
+        set(s => ({
+          inventoryItems: s.inventoryItems.map(item => ({ ...item, equipped: false }))
+        }));
+        // 서버 상태와 동기화 (백그라운드)
+        get().fetchCompanyData(0).catch(() => {});
       } catch (error) {
         console.error("일꾼 장착 해제 실패:", error);
         throw error;
@@ -193,6 +208,8 @@ export const useGameStore = create<GameState>()(
       requestedQty: 0,
       storedCount: 0,
       producedCount: 0,
+      collectedTotal: 0,
+      uncollectedPile: 0,
       minuteOutput: null,
       workerLevel: null,
       speedMultiplier: null,
@@ -304,49 +321,43 @@ export const useGameStore = create<GameState>()(
         const locallyCompleted = !currentState.isWorking && currentState.startTime > 0;
         const resolvedIsWorking = locallyCompleted ? false : backendIsWorking;
 
-        // endTime 결정 로직
+        // ★★★ 프론트 타이머가 권위 — 생산 중에는 타이밍 관련 필드를 절대 덮어쓰지 않음
+        const frontendIsAuthority = currentState.isWorking && currentState.startTime > 0 && currentState.totalMs > 0;
+
+        // 프론트 타이머 기반 값들: 생산 중이면 기존값 유지, 아니면 백엔드/기본값 사용
+        const resolvedStartTime = frontendIsAuthority ? currentState.startTime : currentState.startTime;
+        const resolvedTotalMs = frontendIsAuthority ? currentState.totalMs : currentState.totalMs;
+        const resolvedRequestedQty = frontendIsAuthority
+          ? currentState.requestedQty
+          : (currentState.requestedQty > 0 ? currentState.requestedQty : 0);
+
+        // endTime: 프론트 타이머 사용 중이면 건드리지 않음
         let resolvedEndTime: number | null;
-        if (!resolvedIsWorking) {
-          // 작업이 끝났거나 로컬에서 완료 판정 → endTime 초기화
+        if (frontendIsAuthority) {
+          resolvedEndTime = currentState.endTime;
+        } else if (!resolvedIsWorking) {
           resolvedEndTime = locallyCompleted ? null : currentState.endTime;
         } else if (currentState.endTime) {
-          // 작업 중이고 이미 endTime 있으면 → 기존 값 유지 (폴링이 덮어쓰지 않음)
           resolvedEndTime = currentState.endTime;
         } else {
-          // 작업 중인데 endTime 없으면 → 백엔드에서 받아옴 (최초 1회)
           resolvedEndTime = wsStatusRes.data?.expectedEndTime
             ? new Date(wsStatusRes.data.expectedEndTime).getTime()
             : null;
         }
 
-        // ★★★ requestedQty: 프론트에서 작업 시작 시 세팅한 값 우선 유지
-        //   백엔드의 reservedQuantity는 재료 수량이므로 산업별 비율로 역산
-        const { reqMat, resProd } = get().getIndustryItemNames(finalIndustry);
-        const produced = wsStatusRes.data?.producedQuantity ?? 0;
-        const reserved = wsStatusRes.data?.reservedQuantity ?? 0;
-        const consumedLaps = resProd > 0 ? Math.floor(produced / resProd) : 0;
-        const remainingLaps = reqMat > 0 ? Math.floor(reserved / reqMat) : 0;
-        const backendTotalOutput = (consumedLaps + remainingLaps) * resProd;
-
-        // 이미 프론트에서 세팅된 requestedQty가 있으면 유지, 없으면 백엔드 역산값 사용
-        const resolvedRequestedQty = currentState.requestedQty > 0
-          ? currentState.requestedQty
-          : (backendTotalOutput > 0 ? backendTotalOutput : 0);
-
-        // startTime/totalMs: 작업 중인데 없으면 백엔드 endTime 기반으로 역산
-        let resolvedStartTime = currentState.startTime;
-        let resolvedTotalMs = currentState.totalMs;
-        if (resolvedIsWorking && resolvedStartTime === 0 && resolvedEndTime) {
-          // 폴링 초기 진입 시: 현재 시각과 endTime으로 대략적인 startTime+totalMs 추정
-          // (정확한 값은 start 시 프론트에서 직접 세팅)
-          resolvedEndTime = resolvedEndTime; // already set above
-        }
-
-        // ★ 수확(harvest) 이후 producedCount/storedCount 처리:
-        //   백엔드가 harvest 직후에도 isActive=true로 응답할 수 있음.
-        //   storedCount는 백엔드 producedQuantity 기준으로 갱신 (harvest 후 0이 됨).
-        const resolvedProducedCount = resolvedIsWorking ? produced : 0;
-        const resolvedStoredCount = wsStatusRes.data?.producedQuantity ?? 0;
+        // storedCount: 항상 백엔드 producedQuantity 사용 (더미 표시의 기준)
+        const backendProduced = wsStatusRes.data?.producedQuantity ?? 0;
+        // locallyCompleted 상태에서는 storedCount를 현재값과 비교해 더 높은 값 유지
+        // (stop+fetch 완료 전 stale 값이 들어오는 것 방지)
+        const resolvedStoredCount = locallyCompleted
+          ? Math.max(currentState.storedCount, backendProduced)
+          : backendProduced;
+        // producedCount: HUD 카운터용 (보간의 floor)
+        const resolvedProducedCount = frontendIsAuthority
+          ? Math.max(currentState.producedCount, backendProduced)
+          : (resolvedIsWorking ? backendProduced : 0);
+        // uncollectedPile: 절대 fetchCompanyData에서 줄이지 않음 — collect 핸들러만 리셋
+        const resolvedUncollectedPile = currentState.uncollectedPile;
 
         set({
           money: realData?.cash ?? get().money,
@@ -378,6 +389,7 @@ export const useGameStore = create<GameState>()(
             producedCount: resolvedProducedCount,
             storedCount: resolvedStoredCount,
             requestedQty: resolvedRequestedQty,
+            uncollectedPile: resolvedUncollectedPile,
             // ✅ 백엔드 production 메타데이터 갱신 (없으면 기존값 유지)
             minuteOutput: wsStatusRes.data?.minuteOutput ?? currentState.minuteOutput,
             workerLevel: wsStatusRes.data?.workerLevel ?? currentState.workerLevel,

@@ -121,6 +121,7 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
     const [remainingSec, setRemainingSec] = useState<number | null>(null);
 
     const flyIdRef = useRef(0);
+    const prevProducedRef = useRef(0);
     const isWorking = wsState.isWorking;
 
     // ★ endTime: startTime+totalMs 우선, 없으면 백엔드 endTime
@@ -128,22 +129,41 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
         ? wsState.startTime + wsState.totalMs
         : wsState.endTime ?? 0;
 
-    // ★ 1개씩 쌓이는 보간
+    // ★ HUD 카운터용 보간 (시각적 부드러움 — 생산 중 X/Y 표시에만 사용)
     const localProducedCount = useMemo(() => {
-        if (!isWorking || effectiveEndTime <= 0 || wsState.requestedQty <= 0) {
-            return wsState.producedCount;
-        }
-        const startTime = wsState.startTime || (effectiveEndTime - (wsState.totalMs || 60000));
-        const totalMs = wsState.totalMs || (effectiveEndTime - startTime);
-        if (totalMs <= 0) return wsState.producedCount;
-
+        if (!isWorking || wsState.requestedQty <= 0) return 0;
+        const startTime = wsState.startTime;
+        const totalMs = wsState.totalMs;
+        if (!startTime || !totalMs || totalMs <= 0) return 0;
         const elapsed = Date.now() - startTime;
         const ratio = Math.min(1, Math.max(0, elapsed / totalMs));
-        const calculated = Math.floor(ratio * wsState.requestedQty);
-        return Math.max(wsState.producedCount, calculated);
-    }, [isWorking, effectiveEndTime, wsState.startTime, wsState.totalMs, wsState.requestedQty, wsState.producedCount, remainingSec]);
+        return Math.floor(ratio * wsState.requestedQty);
+    }, [isWorking, wsState.startTime, wsState.totalMs, wsState.requestedQty, remainingSec]);
 
-    const localStoredCount = Math.max(0, wsState.storedCount - wsState.producedCount) + localProducedCount;
+    // ★ 더미(pile) 수량
+    //   생산 중: 보간값 - 수령 완료분 + 이전 세션 잔여분 (1개씩 쌓이는 시각적 효과)
+    //   완료 후: uncollectedPile vs storedCount 중 큰 값 (async gap 보호)
+    const localStoredCount = isWorking
+        ? Math.max(0, localProducedCount - (wsState.collectedTotal ?? 0)) + (wsState.uncollectedPile ?? 0)
+        : Math.max(wsState.uncollectedPile ?? 0, wsState.storedCount ?? 0);
+
+    // ★ 날아가는 애니메이션: localStoredCount(보간 포함) 변화 시 트리거
+    useEffect(() => {
+        if (!isWorking) {
+            prevProducedRef.current = localStoredCount;
+            return;
+        }
+        const diff = localStoredCount - prevProducedRef.current;
+        if (diff > 0) {
+            const count = Math.min(diff, 3);
+            const newBars: number[] = [];
+            for (let i = 0; i < count; i++) {
+                newBars.push(flyIdRef.current++);
+            }
+            setFlyingBars(prev => [...prev, ...newBars]);
+            prevProducedRef.current = localStoredCount;
+        }
+    }, [localStoredCount, isWorking]);
 
     const isFull = localStoredCount >= maxCapacity;
     const isWarehouseFull = usedSlots >= warehouseMaxSlots;
@@ -179,12 +199,19 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
             // ★ 시간 0이면 자동 완료
             if (remaining <= 0) {
                 clearInterval(tick);
+                // startTime을 유지하여 fetchCompanyData의 locallyCompleted 가드가 작동하도록 함
+                // (startTime > 0 && isWorking === false → 백엔드 폴링이 덮어쓰지 않음)
+                const ws = useGameStore.getState().workstationState;
                 useGameStore.getState().setWorkstationState({
                     isWorking: false,
-                    startTime: 0,
                     totalMs: 0,
                     endTime: null,
+                    uncollectedPile: Math.max(ws.uncollectedPile ?? 0, ws.storedCount ?? 0),
                 });
+                // 백엔드에도 가동 중지 요청 후 상태 동기화 (비동기, 논블로킹)
+                WorkstationAPI.stop()
+                    .then(() => useGameStore.getState().fetchCompanyData(1))
+                    .catch(() => {});
             }
         }, 1000);
 
@@ -297,10 +324,33 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
                 onClick={async (e) => {
                     e.stopPropagation();
                     if (localStoredCount > 0) {
+                        // ★ 백엔드 실제 생산량 확인 (보간값이 아닌 확정값)
+                        const backendCount = useGameStore.getState().workstationState.storedCount ?? 0;
+                        if (backendCount <= 0) {
+                            useAlertStore.getState().openAlert("아직 완성된 제품이 없습니다. 잠시 후 다시 시도하세요.", "수령 불가");
+                            return;
+                        }
                         try {
                             await WorkstationAPI.collect();
+                            const currentWs = useGameStore.getState().workstationState;
+                            if (currentWs.isWorking) {
+                                // 생산 중 부분 수령: 타이머/진행 상태 유지, 수령량만 추적
+                                useGameStore.getState().setWorkstationState({
+                                    collectedTotal: (currentWs.collectedTotal ?? 0) + backendCount,
+                                    uncollectedPile: 0,
+                                    storedCount: 0,
+                                });
+                            } else {
+                                // 생산 완료 후 수령: 전체 상태 초기화
+                                useGameStore.getState().setWorkstationState({
+                                    startTime: 0, totalMs: 0, endTime: null,
+                                    producedCount: 0, storedCount: 0, requestedQty: 0,
+                                    collectedTotal: 0,
+                                    uncollectedPile: 0,
+                                });
+                            }
                             await useGameStore.getState().fetchCompanyData(1);
-                            useAlertStore.getState().openAlert("창고에 저장했습니다.", "✅ 수령 완료");
+                            useAlertStore.getState().openAlert(`${backendCount}개를 창고에 저장했습니다.`, "✅ 수령 완료");
                         } catch (err: any) {
                             const msg = err?.response?.data?.message || "수령할 수 없습니다.";
                             useAlertStore.getState().openAlert(msg, "수령 실패");

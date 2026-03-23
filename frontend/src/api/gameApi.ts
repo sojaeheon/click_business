@@ -145,23 +145,15 @@ export const WorkstationAPI = {
   },
 
   equipWorker: async (slotIndex: number) => {
-    try {
-      const wsId = await WorkstationAPI.getMyId();
-      await apiClient.post(`/workstations/${wsId}/equip-worker?slotIndex=${slotIndex}`);
-      return { data: { success: true } };
-    } catch (err) {
-      throw err;
-    }
+    const wsId = await WorkstationAPI.getMyId();
+    await apiClient.post(`/workstations/${wsId}/equip-worker`, null, { params: { slotIndex } });
+    return { data: { success: true } };
   },
 
   unequipWorker: async () => {
-    try {
-      const wsId = await WorkstationAPI.getMyId();
-      await apiClient.post(`/workstations/${wsId}/unequip-worker`);
-      return { data: { success: true } };
-    } catch (err) {
-      throw err;
-    }
+    const wsId = await WorkstationAPI.getMyId();
+    await apiClient.post(`/workstations/${wsId}/unequip-worker`);
+    return { data: { success: true } };
   },
 };
 
