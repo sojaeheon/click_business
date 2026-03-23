@@ -1,0 +1,16 @@
+services:
+  frontend:
+    build: .
+    container_name: ecosim-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - ecosim-network
+
+networks:
+  ecosim-network:
+    name: ecosim-network
+    external: true

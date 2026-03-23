@@ -17,11 +17,26 @@ FROM nginx:stable-alpine
 # Vite 빌드 결과물을 nginx 서빙 경로로 복사
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# React Router 사용 시 새로고침해도 index.html로 fallback되도록 설정
+# API 프록시 + WebSocket 프록시 + React Router fallback
 RUN printf 'server {\n\
     listen 80;\n\
     root /usr/share/nginx/html;\n\
     index index.html;\n\
+\n\
+    location /api {\n\
+        proxy_pass http://ecosim-backend:8000;\n\
+        proxy_set_header Host $host;\n\
+        proxy_set_header X-Real-IP $remote_addr;\n\
+    }\n\
+\n\
+    location /ws-ecosim {\n\
+        proxy_pass http://ecosim-backend:8000;\n\
+        proxy_http_version 1.1;\n\
+        proxy_set_header Upgrade $http_upgrade;\n\
+        proxy_set_header Connection "upgrade";\n\
+        proxy_set_header Host $host;\n\
+    }\n\
+\n\
     location / {\n\
         try_files $uri $uri/ /index.html;\n\
     }\n\
