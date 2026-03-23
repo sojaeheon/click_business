@@ -69,13 +69,15 @@ public class BotOrderScheduler {
         long currentMarketPrice = currentMarketPriceObj != null ? currentMarketPriceObj : state.dayOpenPrice;
 
         // 2. 이번 틱의 '목표 변동 증분(Delta)' 계산
-        // 유저님 제안대로 누적치가 아닌 이번 1초 동안 이동해야 할 등락률만 추출하여 현재가에 적용합니다.
+        // 현재가 기준으로 이번 1초 동안 이동해야 할 순수 변화량(델타)만 추출하여 적용합니다.
         double currentTotalFluct = state.tickTargetFluctuations[state.currentTick];
         double previousTotalFluct = (state.currentTick == 0) ? 0.0 : state.tickTargetFluctuations[state.currentTick - 1];
         
-        // 시가 대비 누적 목표의 차이를 구함 (ex: 1.05 / 1.049... 형태의 비율로 현재가를 유도)
-        double deltaRatio = (1.0 + currentTotalFluct) / (1.0 + previousTotalFluct);
-        double theoreticalTarget = currentMarketPrice * deltaRatio;
+        // 순수 델타 (이번 틱의 변화량)
+        double deltaFluct = currentTotalFluct - previousTotalFluct;
+        
+        // 현재가에 델타 적용 (현재가 × (1 + 델타))
+        double theoreticalTarget = currentMarketPrice * (1.0 + deltaFluct);
 
         long currentTargetPrice = applyTickSize(theoreticalTarget);
 
@@ -89,29 +91,63 @@ public class BotOrderScheduler {
         }
 
         for (int i = 0; i < botCount; i++) {
-            // 3. 방향 먼저 결정 (수량 및 가격 계산에 모두 필요)
-            OrderType type = ThreadLocalRandom.current().nextBoolean() ? OrderType.BUY : OrderType.SELL;
-
-            boolean priceGoingUp = currentTargetPrice > currentMarketPrice;
-            boolean isSweeperBot = priceGoingUp ? type == OrderType.BUY : type == OrderType.SELL;
-
-            // 4. 주문 가격 결정 (방향 및 시장 상황 인식 배치)
+            // 3-Tier 봇 시스템: 메이커(70%), 테이커(20%), 노이즈(10%)
+            double rand = ThreadLocalRandom.current().nextDouble();
+            
+            OrderType type;
             long orderPrice;
+            long orderQty;
             long tickSize = 100L;
-            if (isSweeperBot) {
-                // 스윕 봇: 목표가 주변 -1 ~ +1 틱에 무작위 배치하여 한 호가에 뭉침 방지
-                long tickOffset = ThreadLocalRandom.current().nextLong(-1, 2) * tickSize;
+            boolean priceGoingUp = currentTargetPrice > currentMarketPrice;
+            
+            if (rand < 0.7) {
+                // A) 메이커 봇 (70%): 호가창 유동성 제공
+                type = ThreadLocalRandom.current().nextBoolean() ? OrderType.BUY : OrderType.SELL;
+                
+                // 목표가 기준 ±5~20 Tick에 분산 배치
+                long tickOffset = ThreadLocalRandom.current().nextLong(5, 21) * tickSize;
+                orderPrice = ThreadLocalRandom.current().nextBoolean()
+                             ? currentTargetPrice + tickOffset
+                             : currentTargetPrice - tickOffset;
+                
+                // 큰 물량 (50~200)
+                orderQty = ThreadLocalRandom.current().nextLong(50, 201);
+                
+            } else if (rand < 0.9) {
+                // B) 테이커 봇 (20%): 목표가로 시장가 이동
+                type = priceGoingUp ? OrderType.BUY : OrderType.SELL;
+                
+                // 목표가 ±1~3 Tick
+                long tickOffset = ThreadLocalRandom.current().nextLong(-1, 4) * tickSize;
                 orderPrice = currentTargetPrice + tickOffset;
+                
+                // 반대편 호가창 물량의 100%를 균등 분배
+                String oppositeType = priceGoingUp ? "SELL" : "BUY";
+                double minScore = Math.min(currentMarketPrice, currentTargetPrice);
+                double maxScore = Math.max(currentMarketPrice, currentTargetPrice);
+                long totalVolume = orderBookManager.getVolumeInScoreRange(itemId.intValue(), oppositeType, minScore, maxScore);
+                
+                int takerCount = Math.max(1, (int)(botCount * 0.2)); // 20% 봇
+                orderQty = totalVolume <= 0
+                           ? ThreadLocalRandom.current().nextLong(50, 101)
+                           : Math.max(50, (totalVolume * 10) / (takerCount * 10));
+                
             } else {
-                // 유동성 봇: 타겟가 바깥 1~10 Tick 위치에 풍부하게 호가 깊이 형성
-                long tickOffset = ThreadLocalRandom.current().nextLong(1, 11) * tickSize;
-                // 가격 오르는 중 → SELL 유동성 봇은 타겟가보다 위에 / 내리는 중 → BUY 유동성 봇은 타겟가보다 아래에
-                orderPrice = priceGoingUp ? currentTargetPrice + tickOffset : currentTargetPrice - tickOffset;
+                // C) 노이즈 봇 (10%): 시장 자연스러움
+                type = ThreadLocalRandom.current().nextBoolean() ? OrderType.BUY : OrderType.SELL;
+                
+                // 현재가 기준 무작위 ±10~30 Tick
+                long tickOffset = ThreadLocalRandom.current().nextLong(10, 31) * tickSize;
+                orderPrice = ThreadLocalRandom.current().nextBoolean()
+                             ? currentMarketPrice + tickOffset
+                             : currentMarketPrice - tickOffset;
+                
+                // 소량 (1~10)
+                orderQty = ThreadLocalRandom.current().nextLong(1, 11);
             }
-            orderPrice = Math.max(tickSize, orderPrice); // 최소 1틱(100원) 방어
-
-            // 5. 수량: 스윕 봇은 잔량 기반 균등 분배, 유동성 봇은 소량
-            long orderQty = calculateSweepQtyPerBot(itemId, currentMarketPrice, currentTargetPrice, botCount, type, i);
+            
+            // 최소 1틱(100원) 방어
+            orderPrice = Math.max(tickSize, orderPrice);
 
             // 여러 가상 기관(회사)들이 참여하는 것처럼 보이기 위해 500번 ~ 999번 사이의 랜덤 회사 ID 부여
             long randomCompanyId = ThreadLocalRandom.current().nextLong(500, 1000);
@@ -140,35 +176,6 @@ public class BotOrderScheduler {
         if (state.currentTick >= CYCLE_SECONDS) {
             state.currentTick = 0;
         }
-    }
-
-    /**
-     * Market Sweep 수량 계산기: 반대편 호가창에서 현재가~목표가 구간의 총 잔량을 봇 수로 균등 분배합니다.
-     */
-    private long calculateSweepQtyPerBot(Long itemId, long currentPrice, long targetPrice, int botCount, OrderType botOrderType,
-            int botIndex) {
-        boolean priceGoingUp = targetPrice > currentPrice;
-
-        // 가격이 오르려면 매도(SELL) 물량을 매수(BUY)로 흡수해야 하고, 내리려면 그 반대
-        boolean isSweeperOrder = priceGoingUp ? botOrderType == OrderType.BUY : botOrderType == OrderType.SELL;
-
-        // 스윕 역할을 하지 않는 반대방향 봇은 그냥 소량 랜덤 주문으로 유동성 공급
-        if (!isSweeperOrder) {
-            return ThreadLocalRandom.current().nextLong(1, 11);
-        }
-
-        // 반대편 호가창에서 현재가~목표가 사이의 총 미체결 물량 조회
-        String oppositeType = priceGoingUp ? "SELL" : "BUY";
-        double minScore = Math.min(currentPrice, targetPrice);
-        double maxScore = Math.max(currentPrice, targetPrice);
-        long totalSweepVolume = orderBookManager.getVolumeInScoreRange(itemId.intValue(), oppositeType, minScore, maxScore);
-
-        if (totalSweepVolume <= 0) {
-            return ThreadLocalRandom.current().nextLong(1, 11);
-        }
-
-        int sweepBotCount = Math.max(1, botCount / 2);
-        return Math.max(1, totalSweepVolume / sweepBotCount);
     }
 
     /**

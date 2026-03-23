@@ -46,9 +46,12 @@ public class HRService {
             throw new IllegalArgumentException("강화 가능한 레벨 범위는 1~5입니다.");
         }
 
-        // 해당 레벨 일꾼 슬롯 조회
+        // 해당 레벨 일꾼 슬롯 조회 (장착 중인 슬롯 제외)
         List<InventorySlot> workerSlots = inventorySlotRepository
-                .findByInventory_Company_IdAndItem_WorkerLevel(companyId, currentLevel);
+                .findByInventory_Company_IdAndItem_WorkerLevel(companyId, currentLevel)
+                .stream()
+                .filter(s -> !s.isEquipped())
+                .toList();
 
         long totalWorkers = workerSlots.stream().mapToLong(InventorySlot::getQuantity).sum();
         if (totalWorkers < 2) {

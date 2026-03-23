@@ -297,6 +297,30 @@ public class WorkstationService {
                         builder.expectedEndTime(Instant.now().plusSeconds(secondsToComplete));
                 }
 
+                double workerMult = 1.0;
+                if (workstation.getEquippedWorkerSlotIndex() != null) {
+                        builder.equippedWorkerSlotIndex(workstation.getEquippedWorkerSlotIndex());
+                        workerMult = inventorySlotRepository
+                                .findByInventory_Company_IdAndSlotIndex(companyId, workstation.getEquippedWorkerSlotIndex())
+                                .filter(s -> s.getItem() != null && s.getItem().getWorkerLevel() != null)
+                                .map(s -> {
+                                        builder.equippedWorkerLevel(s.getItem().getWorkerLevel());
+                                        return getWorkerSpeedMultiplier(s.getItem().getWorkerLevel());
+                                })
+                                .orElse(1.0);
+                }
+
+                // 예상 완료 시각 계산 (가동 중이고 예약 재료가 있을 때만)
+                if (workstation.getIsActive() && workstation.getReservedQuantity() > 0) {
+                        long productionPerMinute = (workstation.getEquipmentInventory() != null)
+                                ? workstation.getEquipmentInventory().getLevel() : 1L;
+                        double productionPerSecond = productionPerMinute / 60.0 * workerMult;
+                        int requirement = workstation.getCompany().getIndustryType().getBaseRequirement();
+                        long availableLaps = workstation.getReservedQuantity() / requirement;
+                        long secondsToComplete = (long) Math.ceil(availableLaps / productionPerSecond);
+                        builder.expectedEndTime(Instant.now().plusSeconds(secondsToComplete));
+                }
+
                 return builder.build();
         }
 
