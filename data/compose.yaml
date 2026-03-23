@@ -60,6 +60,12 @@ services:
       # 샘플 데이터 폴더
       - ./hdfs/sample-data:/sample-data
 
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9870/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
     networks:
       - ecosim-network
 

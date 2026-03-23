@@ -17,6 +17,20 @@ export interface BankData { loanRate: number; depositRate: number; currentLoan: 
 // 슬롯 하나에 담을 수 있는 최대량 (예: 100개)
 export const MAX_PER_SLOT = 100;
 
+// 영어 산업명 → 한글 변환
+const INDUSTRY_KO: Record<string, string> = {
+  GOLD_MINING: "금광업",
+  GOLD_SMELTING: "금 제련업",
+  MANUFACTURING: "제조업",
+};
+export function toKoIndustry(name: string): string {
+  return INDUSTRY_KO[name] ?? name;
+}
+/** 문자열 내 영어 산업명을 한글로 치환 */
+export function localizeIndustryText(text: string): string {
+  return text.replace(/GOLD_MINING|GOLD_SMELTING|MANUFACTURING/g, (m) => INDUSTRY_KO[m] ?? m);
+}
+
 export interface WarehouseItem {
   id: string;
   type: "material" | "product";
@@ -25,7 +39,6 @@ export interface WarehouseItem {
 }
 
 // ─── 인벤토리 아이템 종류 ────────────────────────────────────────────────
-// 캐릭터(일꾼) Lv1~6 + 창고 슬롯 확장권 + 인벤토리 슬롯 확장권
 export type InventoryItemType =
   | "worker_lv1"
   | "worker_lv2"
@@ -98,9 +111,16 @@ export interface GameState {
     isWorking: boolean;
     startTime: number;
     totalMs: number;
+    endTime: number | null;
     requestedQty: number;
     storedCount: number;
     producedCount: number;
+    collectedTotal: number;
+    uncollectedPile: number;
+    // ✅ 백엔드에서 받는 생산 관련 추가 필드
+    minuteOutput: number | null;      // 분당 생산량 (백엔드에서 산업별로 계산)
+    workerLevel: number | null;       // 장착 캐릭터 레벨
+    speedMultiplier: number | null;   // 속도 가중치 (레벨별 1.0, 1.5, 2.0 등)
   };
   setWorkstationState: (updater: Partial<GameState["workstationState"]>) => void;
 
@@ -118,7 +138,7 @@ export interface GameState {
 
   // 은행 데이터 동기화
   updateBankData: (data: Partial<BankData>) => void;
-  updateDebt: (amount: number) => void; // 양수 = 부칄 증가, 음수 = 부칄 감소
+  updateDebt: (amount: number) => void; // 양수 = 부채 증가, 음수 = 부채 감소
 
   getWarehouseUsage: () => { usedSlots: number; percent: number };
   getIndustryItemNames: (indOverride?: string) => { material: string; product: string; reqMat: number; resProd: number; batchSize: number };
@@ -128,15 +148,15 @@ export interface GameState {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// 3. 상태 관리소 (persist 미들웨어 적용)
+// 3. 상태 관리소
 // ─────────────────────────────────────────────────────────────────────────
 export const useGameStore = create<GameState>()(
   (set, get) => ({
     companyName: "",
     industry: "금광업",
-    money: 5000000,
+    money: 0,
     currency: "₩",
-    capital: 5000000,
+    capital: 0,
     debt: 0,
     warehouseMaxSlots: 6,
     inventoryMax: 4,
@@ -150,7 +170,7 @@ export const useGameStore = create<GameState>()(
     warehouseItems: [],
     hrData: { currentLevel: 0, expectedLevel: 0, successRate: 0, materialCurrent: 0, materialMax: 0 },
     isLoading: false,
-    workstationId: 0,  // ✅ 실제 DB workstation ID (0 = 아직 불러옴)
+    workstationId: 0,
     inventoryItems: [],
     warehouseExpandTickets: 0,
     inventoryExpandTickets: 0,
@@ -160,38 +180,57 @@ export const useGameStore = create<GameState>()(
     setEquippedWorkerId: (id) => set({ equippedWorkerId: id }),
     setHasNewWorker: (v) => set({ hasNewWorker: v }),
 
-      equipWorker: async (slotIndex: number) => {
-        try {
-          await WorkstationAPI.equipWorker(slotIndex);
-          await get().fetchCompanyData(1); // 데이터 동기화
-        } catch (error) {
-          console.error("일꾼 장착 실패:", error);
-          throw error;
-        }
-      },
+    equipWorker: async (slotIndex: number) => {
+      try {
+        await WorkstationAPI.equipWorker(slotIndex);
+        // ✅ 낙관적 업데이트: API 성공 즉시 로컬 상태 반영 (fetchCompanyData 기다리지 않고)
+        set(s => ({
+          inventoryItems: s.inventoryItems.map(item => ({
+            ...item,
+            equipped: item.slotIndex === slotIndex
+          }))
+        }));
+        // 서버 상태와 동기화 (백그라운드)
+        get().fetchCompanyData(0).catch(() => {});
+      } catch (error) {
+        console.error("일꾼 장착 실패:", error);
+        throw error;
+      }
+    },
 
-      unequipWorker: async () => {
-        try {
-          await WorkstationAPI.unequipWorker();
-          await get().fetchCompanyData(1); // 데이터 동기화
-        } catch (error) {
-          console.error("일꾼 장착 해제 실패:", error);
-          throw error;
-        }
-      },
+    unequipWorker: async () => {
+      try {
+        await WorkstationAPI.unequipWorker();
+        // ✅ 낙관적 업데이트: 장착 해제 즉시 반영
+        set(s => ({
+          inventoryItems: s.inventoryItems.map(item => ({ ...item, equipped: false }))
+        }));
+        // 서버 상태와 동기화 (백그라운드)
+        get().fetchCompanyData(0).catch(() => {});
+      } catch (error) {
+        console.error("일꾼 장착 해제 실패:", error);
+        throw error;
+      }
+    },
 
-      workstationState: {
-        isStarting: false,
-        isWorking: false,
-        startTime: 0,
-        totalMs: 0,
-        requestedQty: 0,
-        storedCount: 0,
-        producedCount: 0,
-      },
-      setWorkstationState: (updater) => set(s => ({
-        workstationState: { ...s.workstationState, ...updater }
-      })),
+    workstationState: {
+      isStarting: false,
+      isWorking: false,
+      startTime: 0,
+      totalMs: 0,
+      endTime: null,
+      requestedQty: 0,
+      storedCount: 0,
+      producedCount: 0,
+      collectedTotal: 0,
+      uncollectedPile: 0,
+      minuteOutput: null,
+      workerLevel: null,
+      speedMultiplier: null,
+    },
+    setWorkstationState: (updater) => set(s => ({
+      workstationState: { ...s.workstationState, ...updater }
+    })),
 
 
     openModal: (tab) => set({ activeModal: tab }),
@@ -216,7 +255,7 @@ export const useGameStore = create<GameState>()(
     openBuildingPage: (page) => set({ activeBuildingPage: page }),
     closeBuildingPage: () => set({ activeBuildingPage: null }),
 
-    setCompanyInfo: (name, industry) => set({ companyName: name, industry }),
+    setCompanyInfo: (name, industry) => set({ companyName: name, industry: toKoIndustry(industry) }),
 
 
 
@@ -228,7 +267,6 @@ export const useGameStore = create<GameState>()(
     })),
 
     getWarehouseUsage: () => {
-      // 백엔드에서 빈 슬롯을 걸러낸(item이 존재하는) 슬롯 배열의 길이를 사용합니다.
       const usedSlots = get().warehouseItems.length;
       const percent = Math.min((usedSlots / get().warehouseMaxSlots) * 100, 100);
       return { usedSlots, percent };
@@ -247,76 +285,37 @@ export const useGameStore = create<GameState>()(
     fetchCompanyData: async (companyId: number) => {
       set({ isLoading: true });
       try {
-        // 백엔드 API 종합 호출 (workstationId도 함께 초기화)
         const [companyRes, warehouseRes, inventoryRes, bankRes, workstationIdRes, wsStatusRes] = await Promise.all([
           CompanyAPI.getStatus(),
           WarehouseAPI.getWarehouseItems(1).catch(() => ({ data: [], maxSlots: undefined })),
           InventoryAPI.getInventory(companyId).catch(() => ({ data: [], maxSlots: undefined })),
           BankAPI.getSummary(companyId).catch(() => ({ data: { loanRate: 0, depositRate: 0, currentLoan: 0, currentDeposit: 0 } })),
-          WorkstationAPI.getMyId().catch(() => 1), // 에러시 1로 폴백
+          WorkstationAPI.getMyId().catch(() => 1),
           WorkstationAPI.getStatus().catch(() => ({ data: null }))
         ]);
 
         const realData = companyRes.data;
 
-          // ✅ 백엔드 응답을 모든 가능한 필드명 규격(중첩 가능성 포함)에 맞게 초강력 방어적으로 매핑
-          const allItems: InventoryItem[] = inventoryRes.data.map((item: any) => {
-            // 1. 중첩된 item 객체가 있을 경우를 대비해 병합
-            const source = item.item ? { ...item, ...item.item } : item;
+        // ✅ 인벤토리 아이템 매핑 (백엔드 필드명 방어적으로 처리)
+        const allItems: InventoryItem[] = (inventoryRes.data as any[]).map((item: any) => {
+          const workerLevel = item.level ?? item.workerLevel ?? item.worker_level ?? 1;
+          const itemType: InventoryItemType = item.type?.startsWith('ticket_')
+            ? item.type
+            : `worker_lv${workerLevel}` as InventoryItemType;
+          return {
+            id: item.id ?? `slot_${Math.random().toString(36).substr(2, 9)}`,
+            slotId: item.slotId,
+            slotIndex: item.slotIndex,
+            type: itemType,
+            name: item.name ?? "아이템",
+            icon: item.icon ?? "",
+            quantity: item.quantity ?? 1,
+            level: workerLevel,
+            equipped: !!item.equipped
+          };
+        });
 
-            // 2. 모든 필드에 대해 백엔드의 가능한 모든 변수명 체크 (CamelCase, SnakeCase, 간단 이름 등)
-            const slotId = source.slotId ?? source.slot_id ?? source.id;
-            const slotIndex = source.slotIndex ?? source.slot_index;
-            const itemType = source.itemType ?? source.item_type ?? source.type;
-            const itemName = source.itemName ?? source.item_name ?? source.name;
-            const workerLevel = source.workerLevel ?? source.worker_level ?? source.level;
-            const quantity = source.quantity ?? source.amount ?? 1;
-            const equipped = source.equipped ?? source.isEquipped ?? source.is_equipped ?? false;
-            const itemId = source.itemId ?? source.item_id ?? source.id;
-
-            // 3. 정밀 Type 판별 로직 (TICKET 우선 판별)
-            let type: InventoryItemType = "worker_lv1";
-            
-            // rawItemType: 문자열, 숫자(Ordinal), 또는 객체 형태({name: 'TICKET'}) 대응
-            const rawType = source.itemType ?? source.item_type ?? source.type;
-            const typeStr = (typeof rawType === 'object' && rawType !== null) ? (rawType.name || rawType.type) : String(rawType).toUpperCase();
-            const typeIdx = Number(rawType);
-            const itmId = Number(itemId);
-            const nameStr = String(itemName || "");
-
-            const isTicketType = typeStr === "TICKET" || typeIdx === 3 || itmId === 11 || itmId === 12 || nameStr.includes("확장권");
-            const isEquipmentType = typeStr === "EQUIPMENT" || typeIdx === 2;
-
-            if (isTicketType) {
-              if (nameStr.includes("인벤토리") || itmId === 11 || nameStr.toLowerCase().includes("inventory")) {
-                type = "ticket_inventory";
-              } else {
-                type = "ticket_warehouse";
-              }
-            } else if (isEquipmentType) {
-              type = `worker_lv${workerLevel || 1}` as InventoryItemType;
-            } else {
-              // 🚨 타입 판별 실패 시 기본 폴백 (이름 기반 추가 시도)
-              if (nameStr.includes("일꾼") || nameStr.toLowerCase().includes("worker")) {
-                type = `worker_lv${workerLevel || 1}` as InventoryItemType;
-              }
-            }
-
-            return {
-              id: slotId ? slotId.toString() : `slot_${Math.random().toString(36).substr(2, 9)}`,
-              slotId: slotId,
-              slotIndex: slotIndex,
-              type: type,
-              name: itemName || (itemId === 11 ? "인벤토리 확장권" : (itemId === 12 ? "창고 확장권" : "아이템")),
-              icon: "", 
-              quantity: quantity,
-              level: workerLevel || 1,
-              equipped: !!equipped
-            };
-          });
-
-        // ✅ 더미 아이템 삽입 제거: 이제 실제 DB에 있는 데이터만 보여줌 (빈 DB일 경우 400 에러 혼동 방지)
-        const finalIndustry = realData?.industry_type ?? get().industry;
+        const finalIndustry = toKoIndustry(realData?.industry_type ?? get().industry);
         const { material, product } = get().getIndustryItemNames(finalIndustry);
 
         const fixedWarehouseItems = (warehouseRes.data as WarehouseItem[]).map(item => ({
@@ -324,46 +323,98 @@ export const useGameStore = create<GameState>()(
           name: item.type === "material" ? material : item.type === "product" ? product : item.name
         }));
 
-          // 백엔드가 maxSlots를 제공하면 가장 우선 적용 (과거 캐시 문제 해결)
-          const warehouseMaxSlotsFromApi = (warehouseRes as any).maxSlots;
-          const inventoryMaxSlotsFromApi = (inventoryRes as any).maxSlots;
-          
-          set({
-            money: realData?.cash ?? get().money,
-            capital: realData?.total_asset ?? get().capital,
-            companyName: realData?.name ?? get().companyName,
-            industry: finalIndustry,
-            warehouseMaxSlots: warehouseMaxSlotsFromApi ?? realData?.slots?.warehouse_slots ?? (get().warehouseMaxSlots === 10 ? 6 : get().warehouseMaxSlots),
-            inventoryMax: inventoryMaxSlotsFromApi ?? realData?.slots?.inventory_slots ?? (get().inventoryMax === 50 ? 4 : get().inventoryMax),
-            warehouseItems: fixedWarehouseItems,
-            inventoryItems: allItems,
-            // 티켓은 inventoryItems 안에 아이템으로 저장됨. 개수 정보는 UI에서 type로 필터링
-            warehouseExpandTickets: allItems.filter(i => i.type === 'ticket_warehouse').reduce((a, i) => a + (i.quantity || 1), 0),
-            inventoryExpandTickets: allItems.filter(i => i.type === 'ticket_inventory').reduce((a, i) => a + (i.quantity || 1), 0),
-            bankData: {
-              ...get().bankData,
-              loanRate: bankRes.data.loanRate,
-              depositRate: bankRes.data.depositRate,
-              currentLoan: bankRes.data.currentLoan,
-              currentDeposit: bankRes.data.currentDeposit,
-            },
-            debt: bankRes.data.currentLoan,
-            workstationId: typeof workstationIdRes === "number" ? workstationIdRes : (workstationIdRes as any)?.data ?? 0,  // ✅ 실제 DB ID 저장
-            workstationState: {
-              ...get().workstationState,
-              isWorking: wsStatusRes.data?.isWorking ?? false,
-              producedCount: wsStatusRes.data?.producedQuantity ?? 0,
-              storedCount: wsStatusRes.data?.producedQuantity ?? 0, 
-              requestedQty: wsStatusRes.data?.totalQuantity ?? 0,
-            },
-            // ✅ 장착된 일꾼 ID 동기화 (equipped: true인 아이템의 id 사용)
-            equippedWorkerId: allItems.find(i => i.equipped)?.id ?? null,
-            isLoading: false
-          });
-        } catch (error) {
-          console.error("전반적인 회사 게임 데이터 로드 실패:", error);
-          set({ isLoading: false });
+        const warehouseMaxSlotsFromApi = (warehouseRes as any).maxSlots;
+        const inventoryMaxSlotsFromApi = (inventoryRes as any).maxSlots;
+
+        // ─── 작업장 상태 결정 ──────────────────────────────────────────
+        const backendIsWorking = wsStatusRes.data?.isWorking ?? false;
+        const currentState = get().workstationState;
+
+        // ★★★ 핵심: 프론트에서 이미 "완료"로 판정해 isWorking=false로 세팅한 경우,
+        //   백엔드가 아직 isActive=true를 반환해도 덮어쓰지 않음 (타이머 재시작 방지)
+        const locallyCompleted = !currentState.isWorking && currentState.startTime > 0;
+        const resolvedIsWorking = locallyCompleted ? false : backendIsWorking;
+
+        // ★★★ 프론트 타이머가 권위 — 생산 중에는 타이밍 관련 필드를 절대 덮어쓰지 않음
+        const frontendIsAuthority = currentState.isWorking && currentState.startTime > 0 && currentState.totalMs > 0;
+
+        // 프론트 타이머 기반 값들: 생산 중이면 기존값 유지, 아니면 백엔드/기본값 사용
+        const resolvedStartTime = frontendIsAuthority ? currentState.startTime : currentState.startTime;
+        const resolvedTotalMs = frontendIsAuthority ? currentState.totalMs : currentState.totalMs;
+        const resolvedRequestedQty = frontendIsAuthority
+          ? currentState.requestedQty
+          : (currentState.requestedQty > 0 ? currentState.requestedQty : 0);
+
+        // endTime: 프론트 타이머 사용 중이면 건드리지 않음
+        let resolvedEndTime: number | null;
+        if (frontendIsAuthority) {
+          resolvedEndTime = currentState.endTime;
+        } else if (!resolvedIsWorking) {
+          resolvedEndTime = locallyCompleted ? null : currentState.endTime;
+        } else if (currentState.endTime) {
+          resolvedEndTime = currentState.endTime;
+        } else {
+          resolvedEndTime = wsStatusRes.data?.expectedEndTime
+            ? new Date(wsStatusRes.data.expectedEndTime).getTime()
+            : null;
         }
+
+        // storedCount: 항상 백엔드 producedQuantity 사용 (더미 표시의 기준)
+        const backendProduced = wsStatusRes.data?.producedQuantity ?? 0;
+        // locallyCompleted 상태에서는 storedCount를 현재값과 비교해 더 높은 값 유지
+        // (stop+fetch 완료 전 stale 값이 들어오는 것 방지)
+        const resolvedStoredCount = locallyCompleted
+          ? Math.max(currentState.storedCount, backendProduced)
+          : backendProduced;
+        // producedCount: HUD 카운터용 (보간의 floor)
+        const resolvedProducedCount = frontendIsAuthority
+          ? Math.max(currentState.producedCount, backendProduced)
+          : (resolvedIsWorking ? backendProduced : 0);
+        // uncollectedPile: 절대 fetchCompanyData에서 줄이지 않음 — collect 핸들러만 리셋
+        const resolvedUncollectedPile = currentState.uncollectedPile;
+
+        set({
+          money: realData?.cash ?? get().money,
+          capital: realData?.total_asset ?? get().capital,
+          companyName: realData?.name ?? get().companyName,
+          industry: finalIndustry,
+          warehouseMaxSlots: warehouseMaxSlotsFromApi ?? realData?.slots?.warehouse_slots ?? (get().warehouseMaxSlots === 10 ? 6 : get().warehouseMaxSlots),
+          inventoryMax: inventoryMaxSlotsFromApi ?? realData?.slots?.inventory_slots ?? (get().inventoryMax === 50 ? 4 : get().inventoryMax),
+          warehouseItems: fixedWarehouseItems,
+          inventoryItems: allItems,
+          warehouseExpandTickets: allItems.filter(i => i.type === 'ticket_warehouse').reduce((a, i) => a + (i.quantity || 1), 0),
+          inventoryExpandTickets: allItems.filter(i => i.type === 'ticket_inventory').reduce((a, i) => a + (i.quantity || 1), 0),
+          bankData: {
+            ...get().bankData,
+            loanRate: bankRes.data.loanRate,
+            depositRate: bankRes.data.depositRate,
+            currentLoan: bankRes.data.currentLoan,
+            currentDeposit: bankRes.data.currentDeposit,
+          },
+          debt: bankRes.data.currentLoan,
+          workstationId: typeof workstationIdRes === "number" ? workstationIdRes : (workstationIdRes as any)?.data ?? 0,
+          equippedWorkerId: allItems.find(i => i.equipped)?.id ?? null,
+          workstationState: {
+            ...currentState,
+            isWorking: resolvedIsWorking,
+            startTime: resolvedStartTime,
+            totalMs: resolvedTotalMs,
+            endTime: resolvedEndTime,
+            producedCount: resolvedProducedCount,
+            storedCount: resolvedStoredCount,
+            requestedQty: resolvedRequestedQty,
+            uncollectedPile: resolvedUncollectedPile,
+            // ✅ 백엔드 production 메타데이터 갱신 (없으면 기존값 유지)
+            minuteOutput: wsStatusRes.data?.minuteOutput ?? currentState.minuteOutput,
+            workerLevel: wsStatusRes.data?.workerLevel ?? currentState.workerLevel,
+            speedMultiplier: wsStatusRes.data?.speedMultiplier ?? currentState.speedMultiplier,
+          },
+          isLoading: false
+        });
+      } catch (error) {
+        console.error("전반적인 회사 게임 데이터 로드 실패:", error);
+        set({ isLoading: false });
+      }
     },
 
     fetchNews: async () => {

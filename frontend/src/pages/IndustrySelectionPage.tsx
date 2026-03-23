@@ -145,12 +145,15 @@ export const IndustrySelectionPage = () => {
       } else {
         await WorkstationAPI.create({ companyId: 1 });
       }
-    } catch (e) {
-      console.warn("회사 또는 작업장 생성 API 실패:", e);
-    } finally {
+      
       setCompanyInfo(companyName.trim(), selectedIndustry);
-      setIsSubmitting(false);
       navigate('/main');
+    } catch (e: any) {
+      console.warn("회사 또는 작업장 생성 API 실패:", e);
+      // 서버에서 전달한 에러 메시지가 있다면 표시, 없으면 통신 실패
+      useAlertStore.getState().openAlert(e?.response?.data?.message || '회사 생성에 실패했습니다. 잠시 후 다시 시도해주세요.', "에러");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
