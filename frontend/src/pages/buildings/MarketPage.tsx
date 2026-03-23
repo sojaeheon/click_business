@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { ShoppingCart, TrendingUp, TrendingDown, Activity, ListOrdered, Clock, XCircle } from "lucide-react";
+import { ShoppingCart, TrendingUp, TrendingDown, Activity, ListOrdered, Clock, XCircle, BarChart2 } from "lucide-react";
 import { useGameStore } from "../../store/gameStore";
 import { MarketAPI } from "../../api/gameApi";
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { ComposedChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { BackButton } from "../../app/components/ui/backbutton";
 import { useAlertStore } from "../../store/useAlertStore";
 import { Canvas, useFrame } from "@react-three/fiber";
@@ -38,6 +38,54 @@ interface MinuteCandle {
   close: number;
 }
 
+const CustomCandle = (props: any) => {
+  const { x, y, width, height, payload } = props;
+  if (!payload || payload.open === undefined || payload.close === undefined || payload.low === undefined || payload.high === undefined) return null;
+  const { open, close, low, high, prevClose } = payload;
+  
+  // 한국 주식 관례: 5분전(직전) 종가 대비 현재 종가가 높거나 같으면 빨간색(상승), 낮으면 파란색(하락)
+  const isUp = close >= (prevClose ?? open);
+  const color = isUp ? "#f43f5e" : "#3b82f6";
+  
+  const ratio = (val: number) => high === low ? 0.5 : (high - val) / (high - low);
+  const pyHigh = y;
+  const pyLow = y + height;
+  const pyOpen = y + height * ratio(open);
+  const pyClose = y + height * ratio(close);
+  
+  const bodyY = Math.min(pyOpen, pyClose);
+  const bodyHeight = Math.max(Math.abs(pyOpen - pyClose), 1.5);
+  
+  return (
+    <g>
+      {/* 윗꼬리, 아랫꼬리 라인 (최고가, 최저가) */}
+      <line x1={x + width / 2} y1={pyHigh} x2={x + width / 2} y2={pyLow} stroke={color} strokeWidth={2} />
+      {/* 몸통 사각형 (시가, 종가) */}
+      <rect x={x + width * 0.15} y={bodyY} width={Math.max(width * 0.7, 1)} height={bodyHeight} fill={color} stroke={color} strokeWidth={1} />
+    </g>
+  );
+};
+
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    const isUp = (data.close ?? data.price) >= (data.open ?? data.price);
+    const color = isUp ? "text-rose-500" : "text-blue-500";
+    return (
+      <div className="bg-white/95 backdrop-blur p-3 rounded-xl border-2 border-slate-200 shadow-xl font-bold text-slate-700 text-xs">
+        <div className="border-b border-slate-100 pb-1 mb-1 text-[13px] text-slate-500">시간: {label}</div>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+          <span>시가:</span> <span className="text-black font-black">₩{(data.open ?? data.price)?.toLocaleString()}</span>
+          <span>종가:</span> <span className="text-black font-black">₩{(data.close ?? data.price)?.toLocaleString()}</span>
+          <span>최고가:</span> <span className="text-rose-500 font-black">₩{(data.high ?? data.price)?.toLocaleString()}</span>
+          <span>최저가:</span> <span className="text-blue-500 font-black">₩{(data.low ?? data.price)?.toLocaleString()}</span>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
 export function MarketPage() {
   const closeBuildingPage = useGameStore(state => state.closeBuildingPage);
   const money = useGameStore(state => state.money);
@@ -70,8 +118,9 @@ export function MarketPage() {
   const [isProcessing, setIsProcessing] = useState(false);
 
   // 1분봉 차트 데이터: 각 분에 하나의 가격 포인트 누적
-  const [chartData, setChartData] = useState<{ time: string; price: number }[]>([]);
-  const minuteCandlesRef = useRef<Map<string, number>>(new Map()); // "HH:MM" → 해당 분의 마지막 가격
+  const [chartData, setChartData] = useState<{ time: string; price: number; open?: number; high?: number; low?: number; close?: number }[]>([]);
+  const minuteCandlesRef = useRef<Map<string, { open: number; high: number; low: number; close: number }>>(new Map()); // "HH:MM" → 해당 분의 캔들 정보
+  const [chartType, setChartType] = useState<"candle" | "line">("candle"); // 차트 타입 상태
   const [currentMinuteKey, setCurrentMinuteKey] = useState<string>("");
 
   const [orderBook, setOrderBook] = useState<{ asks: Array<{ price: number, quantity: number }>, bids: Array<{ price: number, quantity: number }> }>({ asks: [], bids: [] });
@@ -129,47 +178,40 @@ export function MarketPage() {
 
   const itemId = mode ? getItemId(mode) : 1;
 
-  // 현재 분 키 ("HH:MM") 계산
-  const getMinuteKey = () => {
-    const now = new Date();
-    return now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+  // 💾 과거 데이터 프론트(로컬스토리지) 백업 & 복구
+  useEffect(() => {
+    const saved = localStorage.getItem(`market_chart_${itemId}`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        minuteCandlesRef.current = new Map(Object.entries(parsed));
+        
+        // chartData 로 변환하여 초기 뷰 설정
+        const deduplicated = Array.from(minuteCandlesRef.current.entries()).map(([k, v]: any) => ({
+          time: k,
+          price: v.close,
+          open: v.open,
+          high: v.high,
+          low: v.low,
+          close: v.close
+        }));
+        setChartData(deduplicated);
+      } catch (e) {
+        console.warn("로컬 차트 데이터 복구 실패:", e);
+      }
+    } else {
+      // 데이터가 없으면 비워두기
+      minuteCandlesRef.current.clear();
+      setChartData([]);
+    }
+  }, [itemId]);
+
+  const saveToLocal = (mapObj: Map<string, any>) => {
+    const obj = Object.fromEntries(mapObj);
+    localStorage.setItem(`market_chart_${itemId}`, JSON.stringify(obj));
   };
 
-  // 새 가격을 받을 때마다 1분봉 차트에 반영
-  const updateMinuteChart = useCallback((latestPrice: number) => {
-    const minuteKey = getMinuteKey();
-
-    setCurrentMinuteKey(prev => {
-      if (prev !== minuteKey) {
-        // 새로운 분이 시작됨 → 새 캔들 추가
-        minuteCandlesRef.current.set(minuteKey, latestPrice);
-
-        setChartData(prevData => {
-          const newPoint = { time: minuteKey, price: latestPrice };
-          // 최대 30개 분봉 유지
-          const updated = [...prevData, newPoint].slice(-30);
-          return updated;
-        });
-        return minuteKey;
-      } else {
-        // 같은 분 내에서 가격 업데이트 → 마지막 포인트 업데이트
-        minuteCandlesRef.current.set(minuteKey, latestPrice);
-
-        setChartData(prevData => {
-          if (prevData.length === 0) return [{ time: minuteKey, price: latestPrice }];
-          const updated = [...prevData];
-          const lastIdx = updated.length - 1;
-          if (updated[lastIdx].time === minuteKey) {
-            updated[lastIdx] = { ...updated[lastIdx], price: latestPrice };
-          } else {
-            updated.push({ time: minuteKey, price: latestPrice });
-          }
-          return updated.slice(-30);
-        });
-        return prev;
-      }
-    });
-  }, []);
+  // 1분봉을 위해 상시 업데이트할 필요 없음 (getDisplayChartData 에서 막대에 currentPrice 를 연동함)
 
   // ⏱️ 실시간 데이터 업데이트 (오더북, 체결내역, 미체결 주문)
   useEffect(() => {
@@ -210,14 +252,45 @@ export function MarketPage() {
           const chartRes = await MarketAPI.getMarketChart(itemId);
           const cData = chartRes.data?.data ?? chartRes.data;
           if (cData && Array.isArray(cData.points)) {
-            const uniqueMap = new Map();
+            const minMap = new Map<string, { open: number; high: number; low: number; close: number; time: string }>();
+            
             cData.points.forEach((d: any) => {
-              const t = d.timestamp ? new Date(d.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : "";
-              if (t) {
-                uniqueMap.set(t, { time: t, price: d.price ?? 0 });
+              const dt = d.timestamp ? new Date(d.timestamp) : new Date();
+              // 🌟 5분 단위의 버킷 키 생성 (예: 11:13 -> 11:10)
+              const bucketM = Math.floor(dt.getMinutes() / 5) * 5;
+              const minStr = `${dt.getHours().toString().padStart(2, '0')}:${bucketM.toString().padStart(2, '0')}`;
+              const p = d.price ?? 0;
+              if (minMap.has(minStr)) {
+                const existing = minMap.get(minStr)!;
+                existing.high = Math.max(existing.high, p);
+                existing.low = Math.min(existing.low, p);
+                existing.close = p;
+              } else {
+                minMap.set(minStr, { time: minStr, open: p, high: p, low: p, close: p });
               }
             });
-            const deduplicated = Array.from(uniqueMap.values()) as { time: string; price: number }[];
+
+            // 🌟 로컬 프론트 머지 (데이터 유실 방지)
+            const mergedMap = new Map<string, { open: number; high: number; low: number; close: number; time: string }>();
+            minuteCandlesRef.current.forEach((v, k) => mergedMap.set(k, { ...v, time: k }));
+            minMap.forEach((v, k) => mergedMap.set(k, v));
+
+            // Ref 갱신
+            minuteCandlesRef.current = new Map(
+              Array.from(mergedMap.entries()).map(([k, v]) => [k, { open: v.open, high: v.high, low: v.low, close: v.close }])
+            );
+
+            // 💾 갱신한 맵 로컬스토리지 백업
+            saveToLocal(minuteCandlesRef.current);
+
+            const deduplicated = Array.from(mergedMap.values()).map(v => ({
+              time: v.time,
+              price: v.close,
+              open: v.open,
+              high: v.high,
+              low: v.low,
+              close: v.close
+            }));
             setChartData(deduplicated);
           }
         } catch (e) {
@@ -321,56 +394,84 @@ export function MarketPage() {
   };
 
   const currentMarketPrice = currentPrice || (chartData.length > 0 ? chartData[chartData.length - 1].price : 0);
+
   const getDisplayChartData = () => {
-    if (chartData.length === 0) {
-      const result = [];
-      const now = new Date();
-      for (let i = 59; i >= 0; i--) {
-        const d = new Date(now.getTime() - i * 60000);
-        result.push({ time: `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`, price: null as any });
-      }
-      return result;
-    }
-
-    const map = new Map<string, number>();
-    chartData.forEach(d => map.set(d.time, d.price));
-
-    const firstStr = chartData[0].time;
-    const now = new Date();
-    const currStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-
-    const [fh, fm] = firstStr.split(':').map(Number);
-    let iterDate = new Date();
-    iterDate.setHours(fh, fm, 0, 0);
-
-    const diffMins = Math.floor((now.getTime() - iterDate.getTime()) / 60000);
-    if (diffMins < 59) {
-      iterDate = new Date(now.getTime() - 59 * 60000);
-    }
+    const map = new Map<string, any>();
+    chartData.forEach(d => map.set(d.time, d));
 
     const result = [];
-    let lastKnownPrice = chartData[0].price;
+    const now = new Date();
+    
+    const defaultOhlc = { open: currentPrice, high: currentPrice, low: currentPrice, close: currentPrice };
+    let lastKnownOhlc = chartData.length > 0 && chartData[0].close !== undefined 
+      ? { 
+          open: chartData[0].open ?? currentPrice, 
+          high: chartData[0].high ?? currentPrice, 
+          low: chartData[0].low ?? currentPrice, 
+          close: chartData[0].close ?? currentPrice 
+        } 
+      : defaultOhlc;
 
-    while (iterDate <= now) {
-      const tStr = `${iterDate.getHours().toString().padStart(2, '0')}:${iterDate.getMinutes().toString().padStart(2, '0')}`;
-      if (map.has(tStr)) lastKnownPrice = map.get(tStr)!;
-      result.push({ time: tStr, price: lastKnownPrice });
-      iterDate = new Date(iterDate.getTime() + 60000);
+    for (let i = 59; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 5 * 60000);
+      const bucketM = Math.floor(d.getMinutes() / 5) * 5;
+      const tStr = `${d.getHours().toString().padStart(2, '0')}:${bucketM.toString().padStart(2, '0')}`;
+      
+      const actualPrevClose = lastKnownOhlc.close; // 🌟 갱신 전 직전 종가 보관
+
+      let ohlc = { 
+        open: actualPrevClose, 
+        high: actualPrevClose, 
+        low: actualPrevClose, 
+        close: actualPrevClose 
+      };
+      if (map.has(tStr)) {
+        const item = map.get(tStr)!;
+        ohlc = {
+          open: actualPrevClose, 
+          high: Math.max(actualPrevClose, item.high ?? item.price),
+          low: Math.min(actualPrevClose, item.low ?? item.price),
+          close: item.close ?? item.price
+        };
+        lastKnownOhlc = ohlc;
+      }
+      
+      let displayOhlc = { ...ohlc };
+      if (i === 0 && currentPrice) {
+        displayOhlc.close = currentPrice;
+        displayOhlc.high = Math.max(displayOhlc.high ?? currentPrice, currentPrice);
+        displayOhlc.low = Math.min(displayOhlc.low ?? currentPrice, currentPrice);
+      }
+      
+      result.push({ 
+        time: tStr, 
+        price: displayOhlc.close ?? 0, 
+        open: displayOhlc.open ?? 0, 
+        high: displayOhlc.high ?? 0, 
+        low: displayOhlc.low ?? 0, 
+        close: displayOhlc.close ?? 0,
+        bounds: [displayOhlc.low ?? 0, displayOhlc.high ?? 0],
+        prevClose: actualPrevClose // 🌟 갱신 전 고유 이전 종가 주입
+      });
     }
-
-    if (result.length > 0 && result[result.length - 1].time !== currStr) {
-      if (map.has(currStr)) lastKnownPrice = map.get(currStr)!;
-      result.push({ time: currStr, price: lastKnownPrice });
-    }
-
     return result;
   };
 
   const displayChartData = getDisplayChartData();
   const visibleDataLen = displayChartData.length;
-  const chartWidthPct = Math.max(100, (visibleDataLen / 10) * 100);
-  const diff = changePrice;
-  const isUpTrend = diff >= 0;
+  // 5분봉 12개가 100% 한 화면 분량. 60개 캔들이므로 500% 너비를 주어 드래그 가능하게 만듬
+  const chartWidthPct = Math.max(100, (visibleDataLen / 12) * 100);
+
+  // 🌟 5분 전 가격 스냅샷 연동 (현재가 및 툴팁/캔들 색상 동기화)
+  const lastCandle = displayChartData.length > 0 ? displayChartData[displayChartData.length - 1] : null;
+  const prevCandle = displayChartData.length > 1 ? displayChartData[displayChartData.length - 2] : null;
+  
+  const currentPriceToCompare = currentPrice || (lastCandle?.close ?? 0);
+  const fiveMinAgoPrice = prevCandle?.close ?? currentPriceToCompare; // 5분 전 캔들의 종가
+  
+  const customDiff = currentPriceToCompare - fiveMinAgoPrice;
+  const isUpTrend = customDiff >= 0;
+  const customPct = fiveMinAgoPrice > 0 ? (customDiff / fiveMinAgoPrice) * 100 : 0;
 
   useEffect(() => {
     setHasDragged(false);
@@ -405,17 +506,15 @@ export function MarketPage() {
       }
     };
   }, [hasDragged, chartData, mode, snapToRight]);
-  const diffSign = diff > 0 ? "+" : diff < 0 ? "-" : "";
-  const pctStr = Math.abs(changeRate).toFixed(1);
-  const diffStr = `${diffSign}${Math.abs(diff).toLocaleString()}원 (${diffSign}${pctStr}%)`;
+  const customDiffSign = customDiff > 0 ? "+" : customDiff < 0 ? "-" : "";
+  const customPctStr = Math.abs(customPct).toFixed(1);
+  const diffStr = `${customDiffSign}${Math.abs(customDiff).toLocaleString()}원 (${customDiffSign}${customPctStr}%)`;
 
   const getPriceColor = (p: number) => {
     const defaultPriceColor = "text-slate-800";
     if (currentPrice <= 0) return defaultPriceColor;
-    const sPrice = currentPrice - changePrice;
-    if (sPrice <= 0) return defaultPriceColor;
-    if (p > sPrice) return "text-rose-500";
-    if (p < sPrice) return "text-blue-500";
+    if (p > fiveMinAgoPrice) return "text-rose-500";
+    if (p < fiveMinAgoPrice) return "text-blue-500";
     return defaultPriceColor;
   };
 
@@ -489,8 +588,28 @@ export function MarketPage() {
             {/* 📈 1. 실시간 차트 영역 (w-1/2) */}
             <div className="w-1/2 bg-white border-4 border-slate-300 rounded-3xl p-6 flex flex-col shadow-xl relative overflow-hidden">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-black text-slate-700 flex items-center gap-2 relative">
+                <h2 className="text-2xl font-black text-slate-700 flex items-center gap-3 relative">
                   <Activity className="w-6 h-6 text-slate-500" /> 실시간 시장 동향
+                  
+                  {/* 토글형 스위치 단추 */}
+                  <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/60 gap-1 ml-2 shadow-inner">
+                    <button 
+                      onClick={() => setChartType("candle")}
+                      className={`text-xs font-black px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1 cursor-pointer ${
+                        chartType === "candle" ? "bg-white text-slate-800 shadow-sm" : "text-slate-400 hover:text-slate-600"
+                      }`}
+                    >
+                      <BarChart2 className="w-3.5 h-3.5"/> 캔들
+                    </button>
+                    <button 
+                      onClick={() => setChartType("line")}
+                      className={`text-xs font-black px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1 cursor-pointer ${
+                        chartType === "line" ? "bg-white text-slate-800 shadow-sm" : "text-slate-400 hover:text-slate-600"
+                      }`}
+                    >
+                      <Activity className="w-3.5 h-3.5"/> 선
+                    </button>
+                  </div>
                 </h2>
                 <div className="flex items-start gap-3 text-right pr-2 pt-1">
                   <div className="flex flex-col items-end">
@@ -500,10 +619,12 @@ export function MarketPage() {
                     <span className={`text-lg font-bold mt-1 ${getPriceColor(currentMarketPrice)}`}>
                       {diffStr}
                     </span>
-                    {/* 1분봉 안내 */}
-                    <span className="text-xs text-slate-400 font-bold mt-1 flex items-center gap-1">
-                      <Clock className="w-3 h-3" /> 1분봉
-                    </span>
+                    <div className="flex items-center gap-2 mt-1 justify-end">
+                      {/* 5분봉 안내 */}
+                      <span className="text-xs text-slate-400 font-bold flex items-center gap-1">
+                        <Clock className="w-3 h-3" /> 5분봉
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -533,36 +654,44 @@ export function MarketPage() {
                   >
                     <div style={{ width: `${chartWidthPct}%`, height: '100%', paddingLeft: '60px' }}>
                       <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={displayChartData} margin={{ top: 10, right: 10, left: 20, bottom: 5 }}>
+                        <ComposedChart data={displayChartData} margin={{ top: 10, right: 10, left: 20, bottom: 5 }}>
                           <defs>
-                            <linearGradient id="colorPriceUp" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.4} />
-                              <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
-                            </linearGradient>
-                            <linearGradient id="colorPriceDown" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
-                              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                            <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor={isUpTrend ? "#f43f5e" : "#3b82f6"} stopOpacity={0.4} />
+                              <stop offset="95%" stopColor={isUpTrend ? "#f43f5e" : "#3b82f6"} stopOpacity={0.0} />
                             </linearGradient>
                           </defs>
-                          <XAxis dataKey="time" stroke="#cbd5e1" tick={{ fill: '#94a3b8', fontSize: 11 }} interval="preserveStartEnd" minTickGap={30} height={24} />
-                          <YAxis domain={[(dataMin: number) => (dataMin ? Math.max(0, dataMin - 100) : 'auto'), (dataMax: number) => (dataMax ? dataMax + 100 : 'auto')]} hide />
-                          <Tooltip
-                            contentStyle={{ borderRadius: '12px', border: '2px solid #e2e8f0', fontWeight: 'bold' }}
-                            formatter={(value: any) => [`₩${Number(value).toLocaleString()}`, '가격']}
-                            labelFormatter={(label) => `시간: ${label}`}
+                          <XAxis 
+                            dataKey="time" 
+                            stroke="#cbd5e1" 
+                            tick={{ fill: '#94a3b8', fontSize: 11 }} 
+                            interval={0} 
+                            tickFormatter={(timeStr) => {
+                              const [, m] = timeStr.split(':').map(Number);
+                              return m % 5 === 0 ? timeStr : '';
+                            }}
+                            height={24} 
                           />
-                          <Area
-                            type="monotone"
-                            dataKey="price"
-                            stroke={isUpTrend ? "#f43f5e" : "#3b82f6"}
-                            strokeWidth={3}
-                            fill={isUpTrend ? "url(#colorPriceUp)" : "url(#colorPriceDown)"}
-                            dot={false}
-                            connectNulls={false}
-                            animationDuration={0}
-                            isAnimationActive={false}
-                          />
-                        </AreaChart>
+                          <YAxis domain={['dataMin - 100', 'dataMax + 100']} hide />
+                          <Tooltip content={<CustomTooltip />} />
+                          
+                          {chartType === "candle" ? (
+                            <Bar 
+                              dataKey="bounds" 
+                              shape={<CustomCandle />} 
+                              isAnimationActive={false} 
+                            />
+                          ) : (
+                            <Area
+                              type="linear"
+                              dataKey="price"
+                              stroke={isUpTrend ? "#f43f5e" : "#3b82f6"}
+                              strokeWidth={3}
+                              fill="url(#colorPrice)"
+                              isAnimationActive={false}
+                            />
+                          )}
+                        </ComposedChart>
                       </ResponsiveContainer>
                     </div>
                   </div>
@@ -570,10 +699,10 @@ export function MarketPage() {
                   {/* 좌측 고정 Y축 (Fixed YAxis Overlay) */}
                   <div className="absolute top-0 left-0 bottom-0 w-[60px] z-10 bg-white/95 backdrop-blur shadow-[2px_0_5px_rgba(0,0,0,0.03)] pointer-events-none select-none overflow-hidden border-r border-slate-100">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={displayChartData} margin={{ top: 10, right: 0, left: -20, bottom: 5 }}>
+                      <ComposedChart data={displayChartData} margin={{ top: 10, right: 0, left: -20, bottom: 5 }}>
                         <XAxis hide height={24} />
                         <YAxis
-                          domain={[(dataMin: number) => (dataMin ? Math.max(0, dataMin - 100) : 'auto'), (dataMax: number) => (dataMax ? dataMax + 100 : 'auto')]}
+                          domain={['dataMin - 100', 'dataMax + 100']}
                           stroke="#cbd5e1"
                           tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 'bold' }}
                           tickFormatter={formatPrice}
@@ -581,8 +710,23 @@ export function MarketPage() {
                           axisLine={false}
                           tickLine={false}
                         />
-                        <Area dataKey="price" fill="none" stroke="none" activeDot={false} isAnimationActive={false} />
-                      </AreaChart>
+                        {/* 왼쪽 호가 축 배경에도 동일하게 차트 노출(Y축 연동용) */}
+                        {chartType === "candle" ? (
+                          <Bar 
+                            dataKey="bounds" 
+                            shape={<CustomCandle />} 
+                            isAnimationActive={false} 
+                          />
+                        ) : (
+                          <Area
+                            type="linear"
+                            dataKey="price"
+                            stroke="transparent"
+                            fill="transparent"
+                            isAnimationActive={false}
+                          />
+                        )}
+                      </ComposedChart>
                     </ResponsiveContainer>
                   </div>
                 </div>

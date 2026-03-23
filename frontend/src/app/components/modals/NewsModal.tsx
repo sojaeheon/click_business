@@ -6,10 +6,16 @@ import type { NewsItem } from "../../../store/gameStore";
 // ... [NewsDetail & NewsList component remain identical] ...
 // (TargetContent can cover the rest using Replace content effectively)
 
+// 날짜 포맷 변환: 2020.01.18 -> 20xx년 01.18
+const formatDate = (dateStr?: string) => {
+  if (!dateStr) return "";
+  return dateStr.replace(/^\d{4}\./, "20XX년 ");
+};
+
 // 뉴스 상세 페이지 뷰
 function NewsDetail({ news, onBack }: { news: NewsItem; onBack: () => void }) {
   return (
-    <div className="flex flex-col pb-8">
+    <div className="flex flex-col pb-8 h-full overflow-y-auto pr-2">
       {/* 상단: 뒤로가기 */}
       <button
         onClick={onBack}
@@ -24,7 +30,7 @@ function NewsDetail({ news, onBack }: { news: NewsItem; onBack: () => void }) {
         {/* 상단 타임배너 & 카테고리 */}
         <div className="flex items-center gap-3 mb-6">
           <span className="text-slate-500 text-sm font-bold flex items-center gap-1">
-            <Newspaper className="w-4 h-4"/> 데일리 브리핑
+            <Newspaper className="w-4 h-4" /> 데일리 브리핑
           </span>
           {news.isBreaking && (
             <span className="bg-red-500 text-white text-[11px] font-black px-2.5 py-0.5 rounded-md tracking-wider">속보</span>
@@ -40,8 +46,8 @@ function NewsDetail({ news, onBack }: { news: NewsItem; onBack: () => void }) {
         {/* 날짜 */}
         <div className="text-sm text-slate-400 font-bold mb-5 flex items-center gap-2">
           <span>발행일</span>
-          <span className="w-1 h-1 bg-slate-300 rounded-full"/>
-          <span>{news.date}</span>
+          <span className="w-1 h-1 bg-slate-300 rounded-full" />
+          <span>{formatDate(news.date)}</span>
         </div>
 
         <hr className="border-slate-200 mb-6" />
@@ -61,7 +67,7 @@ function NewsDetail({ news, onBack }: { news: NewsItem; onBack: () => void }) {
 // 뉴스 목록 뷰
 function NewsList({ onSelect }: { onSelect: (news: NewsItem) => void }) {
   const { state } = useGame();
-  
+
   // 첫번째 뉴스를 주요 뉴스(속보 우선, 없으면 첫번째)로 지정
   const breakingNews = state.news.find((n) => n.isBreaking) || state.news[0];
   const otherNews = state.news.filter((n) => n.id !== breakingNews?.id);
@@ -89,9 +95,9 @@ function NewsList({ onSelect }: { onSelect: (news: NewsItem) => void }) {
 
             {/* 날짜 */}
             <div className="text-sm text-slate-400 font-bold mb-5 flex items-center gap-2">
-               <span>발행일</span>
-               <span className="w-1 h-1 bg-slate-300 rounded-full"/>
-               <span>{breakingNews.date}</span>
+              <span>발행일</span>
+              <span className="w-1 h-1 bg-slate-300 rounded-full" />
+              <span>{formatDate(breakingNews.date)}</span>
             </div>
 
             <hr className="border-slate-200 mb-5 w-full" />
@@ -103,11 +109,11 @@ function NewsList({ onSelect }: { onSelect: (news: NewsItem) => void }) {
                 {breakingNews.summary || "뉴스 본문 세부 내용이 이 영역에 표시됩니다. 전체 뉴스 목록에서 상세 기사를 확인하실 수 있습니다."}
               </p>
             </div>
-            
+
             <div className="mt-6 flex justify-end w-full">
-               <span className="text-sm font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg flex items-center gap-1 group-hover:bg-indigo-100 transition-colors">
-                 자세히 보기 <ChevronRight className="w-4 h-4" />
-               </span>
+              <span className="text-sm font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg flex items-center gap-1 group-hover:bg-indigo-100 transition-colors">
+                자세히 보기 <ChevronRight className="w-4 h-4" />
+              </span>
             </div>
           </button>
         )}
@@ -115,7 +121,7 @@ function NewsList({ onSelect }: { onSelect: (news: NewsItem) => void }) {
 
       {/* 오른쪽: 이전 뉴스 리스트 */}
       <div className="flex flex-col bg-slate-50 rounded-3xl border-2 border-slate-200 p-5 min-h-[400px] h-full" style={{ flex: 4.5 }}>
-         <div className="flex flex-col gap-3 flex-1 overflow-y-auto pr-1 hide-scrollbar" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+        <div className="flex flex-col gap-3 flex-1 overflow-y-auto pr-1 hide-scrollbar" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
           <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
           {otherNews.length > 0 ? otherNews.map((news) => (
             <button
@@ -124,20 +130,20 @@ function NewsList({ onSelect }: { onSelect: (news: NewsItem) => void }) {
               className="w-full text-left bg-white rounded-2xl border-2 border-slate-100 p-5 hover:border-slate-300 hover:shadow-md transition-all cursor-pointer flex flex-col min-h-[100px] group"
             >
               <div className="flex items-center justify-end mb-2">
-                 {news.isBreaking && (
-                    <span className="text-[10px] font-black text-rose-500 bg-rose-50 px-2 py-0.5 rounded border border-rose-100">속보</span>
-                 )}
+                {news.isBreaking && (
+                  <span className="text-[10px] font-black text-rose-500 bg-rose-50 px-2 py-0.5 rounded border border-rose-100">속보</span>
+                )}
               </div>
               <p className="text-base text-slate-800 line-clamp-2 leading-relaxed font-bold group-hover:text-indigo-600 transition-colors break-keep mb-3">
                 {news.headline}
               </p>
               <div className="flex justify-end w-full mt-auto">
-                 <span className="text-[10px] font-bold text-slate-400">{news.date}</span>
+                <span className="text-[10px] font-bold text-slate-400">{formatDate(news.date)}</span>
               </div>
             </button>
           )) : (
             <div className="flex-1 flex items-center justify-center text-slate-400 font-bold text-sm">
-               더 이상 기사가 없습니다.
+              더 이상 기사가 없습니다.
             </div>
           )}
         </div>
@@ -156,7 +162,7 @@ export function NewsModal() {
 
   // 뉴스 모달 전체 레이아웃
   return (
-    <div className="flex flex-col">
+    <div className="flex-1 flex flex-col h-full min-h-0">
       {selectedNews ? (
         <NewsDetail news={selectedNews} onBack={() => setSelectedNews(null)} />
       ) : (
