@@ -17,6 +17,20 @@ export interface BankData { loanRate: number; depositRate: number; currentLoan: 
 // 슬롯 하나에 담을 수 있는 최대량 (예: 100개)
 export const MAX_PER_SLOT = 100;
 
+// 영어 산업명 → 한글 변환
+const INDUSTRY_KO: Record<string, string> = {
+  GOLD_MINING: "금광업",
+  GOLD_SMELTING: "금 제련업",
+  MANUFACTURING: "제조업",
+};
+export function toKoIndustry(name: string): string {
+  return INDUSTRY_KO[name] ?? name;
+}
+/** 문자열 내 영어 산업명을 한글로 치환 */
+export function localizeIndustryText(text: string): string {
+  return text.replace(/GOLD_MINING|GOLD_SMELTING|MANUFACTURING/g, (m) => INDUSTRY_KO[m] ?? m);
+}
+
 export interface WarehouseItem {
   id: string;
   type: "material" | "product";
@@ -241,7 +255,7 @@ export const useGameStore = create<GameState>()(
     openBuildingPage: (page) => set({ activeBuildingPage: page }),
     closeBuildingPage: () => set({ activeBuildingPage: null }),
 
-    setCompanyInfo: (name, industry) => set({ companyName: name, industry }),
+    setCompanyInfo: (name, industry) => set({ companyName: name, industry: toKoIndustry(industry) }),
 
 
 
@@ -301,7 +315,7 @@ export const useGameStore = create<GameState>()(
           };
         });
 
-        const finalIndustry = realData?.industry_type ?? get().industry;
+        const finalIndustry = toKoIndustry(realData?.industry_type ?? get().industry);
         const { material, product } = get().getIndustryItemNames(finalIndustry);
 
         const fixedWarehouseItems = (warehouseRes.data as WarehouseItem[]).map(item => ({

@@ -358,8 +358,8 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
                     }
                 }}
             >
-                <mesh position={[half * 0.45, 0.5, -half * 0.45]}>
-                    <boxGeometry args={[half * 1.4, 1.5, half * 1.4]} />
+                <mesh position={[half * 0.4, 0.5, -half * 0.4]}>
+                    <boxGeometry args={[half * 0.8, 1.5, half * 0.8]} />
                     <meshBasicMaterial transparent opacity={0.0} depthWrite={false} />
                 </mesh>
                 <group position={stackPos}>
@@ -367,13 +367,18 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
                 </group>
             </group>
 
-            {/* ★ 적재량 HUD: 깔끔하게 📦 2/100 */}
+            {/* ★ 적재량 HUD: 가득참=빨강, 생산중=노랑, 수령가능=초록 */}
             {localStoredCount > 0 && (
-                <group position={[half * 0.45, -0.3, -half * 0.45]}>
+                <group position={[half * 0.4, -0.3, -half * 0.4]}>
                     <Html center zIndexRange={[10, 0]}>
                         <div className="pointer-events-none select-none" style={{ whiteSpace: 'nowrap' }}>
                             <div className={`inline-flex items-center gap-1 border-2 text-xs font-black rounded-full px-2.5 py-0.5 shadow-lg tabular-nums font-mono whitespace-nowrap
-                                ${isFull ? 'bg-rose-950/90 border-rose-400 text-rose-200' : 'bg-gray-950/90 border-emerald-500 text-emerald-300'}`}>
+                                ${isFull
+                                    ? 'bg-rose-950/90 border-rose-400 text-rose-200'
+                                    : isWorking
+                                        ? 'bg-gray-950/90 border-yellow-400 text-yellow-300'
+                                        : 'bg-gray-950/90 border-emerald-400 text-emerald-300 animate-pulse'
+                                }`}>
                                 {localStoredCount}/{maxCapacity}
                             </div>
                         </div>

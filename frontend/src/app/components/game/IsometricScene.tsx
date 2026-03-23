@@ -533,14 +533,14 @@ export function GameScene({
     });
   }, [onDialog, isWorkstationWorking, setWorkstationState]);
 
-  // ★ Issue 3 fix: 작업 완료 시 작업장 내에 있으면 모달 자동 오픈
-  const prevWorkingRef = useRef(isWorkstationWorking);
+  // ★ 작업장 진입 시에만 모달 자동 오픈 (밖→안 전환 감지)
+  const prevInWorkstationRef = useRef(inWorkstation);
   useEffect(() => {
-      if (prevWorkingRef.current && !isWorkstationWorking && inWorkstation) {
+      if (!prevInWorkstationRef.current && inWorkstation) {
           handleWorkstationClick();
       }
-      prevWorkingRef.current = isWorkstationWorking;
-  }, [isWorkstationWorking, inWorkstation, handleWorkstationClick]);
+      prevInWorkstationRef.current = inWorkstation;
+  }, [inWorkstation, handleWorkstationClick]);
 
   return (
     <>

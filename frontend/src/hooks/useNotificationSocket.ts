@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Client } from '@stomp/stompjs';
 import { toast } from 'sonner';
-import { useGameStore } from '../store/gameStore';
+import { useGameStore, localizeIndustryText } from '../store/gameStore';
 
 // 로컬: ws://localhost:5173/ws-ecosim → Vite proxy → ws://localhost:8000/ws-ecosim
 // EC2:  ws://15.165.236.217/ws-ecosim → nginx ingress → backend
@@ -53,13 +53,18 @@ export function useNotificationSocket() {
               recentMessages.delete(data.message);
             }, 60000);
 
-            // gameStore에 알림 추가 (벨 배지 + AlertModal 목록)
-            addAlert({ message: data.message, detail: data.type });
+            // gameStore에 알림 추가 (벨 배지 + AlertModal 목록) — 영어 산업명 한글 치환
+            const localizedMsg = localizeIndustryText(data.message);
+            addAlert({ message: localizedMsg, detail: data.type });
 
-            // 화면 우하단 토스트 팝업
-            toast(data.message, {
+            // 화면 우하단 토스트 팝업 — 클릭 시 알림 모달 열기
+            toast(localizedMsg, {
               description: typeLabel(data.type),
               duration: 4000,
+              action: {
+                label: '확인',
+                onClick: () => useGameStore.getState().openModal('alert'),
+              },
             });
           } catch (e) {
             console.error('[WSNotification] 메시지 파싱 실패', e);
