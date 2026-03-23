@@ -111,7 +111,7 @@ public class WorkstationController {
         return ApiResponse.success("생산 지연 평가가 완료되었습니다.");
     }
 
-    @Operation(summary = "결과물 수확", description = "생산이 완료된 결과물을 인벤토리로 옮깁니다.")
+    @Operation(summary = "결과물 수확", description = "지연 평가 후 생산 완료된 결과물을 창고로 옮깁니다.")
     @PostMapping("/{workstationId}/harvest")
     public ApiResponse<String> harvestOutput(
             @AuthenticationPrincipal UserDetails userDetails,
@@ -119,6 +119,8 @@ public class WorkstationController {
         Long userId = Long.parseLong(userDetails.getUsername());
         Company company = getCompanyByUserId(userId);
 
+        // 수확 전 지연 평가를 먼저 수행해야 producedQuantity가 갱신됨
+        workstationService.processProduction(company.getId(), workstationId);
         workstationService.harvestOutput(company.getId(), workstationId);
         return ApiResponse.success("결과물을 성공적으로 수확하였습니다.");
     }
@@ -144,6 +146,15 @@ public class WorkstationController {
         workstationService.processProduction(company.getId(), workstationId);
         WorkstationStatusResponse response = workstationService.getWorkstationStatus(company.getId(), workstationId);
         return ApiResponse.success(response);
+    }
+
+    @Operation(summary = "일꾼 속도 가중치 조회",
+               description = "일꾼 아이템 ID를 받아 속도 가중치(speedMultiplier)를 반환합니다. 프론트에서 수량 변경 시 로컬 계산에 사용합니다.")
+    @GetMapping("/worker-speed")
+    public ApiResponse<Double> getWorkerSpeed(
+            @Parameter(description = "일꾼 아이템 ID", example = "4") @RequestParam Long itemId) {
+        Double multiplier = workstationService.getWorkerSpeedMultiplierByItemId(itemId);
+        return ApiResponse.success(multiplier);
     }
 
     private Company getCompanyByUserId(Long userId) {
