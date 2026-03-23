@@ -48,7 +48,7 @@ def to_datetime(iso_time_str):
 # -----------------------------
 # order 존재 확인 (retry)
 # -----------------------------
-def wait_for_order(cur, order_id, retries=100, delay=0.2):
+def wait_for_order(cur, order_id, retries=20, delay=0.5):
     for i in range(retries):
         cur.execute("""
             SELECT 1 FROM market_order WHERE market_order_id = %s
