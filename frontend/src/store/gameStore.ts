@@ -160,38 +160,38 @@ export const useGameStore = create<GameState>()(
     setEquippedWorkerId: (id) => set({ equippedWorkerId: id }),
     setHasNewWorker: (v) => set({ hasNewWorker: v }),
 
-      equipWorker: async (slotIndex: number) => {
-        try {
-          await WorkstationAPI.equipWorker(slotIndex);
-          await get().fetchCompanyData(1); // 데이터 동기화
-        } catch (error) {
-          console.error("일꾼 장착 실패:", error);
-          throw error;
-        }
-      },
+    equipWorker: async (slotIndex: number) => {
+      try {
+        await WorkstationAPI.equipWorker(slotIndex);
+        await get().fetchCompanyData(1); // 데이터 동기화
+      } catch (error) {
+        console.error("일꾼 장착 실패:", error);
+        throw error;
+      }
+    },
 
-      unequipWorker: async () => {
-        try {
-          await WorkstationAPI.unequipWorker();
-          await get().fetchCompanyData(1); // 데이터 동기화
-        } catch (error) {
-          console.error("일꾼 장착 해제 실패:", error);
-          throw error;
-        }
-      },
+    unequipWorker: async () => {
+      try {
+        await WorkstationAPI.unequipWorker();
+        await get().fetchCompanyData(1); // 데이터 동기화
+      } catch (error) {
+        console.error("일꾼 장착 해제 실패:", error);
+        throw error;
+      }
+    },
 
-      workstationState: {
-        isStarting: false,
-        isWorking: false,
-        startTime: 0,
-        totalMs: 0,
-        requestedQty: 0,
-        storedCount: 0,
-        producedCount: 0,
-      },
-      setWorkstationState: (updater) => set(s => ({
-        workstationState: { ...s.workstationState, ...updater }
-      })),
+    workstationState: {
+      isStarting: false,
+      isWorking: false,
+      startTime: 0,
+      totalMs: 0,
+      requestedQty: 0,
+      storedCount: 0,
+      producedCount: 0,
+    },
+    setWorkstationState: (updater) => set(s => ({
+      workstationState: { ...s.workstationState, ...updater }
+    })),
 
 
     openModal: (tab) => set({ activeModal: tab }),
@@ -259,61 +259,61 @@ export const useGameStore = create<GameState>()(
 
         const realData = companyRes.data;
 
-          // ✅ 백엔드 응답을 모든 가능한 필드명 규격(중첩 가능성 포함)에 맞게 초강력 방어적으로 매핑
-          const allItems: InventoryItem[] = inventoryRes.data.map((item: any) => {
-            // 1. 중첩된 item 객체가 있을 경우를 대비해 병합
-            const source = item.item ? { ...item, ...item.item } : item;
+        // ✅ 백엔드 응답을 모든 가능한 필드명 규격(중첩 가능성 포함)에 맞게 초강력 방어적으로 매핑
+        const allItems: InventoryItem[] = inventoryRes.data.map((item: any) => {
+          // 1. 중첩된 item 객체가 있을 경우를 대비해 병합
+          const source = item.item ? { ...item, ...item.item } : item;
 
-            // 2. 모든 필드에 대해 백엔드의 가능한 모든 변수명 체크 (CamelCase, SnakeCase, 간단 이름 등)
-            const slotId = source.slotId ?? source.slot_id ?? source.id;
-            const slotIndex = source.slotIndex ?? source.slot_index;
-            const itemType = source.itemType ?? source.item_type ?? source.type;
-            const itemName = source.itemName ?? source.item_name ?? source.name;
-            const workerLevel = source.workerLevel ?? source.worker_level ?? source.level;
-            const quantity = source.quantity ?? source.amount ?? 1;
-            const equipped = source.equipped ?? source.isEquipped ?? source.is_equipped ?? false;
-            const itemId = source.itemId ?? source.item_id ?? source.id;
+          // 2. 모든 필드에 대해 백엔드의 가능한 모든 변수명 체크 (CamelCase, SnakeCase, 간단 이름 등)
+          const slotId = source.slotId ?? source.slot_id ?? source.id;
+          const slotIndex = source.slotIndex ?? source.slot_index;
+          const itemType = source.itemType ?? source.item_type ?? source.type;
+          const itemName = source.itemName ?? source.item_name ?? source.name;
+          const workerLevel = source.workerLevel ?? source.worker_level ?? source.level;
+          const quantity = source.quantity ?? source.amount ?? 1;
+          const equipped = source.equipped ?? source.isEquipped ?? source.is_equipped ?? false;
+          const itemId = source.itemId ?? source.item_id ?? source.id;
 
-            // 3. 정밀 Type 판별 로직 (TICKET 우선 판별)
-            let type: InventoryItemType = "worker_lv1";
-            
-            // rawItemType: 문자열, 숫자(Ordinal), 또는 객체 형태({name: 'TICKET'}) 대응
-            const rawType = source.itemType ?? source.item_type ?? source.type;
-            const typeStr = (typeof rawType === 'object' && rawType !== null) ? (rawType.name || rawType.type) : String(rawType).toUpperCase();
-            const typeIdx = Number(rawType);
-            const itmId = Number(itemId);
-            const nameStr = String(itemName || "");
+          // 3. 정밀 Type 판별 로직 (TICKET 우선 판별)
+          let type: InventoryItemType = "worker_lv1";
 
-            const isTicketType = typeStr === "TICKET" || typeIdx === 3 || itmId === 11 || itmId === 12 || nameStr.includes("확장권");
-            const isEquipmentType = typeStr === "EQUIPMENT" || typeIdx === 2;
+          // rawItemType: 문자열, 숫자(Ordinal), 또는 객체 형태({name: 'TICKET'}) 대응
+          const rawType = source.itemType ?? source.item_type ?? source.type;
+          const typeStr = (typeof rawType === 'object' && rawType !== null) ? (rawType.name || rawType.type) : String(rawType).toUpperCase();
+          const typeIdx = Number(rawType);
+          const itmId = Number(itemId);
+          const nameStr = String(itemName || "");
 
-            if (isTicketType) {
-              if (nameStr.includes("인벤토리") || itmId === 11 || nameStr.toLowerCase().includes("inventory")) {
-                type = "ticket_inventory";
-              } else {
-                type = "ticket_warehouse";
-              }
-            } else if (isEquipmentType) {
-              type = `worker_lv${workerLevel || 1}` as InventoryItemType;
+          const isTicketType = typeStr === "TICKET" || typeIdx === 3 || itmId === 11 || itmId === 12 || nameStr.includes("확장권");
+          const isEquipmentType = typeStr === "EQUIPMENT" || typeIdx === 2;
+
+          if (isTicketType) {
+            if (nameStr.includes("인벤토리") || itmId === 11 || nameStr.toLowerCase().includes("inventory")) {
+              type = "ticket_inventory";
             } else {
-              // 🚨 타입 판별 실패 시 기본 폴백 (이름 기반 추가 시도)
-              if (nameStr.includes("일꾼") || nameStr.toLowerCase().includes("worker")) {
-                type = `worker_lv${workerLevel || 1}` as InventoryItemType;
-              }
+              type = "ticket_warehouse";
             }
+          } else if (isEquipmentType) {
+            type = `worker_lv${workerLevel || 1}` as InventoryItemType;
+          } else {
+            // 🚨 타입 판별 실패 시 기본 폴백 (이름 기반 추가 시도)
+            if (nameStr.includes("일꾼") || nameStr.toLowerCase().includes("worker")) {
+              type = `worker_lv${workerLevel || 1}` as InventoryItemType;
+            }
+          }
 
-            return {
-              id: slotId ? slotId.toString() : `slot_${Math.random().toString(36).substr(2, 9)}`,
-              slotId: slotId,
-              slotIndex: slotIndex,
-              type: type,
-              name: itemName || (itemId === 11 ? "인벤토리 확장권" : (itemId === 12 ? "창고 확장권" : "아이템")),
-              icon: "", 
-              quantity: quantity,
-              level: workerLevel || 1,
-              equipped: !!equipped
-            };
-          });
+          return {
+            id: slotId ? slotId.toString() : `slot_${Math.random().toString(36).substr(2, 9)}`,
+            slotId: slotId,
+            slotIndex: slotIndex,
+            type: type,
+            name: itemName || (itemId === 11 ? "인벤토리 확장권" : (itemId === 12 ? "창고 확장권" : "아이템")),
+            icon: "",
+            quantity: quantity,
+            level: workerLevel || 1,
+            equipped: !!equipped
+          };
+        });
 
         // ✅ 더미 아이템 삽입 제거: 이제 실제 DB에 있는 데이터만 보여줌 (빈 DB일 경우 400 에러 혼동 방지)
         const finalIndustry = realData?.industry_type ?? get().industry;
@@ -324,47 +324,47 @@ export const useGameStore = create<GameState>()(
           name: item.type === "material" ? material : item.type === "product" ? product : item.name
         }));
 
-          // 백엔드가 maxSlots를 제공하면 가장 우선 적용 (과거 캐시 문제 해결)
-          const warehouseMaxSlotsFromApi = (warehouseRes as any).maxSlots;
-          const inventoryMaxSlotsFromApi = (inventoryRes as any).maxSlots;
-          
-          set({
-            money: realData?.cash ?? get().money,
-            capital: realData?.total_asset ?? get().capital,
-            companyName: realData?.name ?? get().companyName,
-            industry: finalIndustry,
-            warehouseMaxSlots: warehouseMaxSlotsFromApi ?? realData?.slots?.warehouse_slots ?? (get().warehouseMaxSlots === 10 ? 6 : get().warehouseMaxSlots),
-            inventoryMax: inventoryMaxSlotsFromApi ?? realData?.slots?.inventory_slots ?? (get().inventoryMax === 50 ? 4 : get().inventoryMax),
-            warehouseItems: fixedWarehouseItems,
-            inventoryItems: allItems,
-            // 티켓은 inventoryItems 안에 아이템으로 저장됨. 개수 정보는 UI에서 type로 필터링
-            warehouseExpandTickets: allItems.filter(i => i.type === 'ticket_warehouse').reduce((a, i) => a + (i.quantity || 1), 0),
-            inventoryExpandTickets: allItems.filter(i => i.type === 'ticket_inventory').reduce((a, i) => a + (i.quantity || 1), 0),
-            bankData: {
-              ...get().bankData,
-              loanRate: bankRes.data.loanRate,
-              depositRate: bankRes.data.depositRate,
-              currentLoan: bankRes.data.currentLoan,
-              currentDeposit: bankRes.data.currentDeposit,
-            },
-            debt: bankRes.data.currentLoan,
-            workstationId: typeof workstationIdRes === "number" ? workstationIdRes : (workstationIdRes as any)?.data ?? 0,  // ✅ 실제 DB ID 저장
-            workstationState: {
-              ...get().workstationState,
-              isWorking: wsStatusRes.data?.isWorking ?? false,
-              producedCount: wsStatusRes.data?.producedQuantity ?? 0,
-              storedCount: wsStatusRes.data?.producedQuantity ?? 0, 
-              requestedQty: wsStatusRes.data?.totalQuantity ?? 0,
-            },
-            // ✅ 장착된 일꾼 ID 동기화 (equipped: true인 아이템의 id 사용)
-            equippedWorkerId: allItems.find(i => i.equipped)?.id ?? null,
-            isLoading: false
-          });
-        } catch (error) {
-          console.error("전반적인 회사 게임 데이터 로드 실패:", error);
-          set({ isLoading: false });
-        }
-      },
+        // 백엔드가 maxSlots를 제공하면 가장 우선 적용 (과거 캐시 문제 해결)
+        const warehouseMaxSlotsFromApi = (warehouseRes as any).maxSlots;
+        const inventoryMaxSlotsFromApi = (inventoryRes as any).maxSlots;
+
+        set({
+          money: realData?.cash ?? get().money,
+          capital: realData?.total_asset ?? get().capital,
+          companyName: realData?.name ?? get().companyName,
+          industry: finalIndustry,
+          warehouseMaxSlots: warehouseMaxSlotsFromApi ?? realData?.slots?.warehouse_slots ?? (get().warehouseMaxSlots === 10 ? 6 : get().warehouseMaxSlots),
+          inventoryMax: inventoryMaxSlotsFromApi ?? realData?.slots?.inventory_slots ?? (get().inventoryMax === 50 ? 4 : get().inventoryMax),
+          warehouseItems: fixedWarehouseItems,
+          inventoryItems: allItems,
+          // 티켓은 inventoryItems 안에 아이템으로 저장됨. 개수 정보는 UI에서 type로 필터링
+          warehouseExpandTickets: allItems.filter(i => i.type === 'ticket_warehouse').reduce((a, i) => a + (i.quantity || 1), 0),
+          inventoryExpandTickets: allItems.filter(i => i.type === 'ticket_inventory').reduce((a, i) => a + (i.quantity || 1), 0),
+          bankData: {
+            ...get().bankData,
+            loanRate: bankRes.data.loanRate,
+            depositRate: bankRes.data.depositRate,
+            currentLoan: bankRes.data.currentLoan,
+            currentDeposit: bankRes.data.currentDeposit,
+          },
+          debt: bankRes.data.currentLoan,
+          workstationId: typeof workstationIdRes === "number" ? workstationIdRes : (workstationIdRes as any)?.data ?? 0,  // ✅ 실제 DB ID 저장
+          workstationState: {
+            ...get().workstationState,
+            isWorking: wsStatusRes.data?.isWorking ?? false,
+            producedCount: wsStatusRes.data?.producedQuantity ?? 0,
+            storedCount: wsStatusRes.data?.producedQuantity ?? 0,
+            requestedQty: wsStatusRes.data?.totalQuantity ?? 0,
+          },
+          // ✅ 장착된 일꾼 ID 동기화 (equipped: true인 아이템의 id 사용)
+          equippedWorkerId: allItems.find(i => i.equipped)?.id ?? null,
+          isLoading: false
+        });
+      } catch (error) {
+        console.error("전반적인 회사 게임 데이터 로드 실패:", error);
+        set({ isLoading: false });
+      }
+    },
 
     fetchNews: async () => {
       try {

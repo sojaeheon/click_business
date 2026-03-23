@@ -424,10 +424,10 @@ export function MarketPage() {
   const formatPrice = (value: number) => {
     if (!value) return "0";
     if (value >= 100000000) return `${(value / 100000000).toFixed(1)}억`;
-    if (value >= 10000) {
+    if (value >= 1000000) {
       const man = Math.floor(value / 10000);
-      const rest = Math.floor((value % 10000) / 1000);
-      return rest > 0 ? `${man}만${rest}천` : `${man}만`;
+      const rest = value % 10000;
+      return rest > 0 ? `${man}만 ${rest.toLocaleString()}` : `${man}만`;
     }
     return value.toLocaleString();
   };
@@ -820,7 +820,7 @@ export function MarketPage() {
                                 잔량 {(order.remainingQuantity ?? order.totalQuantity ?? 0).toLocaleString()} / 총 {(order.totalQuantity ?? 0).toLocaleString()}개
                               </span>
                               <span className="text-[10px] text-slate-400 font-bold">
-                                {order.createdAt ? new Date(order.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : ""}
+                                {order.createdAt ? new Date(order.createdAt.replace(' ', 'T') + (order.createdAt.endsWith('Z') ? '' : 'Z')).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : ""}
                               </span>
                             </div>
                           </div>
@@ -852,7 +852,7 @@ export function MarketPage() {
                                 {trade.orderType === "BUY" ? "매수" : "매도"} ₩{(trade.price ?? 0).toLocaleString()}
                               </span>
                               <span className="text-[11px] font-bold text-slate-400">
-                                {trade.createdAt ? new Date(trade.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : "방금 전"}
+                                {trade.createdAt ? new Date(trade.createdAt.replace(' ', 'T') + (trade.createdAt.endsWith('Z') ? '' : 'Z')).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : "방금 전"}
                               </span>
                             </div>
                             <div className="flex justify-between items-center mt-1">

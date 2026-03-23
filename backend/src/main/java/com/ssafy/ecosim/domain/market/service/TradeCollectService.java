@@ -54,6 +54,19 @@ public class TradeCollectService {
                         String.format("창고 공간이 부족합니다. 필요: %d, 가용: %d. 슬롯을 확보 후 수령하세요.", qty, available));
             }
 
+            // 가격 차액 환불 처리 (주문 가격 > 실제 체결 가격인 경우)
+            long paidPrice = order.getPrice();           // 주문 시 지불한 가격
+            long actualPrice = tradeHistory.getPrice();  // 실제 체결 가격
+            long refund = (paidPrice - actualPrice) * qty;
+
+            if (refund > 0) {
+                company.receiveCash(refund);
+                companyCashEventPublisher.publishCashChanged(
+                    company.getId(), company.getCash(), refund,
+                    "MARKET_BUY_PRICE_DIFF_REFUND", tradeHistoryId.toString(), Instant.now()
+                );
+            }
+
             // 아이템 지급 — WarehouseService 내부에서 warehouse.item.stored 이벤트 발행
             warehouseService.addItem(company.getId(), itemId, qty, "MARKET_BUY_COLLECT");
 
