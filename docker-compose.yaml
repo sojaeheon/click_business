@@ -11,13 +11,13 @@ include:
 #   jenkins:
 #     env_file: [infra/.env]
 #   namenode:
-#     env_file: [bigdata/hdfs/conf/hadoop.env]
+#     env_file: [data/hdfs/configs/hadoop.env]
 #     volumes:
 #       - ./bigdata/hdfs/storage/namenode:/hadoop/dfs/name
 #       - ./bigdata/hdfs/init:/init
 #       - ./bigdata/hdfs/sample-data:/sample-data
 #   datanode:
-#     env_file: [bigdata/hdfs/conf/hadoop.env]
+#     env_file: [data/hdfs/configs/hadoop.env]
 #     volumes:
 #       - ./bigdata/hdfs/storage/datanode:/hadoop/dfs/data
 #   spark-master:

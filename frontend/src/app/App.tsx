@@ -42,6 +42,9 @@ export default function App() {
         if (token) {
           // 회사 데이터 불러오기 요청
           await fetchCompanyData(1);
+        } else {
+          // 토큰이 없으면 로그인 페이지로 강제 이동 (400, 401 에러 폭주 방지)
+          window.location.href = '/';
         }
       } catch (error) {
         console.error("Failed to load initial game status", error);

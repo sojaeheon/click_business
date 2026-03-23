@@ -117,11 +117,9 @@ export function MarketPage() {
   const [showPopup, setShowPopup] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // 1분봉 차트 데이터: 각 분에 하나의 가격 포인트 누적
+  // 5분봉 차트 데이터
   const [chartData, setChartData] = useState<{ time: string; price: number; open?: number; high?: number; low?: number; close?: number }[]>([]);
-  const minuteCandlesRef = useRef<Map<string, { open: number; high: number; low: number; close: number }>>(new Map()); // "HH:MM" → 해당 분의 캔들 정보
   const [chartType, setChartType] = useState<"candle" | "line">("candle"); // 차트 타입 상태
-  const [currentMinuteKey, setCurrentMinuteKey] = useState<string>("");
 
   const [orderBook, setOrderBook] = useState<{ asks: Array<{ price: number, quantity: number }>, bids: Array<{ price: number, quantity: number }> }>({ asks: [], bids: [] });
   const [tradeHistory, setTradeHistory] = useState<any[]>([]);
@@ -178,40 +176,10 @@ export function MarketPage() {
 
   const itemId = mode ? getItemId(mode) : 1;
 
-  // 💾 과거 데이터 프론트(로컬스토리지) 백업 & 복구
+  // 모드/아이템 변경 시 차트 초기화
   useEffect(() => {
-    const saved = localStorage.getItem(`market_chart_${itemId}`);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        minuteCandlesRef.current = new Map(Object.entries(parsed));
-        
-        // chartData 로 변환하여 초기 뷰 설정
-        const deduplicated = Array.from(minuteCandlesRef.current.entries()).map(([k, v]: any) => ({
-          time: k,
-          price: v.close,
-          open: v.open,
-          high: v.high,
-          low: v.low,
-          close: v.close
-        }));
-        setChartData(deduplicated);
-      } catch (e) {
-        console.warn("로컬 차트 데이터 복구 실패:", e);
-      }
-    } else {
-      // 데이터가 없으면 비워두기
-      minuteCandlesRef.current.clear();
-      setChartData([]);
-    }
+    setChartData([]);
   }, [itemId]);
-
-  const saveToLocal = (mapObj: Map<string, any>) => {
-    const obj = Object.fromEntries(mapObj);
-    localStorage.setItem(`market_chart_${itemId}`, JSON.stringify(obj));
-  };
-
-  // 1분봉을 위해 상시 업데이트할 필요 없음 (getDisplayChartData 에서 막대에 currentPrice 를 연동함)
 
   // ⏱️ 실시간 데이터 업데이트 (오더북, 체결내역, 미체결 주문)
   useEffect(() => {
@@ -247,51 +215,42 @@ export function MarketPage() {
           setOrderBook({ asks: [], bids: [] });
         }
 
-        // [2] 차트 조회 (B안)
+        // [2] 백엔드 5분봉 차트 조회
         try {
           const chartRes = await MarketAPI.getMarketChart(itemId);
           const cData = chartRes.data?.data ?? chartRes.data;
           if (cData && Array.isArray(cData.points)) {
+            // 5분 단위 버킷으로 OHLC 집계
             const minMap = new Map<string, { open: number; high: number; low: number; close: number; time: string }>();
-            
+
             cData.points.forEach((d: any) => {
               const dt = d.timestamp ? new Date(d.timestamp) : new Date();
-              // 🌟 5분 단위의 버킷 키 생성 (예: 11:13 -> 11:10)
               const bucketM = Math.floor(dt.getMinutes() / 5) * 5;
               const minStr = `${dt.getHours().toString().padStart(2, '0')}:${bucketM.toString().padStart(2, '0')}`;
               const p = d.price ?? 0;
               if (minMap.has(minStr)) {
-                const existing = minMap.get(minStr)!;
-                existing.high = Math.max(existing.high, p);
-                existing.low = Math.min(existing.low, p);
-                existing.close = p;
+                const ex = minMap.get(minStr)!;
+                ex.high = Math.max(ex.high, p);
+                ex.low = Math.min(ex.low, p);
+                ex.close = p;
               } else {
                 minMap.set(minStr, { time: minStr, open: p, high: p, low: p, close: p });
               }
             });
 
-            // 🌟 로컬 프론트 머지 (데이터 유실 방지)
-            const mergedMap = new Map<string, { open: number; high: number; low: number; close: number; time: string }>();
-            minuteCandlesRef.current.forEach((v, k) => mergedMap.set(k, { ...v, time: k }));
-            minMap.forEach((v, k) => mergedMap.set(k, v));
+            // 시간 순서대로 정렬 후 chartData로 변환
+            const sorted = Array.from(minMap.entries())
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([, v]) => ({
+                time: v.time,
+                price: v.close,
+                open: v.open,
+                high: v.high,
+                low: v.low,
+                close: v.close
+              }));
 
-            // Ref 갱신
-            minuteCandlesRef.current = new Map(
-              Array.from(mergedMap.entries()).map(([k, v]) => [k, { open: v.open, high: v.high, low: v.low, close: v.close }])
-            );
-
-            // 💾 갱신한 맵 로컬스토리지 백업
-            saveToLocal(minuteCandlesRef.current);
-
-            const deduplicated = Array.from(mergedMap.values()).map(v => ({
-              time: v.time,
-              price: v.close,
-              open: v.open,
-              high: v.high,
-              low: v.low,
-              close: v.close
-            }));
-            setChartData(deduplicated);
+            setChartData(sorted);
           }
         } catch (e) {
           console.warn("차트 조회 실패:", e);

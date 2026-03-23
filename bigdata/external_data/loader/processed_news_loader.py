@@ -1,6 +1,8 @@
 import csv
-import psycopg2
 from pathlib import Path
+
+import psycopg2
+
 
 # PostgreSQL 연결 정보
 conn = psycopg2.connect(
@@ -8,21 +10,26 @@ conn = psycopg2.connect(
     port=5432,
     dbname="ecosim",
     user="ecosim",
-    password="ecosim"
+    password="ecosim",
 )
 cur = conn.cursor()
 
-file_path = 'Refined_news.csv'
-path = Path(file_path)
+file_path = (
+    Path(__file__).resolve().parent.parent
+    / "storage"
+    / "processed"
+    / "Refined_news.csv"
+)
 
-if not path.exists():
+if not file_path.exists():
     print(f"{file_path} 파일이 존재하지 않습니다. 경로를 다시 확인해주세요.")
-    exit()
+    raise SystemExit(1)
 
 print("🚀 데이터 적재를 시작합니다...")
 
 # external_news 테이블이 없으면 생성
-cur.execute("""
+cur.execute(
+    """
     CREATE TABLE IF NOT EXISTS external_news (
         external_news_id BIGSERIAL PRIMARY KEY,
         title VARCHAR(200) NOT NULL,
@@ -30,15 +37,17 @@ cur.execute("""
         published_at TIMESTAMP NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
-""")
+    """
+)
 conn.commit()
 
-with open(path, newline='', encoding='utf-8-sig') as csvfile:
+with file_path.open(newline="", encoding="utf-8-sig") as csvfile:
     reader = csv.DictReader(csvfile)
-    
+
     count = 0
     for row in reader:
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO external_news (
                 title,
                 content,
@@ -48,11 +57,13 @@ with open(path, newline='', encoding='utf-8-sig') as csvfile:
                 %(Refined_Content)s,
                 %(Date)s
             )
-        """, {
-            'Neutral_Title': row['Neutral_Title'],
-            'Refined_Content': row['Refined_Content'],
-            'Date': row['Date']
-        })
+            """,
+            {
+                "Neutral_Title": row["Neutral_Title"],
+                "Refined_Content": row["Refined_Content"],
+                "Date": row["Date"],
+            },
+        )
         count += 1
         if count % 1000 == 0:
             print(f"✅ {count}개 적재 중...")

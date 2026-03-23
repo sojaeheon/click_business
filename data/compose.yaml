@@ -48,7 +48,7 @@ services:
 
     env_file:
       # Hadoop 환경 변수 파일
-      - ./hdfs/conf/hadoop.env
+      - ./hdfs/configs/hadoop.env
 
     volumes:
       # NameNode 메타데이터 저장
@@ -59,6 +59,12 @@ services:
 
       # 샘플 데이터 폴더
       - ./hdfs/sample-data:/sample-data
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9870/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
     networks:
       - ecosim-network
@@ -84,7 +90,7 @@ services:
       SERVICE_PRECONDITION: "namenode:9870"
 
     env_file:
-      - ./hdfs/conf/hadoop.env
+      - ./hdfs/configs/hadoop.env
 
     volumes:
       # 실제 데이터 블록 저장
@@ -214,7 +220,7 @@ services:
   order-redis-consumer:
     build:
       context: ../bigdata
-      dockerfile: dockerfile/Dockerfile.kafka
+      dockerfile: kafka/Dockerfile.kafka
     container_name: order-redis-consumer
     restart: always
     depends_on:
@@ -228,7 +234,7 @@ services:
   order-db-consumer:
     build:
       context: ../bigdata
-      dockerfile: dockerfile/Dockerfile.kafka
+      dockerfile: kafka/Dockerfile.kafka
     container_name: order-db-consumer
     restart: always
     depends_on:
@@ -242,7 +248,7 @@ services:
   order-hdfs-consumer:
     build:
       context: ../bigdata
-      dockerfile: dockerfile/Dockerfile.kafka
+      dockerfile: kafka/Dockerfile.kafka
     container_name: order-hdfs-consumer
     restart: always
     depends_on:
@@ -262,7 +268,7 @@ services:
   trade-db-consumer:
     build:
       context: ../bigdata
-      dockerfile: dockerfile/Dockerfile.kafka
+      dockerfile: kafka/Dockerfile.kafka
     container_name: trade-db-consumer
     restart: always
     depends_on:
@@ -276,7 +282,7 @@ services:
   trade-hdfs-consumer:
     build:
       context: ../bigdata
-      dockerfile: dockerfile/Dockerfile.kafka
+      dockerfile: kafka/Dockerfile.kafka
     container_name: trade-hdfs-consumer
     restart: always
     depends_on:
@@ -299,7 +305,7 @@ services:
   hdfs-raw-sink-consumer:
     build:
       context: ../bigdata
-      dockerfile: dockerfile/Dockerfile.kafka
+      dockerfile: kafka/Dockerfile.kafka
     container_name: hdfs-raw-sink-consumer
     restart: always
     depends_on:

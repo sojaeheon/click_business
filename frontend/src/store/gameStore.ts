@@ -17,6 +17,20 @@ export interface BankData { loanRate: number; depositRate: number; currentLoan: 
 // 슬롯 하나에 담을 수 있는 최대량 (예: 100개)
 export const MAX_PER_SLOT = 100;
 
+// 영어 산업명 → 한글 변환
+const INDUSTRY_KO: Record<string, string> = {
+  GOLD_MINING: "금광업",
+  GOLD_SMELTING: "금 제련업",
+  MANUFACTURING: "제조업",
+};
+export function toKoIndustry(name: string): string {
+  return INDUSTRY_KO[name] ?? name;
+}
+/** 문자열 내 영어 산업명을 한글로 치환 */
+export function localizeIndustryText(text: string): string {
+  return text.replace(/GOLD_MINING|GOLD_SMELTING|MANUFACTURING/g, (m) => INDUSTRY_KO[m] ?? m);
+}
+
 export interface WarehouseItem {
   id: string;
   type: "material" | "product";
@@ -25,7 +39,6 @@ export interface WarehouseItem {
 }
 
 // ─── 인벤토리 아이템 종류 ────────────────────────────────────────────────
-// 캐릭터(일꾼) Lv1~6 + 창고 슬롯 확장권 + 인벤토리 슬롯 확장권
 export type InventoryItemType =
   | "worker_lv1"
   | "worker_lv2"
@@ -98,9 +111,16 @@ export interface GameState {
     isWorking: boolean;
     startTime: number;
     totalMs: number;
+    endTime: number | null;
     requestedQty: number;
     storedCount: number;
     producedCount: number;
+    collectedTotal: number;
+    uncollectedPile: number;
+    // ✅ 백엔드에서 받는 생산 관련 추가 필드
+    minuteOutput: number | null;      // 분당 생산량 (백엔드에서 산업별로 계산)
+    workerLevel: number | null;       // 장착 캐릭터 레벨
+    speedMultiplier: number | null;   // 속도 가중치 (레벨별 1.0, 1.5, 2.0 등)
   };
   setWorkstationState: (updater: Partial<GameState["workstationState"]>) => void;
 
@@ -118,7 +138,7 @@ export interface GameState {
 
   // 은행 데이터 동기화
   updateBankData: (data: Partial<BankData>) => void;
-  updateDebt: (amount: number) => void; // 양수 = 부칄 증가, 음수 = 부칄 감소
+  updateDebt: (amount: number) => void; // 양수 = 부채 증가, 음수 = 부채 감소
 
   getWarehouseUsage: () => { usedSlots: number; percent: number };
   getIndustryItemNames: (indOverride?: string) => { material: string; product: string; reqMat: number; resProd: number; batchSize: number };
@@ -128,15 +148,15 @@ export interface GameState {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// 3. 상태 관리소 (persist 미들웨어 적용)
+// 3. 상태 관리소
 // ─────────────────────────────────────────────────────────────────────────
 export const useGameStore = create<GameState>()(
   (set, get) => ({
     companyName: "",
     industry: "금광업",
-    money: 5000000,
+    money: 0,
     currency: "₩",
-    capital: 5000000,
+    capital: 0,
     debt: 0,
     warehouseMaxSlots: 6,
     inventoryMax: 4,
@@ -150,7 +170,7 @@ export const useGameStore = create<GameState>()(
     warehouseItems: [],
     hrData: { currentLevel: 0, expectedLevel: 0, successRate: 0, materialCurrent: 0, materialMax: 0 },
     isLoading: false,
-    workstationId: 0,  // ✅ 실제 DB workstation ID (0 = 아직 불러옴)
+    workstationId: 0,
     inventoryItems: [],
     warehouseExpandTickets: 0,
     inventoryExpandTickets: 0,
@@ -216,7 +236,7 @@ export const useGameStore = create<GameState>()(
     openBuildingPage: (page) => set({ activeBuildingPage: page }),
     closeBuildingPage: () => set({ activeBuildingPage: null }),
 
-    setCompanyInfo: (name, industry) => set({ companyName: name, industry }),
+    setCompanyInfo: (name, industry) => set({ companyName: name, industry: toKoIndustry(industry) }),
 
 
 
@@ -228,7 +248,6 @@ export const useGameStore = create<GameState>()(
     })),
 
     getWarehouseUsage: () => {
-      // 백엔드에서 빈 슬롯을 걸러낸(item이 존재하는) 슬롯 배열의 길이를 사용합니다.
       const usedSlots = get().warehouseItems.length;
       const percent = Math.min((usedSlots / get().warehouseMaxSlots) * 100, 100);
       return { usedSlots, percent };
@@ -247,13 +266,12 @@ export const useGameStore = create<GameState>()(
     fetchCompanyData: async (companyId: number) => {
       set({ isLoading: true });
       try {
-        // 백엔드 API 종합 호출 (workstationId도 함께 초기화)
         const [companyRes, warehouseRes, inventoryRes, bankRes, workstationIdRes, wsStatusRes] = await Promise.all([
           CompanyAPI.getStatus(),
           WarehouseAPI.getWarehouseItems(1).catch(() => ({ data: [], maxSlots: undefined })),
           InventoryAPI.getInventory(companyId).catch(() => ({ data: [], maxSlots: undefined })),
           BankAPI.getSummary(companyId).catch(() => ({ data: { loanRate: 0, depositRate: 0, currentLoan: 0, currentDeposit: 0 } })),
-          WorkstationAPI.getMyId().catch(() => 1), // 에러시 1로 폴백
+          WorkstationAPI.getMyId().catch(() => 1),
           WorkstationAPI.getStatus().catch(() => ({ data: null }))
         ]);
 
@@ -315,8 +333,7 @@ export const useGameStore = create<GameState>()(
           };
         });
 
-        // ✅ 더미 아이템 삽입 제거: 이제 실제 DB에 있는 데이터만 보여줌 (빈 DB일 경우 400 에러 혼동 방지)
-        const finalIndustry = realData?.industry_type ?? get().industry;
+        const finalIndustry = toKoIndustry(realData?.industry_type ?? get().industry);
         const { material, product } = get().getIndustryItemNames(finalIndustry);
 
         const fixedWarehouseItems = (warehouseRes.data as WarehouseItem[]).map(item => ({

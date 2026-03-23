@@ -30,6 +30,7 @@ public class MarketController {
 
     private final OrderBookService orderBookService;
     private final CompanyRepository companyRepository;
+    private final com.ssafy.ecosim.domain.market.service.CandleService candleService;
 
     @Operation(summary = "실시간 호가창 조회", description = "지정한 아이템의 현재가, 매수/매도 호가 목록(최대 10레벨)을 반환합니다.")
     @GetMapping("/orderbooks")
@@ -60,6 +61,16 @@ public class MarketController {
             @Parameter(description = "조회할 아이템 ID", example = "1") @RequestParam("item_id") Integer itemId) {
         
         com.ssafy.ecosim.domain.market.dto.response.ChartDataResponseDto response = orderBookService.getChartData(itemId);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @Operation(summary = "5분봉 차트 데이터 조회", description = "특정 아이템의 5분봉 캔들 데이터를 반환합니다. 확정된 분봉과 현재 진행중인 분봉을 포함합니다.")
+    @GetMapping("/candles")
+    public ResponseEntity<ApiResponse<List<com.ssafy.ecosim.domain.market.dto.response.CandleResponse>>> get5MinCandles(
+            @Parameter(description = "조회할 아이템 ID", example = "1") @RequestParam("item_id") Integer itemId,
+            @Parameter(description = "조회할 분봉 개수", example = "100") @RequestParam(value = "count", defaultValue = "100") int count) {
+        
+        List<com.ssafy.ecosim.domain.market.dto.response.CandleResponse> response = candleService.get5MinCandles(itemId, count);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 }
