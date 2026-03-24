@@ -268,35 +268,6 @@ public class WorkstationService {
                 }
 
                 // 장착된 일꾼 정보: 인벤토리 슬롯 직접 조회 (가장 정확)
-                Inventory inventory = inventoryRepository.findByCompanyId(companyId)
-                        .orElseThrow(() -> new IllegalArgumentException("인벤토리를 찾을 수 없습니다."));
-
-                double workerMult = 1.0;
-                InventorySlot equippedSlot = inventory.getSlots().stream()
-                        .filter(InventorySlot::isEquipped)
-                        .filter(s -> s.getItem() != null && s.getItem().getWorkerLevel() != null)
-                        .findFirst()
-                        .orElse(null);
-
-                if (equippedSlot != null) {
-                        builder.equippedWorkerSlotIndex(equippedSlot.getSlotIndex());
-                        builder.equippedWorkerLevel(equippedSlot.getItem().getWorkerLevel());
-                        workerMult = getWorkerSpeedMultiplier(equippedSlot.getItem().getWorkerLevel());
-                }
-
-                // 예상 완료 시각 계산 (가동 중이고 예약 재료가 있을 때만)
-                if (workstation.getIsActive() && workstation.getReservedQuantity() > 0) {
-                        long productionPerMinute = (workstation.getEquipmentInventory() != null)
-                                ? workstation.getEquipmentInventory().getLevel() : 1L;
-                        double productionPerSecond = productionPerMinute / 60.0 * workerMult;
-                        int requirement = workstation.getCompany().getIndustryType().getBaseRequirement();
-                        long availableLaps = workstation.getReservedQuantity() / requirement;
-
-                        long secondsToComplete = (long) Math.ceil(availableLaps / productionPerSecond);
-                        // Instant.now() 기준으로 계산 (클라이언트가 받는 즉시 정확한 남은 시간)
-                        builder.expectedEndTime(Instant.now().plusSeconds(secondsToComplete));
-                }
-
                 double workerMult = 1.0;
                 if (workstation.getEquippedWorkerSlotIndex() != null) {
                         builder.equippedWorkerSlotIndex(workstation.getEquippedWorkerSlotIndex());
