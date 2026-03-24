@@ -3,7 +3,6 @@ package com.ssafy.ecosim.domain.market.service;
 import com.ssafy.ecosim.domain.market.dto.CandleData;
 import com.ssafy.ecosim.domain.market.dto.response.CandleResponse;
 import com.ssafy.ecosim.domain.market.entity.MarketCandle;
-import com.ssafy.ecosim.domain.market.repository.MarketCandleRepository;
 import com.ssafy.ecosim.domain.market.repository.redis.OrderBookManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,79 +18,79 @@ public class CandleService {
 
     private final CandleManager candleManager;
     private final OrderBookManager orderBookManager;
-    private final MarketCandleRepository marketCandleRepository;
+
+    /**
+     * 1분봉 데이터를 조회합니다.
+     */
+    public List<CandleResponse> get1MinCandles(Integer itemId, int count) {
+        return getCandles(itemId, count, MarketCandle.CandleType.MIN_1);
+    }
 
     /**
      * 5분봉 데이터를 조회합니다.
-     * - 확정된 분봉: Redis에서 조회
-     * - 현재 진행중인 분봉: 실시간 시장가로 생성
      */
     public List<CandleResponse> get5MinCandles(Integer itemId, int count) {
+        return getCandles(itemId, count, MarketCandle.CandleType.MIN_5);
+    }
+
+    private List<CandleResponse> getCandles(Integer itemId, int count, MarketCandle.CandleType type) {
         List<CandleResponse> result = new ArrayList<>();
         
         // 1. 현재 진행중인 분봉 생성 (isLive = true)
-        CandleData currentCandle = buildCurrentCandle(itemId);
+        CandleData currentCandle = buildCurrentCandle(itemId, type);
         if (currentCandle != null) {
             result.add(CandleResponse.from(currentCandle, true));
         }
         
         // 2. 확정된 분봉 조회 (isLive = false)
-        List<CandleData> confirmedCandles = candleManager.get5MinCandles(itemId, count - 1);
+        List<CandleData> confirmedCandles = candleManager.getCandles(itemId, count - 1, type);
         
         // 3. Redis에 데이터가 없으면 DB에서 조회 후 Redis에 백업
         if (confirmedCandles == null || confirmedCandles.isEmpty()) {
-            log.info("[CandleService] Redis에 분봉 데이터 없음. DB에서 조회 시작: itemId={}", itemId);
+            log.info("[CandleService] Redis에 {} 데이터 없음. DB에서 조회 시작: itemId={}", type, itemId);
             
-            // DB에서 최근 100개 분봉 조회
-            List<MarketCandle> dbCandles = marketCandleRepository
-                .findTop100ByItemIdOrderByCandleTimeDesc(itemId);
+            List<CandleData> dbCandles = candleManager.getCandlesFromDB(itemId, count - 1, type);
             
             if (!dbCandles.isEmpty()) {
-                log.info("[CandleService] DB에서 {}개 분봉 조회 완료. Redis로 백업 시작...", dbCandles.size());
+                log.info("[CandleService] DB에서 {}개 {} 조회 완료. Redis로 백업 시작...", dbCandles.size(), type);
                 
                 // DB 데이터를 Redis에 백업 (역순으로 추가 - 오래된 것부터)
                 for (int i = dbCandles.size() - 1; i >= 0; i--) {
-                    MarketCandle candle = dbCandles.get(i);
-                    candleManager.addCandle(
-                        itemId,
-                        candle.getOpen(),
-                        candle.getHigh(),
-                        candle.getLow(),
-                        candle.getClose(),
-                        candle.getVolume(),
-                        candle.getCandleTime()
-                    );
+                    CandleData candle = dbCandles.get(i);
+                    candleManager.saveCandleToRedis(itemId, candle, type);
                 }
                 
-                log.info("[CandleService] Redis 백업 완료: itemId={}, 백업된 분봉 개수={}", itemId, dbCandles.size());
+                log.info("[CandleService] Redis 백업 완료: itemId={}, {} 개수={}", itemId, type, dbCandles.size());
                 
                 // Redis에서 다시 조회 (백업된 데이터)
-                confirmedCandles = candleManager.get5MinCandles(itemId, count - 1);
+                confirmedCandles = candleManager.getCandles(itemId, count - 1, type);
             } else {
-                log.warn("[CandleService] DB에도 분봉 데이터 없음: itemId={}", itemId);
+                log.warn("[CandleService] DB에도 {} 데이터 없음: itemId={}", type, itemId);
             }
         }
         
-        for (CandleData candle : confirmedCandles) {
-            result.add(CandleResponse.from(candle, false));
+        if (confirmedCandles != null) {
+            for (CandleData candle : confirmedCandles) {
+                result.add(CandleResponse.from(candle, false));
+            }
         }
         
         return result;
     }
 
     /**
-     * 현재 진행중인 5분봉을 실시간 데이터로 생성합니다.
+     * 현재 진행중인 분봉을 실시간 데이터로 생성합니다.
      */
-    private CandleData buildCurrentCandle(Integer itemId) {
+    private CandleData buildCurrentCandle(Integer itemId, MarketCandle.CandleType type) {
         try {
             long now = System.currentTimeMillis();
-            long candleStart = roundTo5Min(now); // 현재 5분봉 시작 시간
+            long durationMillis = (type == MarketCandle.CandleType.MIN_1) ? 60_000 : 300_000;
+            long candleStart = roundToDuration(now, durationMillis);
             
             // Redis에서 최근 체결 데이터 조회
             List<String> chartData = orderBookManager.getChartData(itemId);
             
             if (chartData == null || chartData.isEmpty()) {
-                // 데이터가 없으면 현재 시장가로 대체
                 Long currentPrice = orderBookManager.getMarketPrice(itemId);
                 if (currentPrice == null) return null;
                 
@@ -105,7 +104,6 @@ public class CandleService {
                     .build();
             }
             
-            // timestamp:price 형식 파싱
             List<PricePoint> prices = new ArrayList<>();
             for (String data : chartData) {
                 try {
@@ -113,7 +111,6 @@ public class CandleService {
                     long timestamp = Long.parseLong(parts[0]);
                     long price = Long.parseLong(parts[1]);
                     
-                    // 현재 5분봉 범위 내의 데이터만 포함
                     if (timestamp >= candleStart) {
                         prices.add(new PricePoint(timestamp, price));
                     }
@@ -136,10 +133,8 @@ public class CandleService {
                     .build();
             }
             
-            // 시간순 정렬
             prices.sort((a, b) -> Long.compare(a.timestamp, b.timestamp));
             
-            // OHLC 계산
             long open = prices.get(0).price;
             long close = prices.get(prices.size() - 1).price;
             long high = prices.stream().mapToLong(p -> p.price).max().orElse(close);
@@ -154,17 +149,13 @@ public class CandleService {
                 .timestamp(candleStart)
                 .build();
         } catch (Exception e) {
-            log.error("[CandleService] 현재 분봉 생성 실패", e);
+            log.error("[CandleService] 현재 {} 생성 실패", type, e);
             return null;
         }
     }
 
-    /**
-     * 밀리초를 5분 단위로 내림합니다.
-     */
-    private long roundTo5Min(long millis) {
-        long fiveMin = 5 * 60 * 1000; // 5분 = 300,000ms
-        return (millis / fiveMin) * fiveMin;
+    private long roundToDuration(long millis, long durationMillis) {
+        return (millis / durationMillis) * durationMillis;
     }
 
     /**
