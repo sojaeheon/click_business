@@ -3,8 +3,6 @@ services:
     build: .
     container_name: ecosim-frontend
     restart: always
-    ports:
-      - "80:80"
     depends_on:
       - backend
     networks:
