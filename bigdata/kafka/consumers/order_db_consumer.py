@@ -134,7 +134,7 @@ for message in consumer:
         data = message.value
         event_type = data.get("event_type")
         payload = data.get("payload")
-        print(json.dumps(data, indent=2, ensure_ascii=False))
+        # print(json.dumps(data, indent=2, ensure_ascii=False))
 
         if not payload:
             continue
@@ -146,7 +146,7 @@ for message in consumer:
         # Kafka commit
         consumer.commit()
 
-        print(f"[SUCCESS] {event_type} 처리 완료")
+        # print(f"[SUCCESS] {event_type} 처리 완료")
 
     except Exception as e:
         print(f"[ERROR] {e}")

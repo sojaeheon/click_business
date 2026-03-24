@@ -6,6 +6,7 @@ import com.ssafy.ecosim.domain.inventory.service.WarehouseService;
 import com.ssafy.ecosim.domain.market.entity.MarketOrder;
 import com.ssafy.ecosim.domain.market.entity.OrderType;
 import com.ssafy.ecosim.domain.market.entity.TradeHistory;
+import com.ssafy.ecosim.domain.market.repository.MarketOrderRepository;
 import com.ssafy.ecosim.domain.market.repository.TradeHistoryRepository;
 import com.ssafy.ecosim.global.kafka.publisher.CompanyCashEventPublisher;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ import java.time.Instant;
 public class TradeCollectService {
 
     private final TradeHistoryRepository tradeHistoryRepository;
+    private final MarketOrderRepository marketOrderRepository;
     private final CompanyRepository companyRepository;
     private final WarehouseService warehouseService;
     private final CompanyCashEventPublisher companyCashEventPublisher;
@@ -36,7 +38,9 @@ public class TradeCollectService {
         Company company = companyRepository.findByUser_Id(userId)
                 .orElseThrow(() -> new IllegalArgumentException("해당 유저에게 소속된 회사가 없습니다."));
 
-        MarketOrder order = tradeHistory.getMarketOrder();
+        MarketOrder order = marketOrderRepository.findById(tradeHistory.getMarketOrderId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "원 주문이 존재하지 않아 체결 수령을 진행할 수 없습니다. orderId=" + tradeHistory.getMarketOrderId()));
         if (!order.getCompanyId().equals(company.getId())) {
             throw new IllegalStateException("본인 회사의 체결 내역만 수령할 수 있습니다.");
         }
@@ -44,7 +48,11 @@ public class TradeCollectService {
         tradeHistory.collect();
 
         if (order.getOrderType() == OrderType.BUY) {
-            long itemId = order.getItemId().longValue();
+            if (tradeHistory.getItemId() == null) {
+                throw new IllegalStateException("체결 내역에 item_id가 없어 수령을 진행할 수 없습니다.");
+            }
+
+            long itemId = tradeHistory.getItemId().longValue();
             long qty = tradeHistory.getExecutionQuantity();
 
             // 창고 여유 공간 사전 확인
@@ -82,4 +90,3 @@ public class TradeCollectService {
         }
     }
 }
-

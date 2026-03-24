@@ -11,6 +11,9 @@ import lombok.Getter;
 @Getter
 @Builder
 public class TradeEventDto {
+    @JsonProperty("trade_id")
+    private Long tradeId;
+
     @JsonProperty("buy_order_id")
     private Long buyOrderId;
 
@@ -28,6 +31,12 @@ public class TradeEventDto {
 
     @JsonProperty("quantity")
     private Long quantity;
+
+    @JsonProperty("buy_remaining_quantity")
+    private Long buyRemainingQuantity;
+
+    @JsonProperty("sell_remaining_quantity")
+    private Long sellRemainingQuantity;
 
     @JsonProperty("executed_at")
     private Long executedAt;

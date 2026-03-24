@@ -52,6 +52,7 @@ def insert_trade(conn, payload):
     price = payload["price"]
     quantity = payload["quantity"]
     executed_at = to_datetime(payload.get("executed_at"))
+    item_id = payload["item_id"]
 
     buy_order_id = payload["buy_order_id"]
     sell_order_id = payload["sell_order_id"]
@@ -63,14 +64,16 @@ def insert_trade(conn, payload):
         cur.execute("""
             INSERT INTO trade_history (
                 market_order_id,
+                item_id,
                 order_type,
                 price,
                 execution_quantity,
                 is_collected,
                 created_at
-            ) VALUES (%s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (
             buy_order_id,
+            item_id,
             "BUY",
             price,
             quantity,
@@ -84,14 +87,16 @@ def insert_trade(conn, payload):
         cur.execute("""
             INSERT INTO trade_history (
                 market_order_id,
+                item_id,
                 order_type,
                 price,
                 execution_quantity,
                 is_collected,
                 created_at
-            ) VALUES (%s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (
             sell_order_id,
+            item_id,
             "SELL",
             price,
             quantity,
@@ -111,6 +116,7 @@ for message in consumer:
         data = message.value
         event_type = data.get("event_type")
         payload = data.get("payload")
+        # print(json.dumps(data, indent=2, ensure_ascii=False))
 
         if not payload:
             print("[WARN] payload 없음")
@@ -128,7 +134,7 @@ for message in consumer:
         # Kafka commit
         consumer.commit()
 
-        print(f"[SUCCESS] trade 저장 완료 → buy={payload.get('buy_order_id')}, sell={payload.get('sell_order_id')}")
+        # print(f"[SUCCESS] {event_type} 처리 완료")
 
     except Exception as e:
         print(f"[ERROR] {e}")
