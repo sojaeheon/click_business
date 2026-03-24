@@ -53,6 +53,9 @@ export function useNotificationSocket() {
               recentMessages.delete(data.message);
             }, 60000);
 
+            // PRODUCTION 알림은 백엔드가 1랩 단위로 보내므로 프론트에서 무시 (프론트 자체 완료 알림 사용)
+            if (data.type === 'PRODUCTION') return;
+
             // gameStore에 알림 추가 (벨 배지 + AlertModal 목록) — 영어 산업명 한글 치환
             const localizedMsg = localizeIndustryText(data.message);
             addAlert({ message: localizedMsg, detail: data.type });
@@ -60,7 +63,17 @@ export function useNotificationSocket() {
             // 화면 우하단 토스트 팝업 — 클릭 시 알림 모달 열기
             toast(localizedMsg, {
               description: typeLabel(data.type),
-              duration: 4000,
+              duration: 5000,
+              style: {
+                background: '#111827',
+                border: '2px solid #374151',
+                borderRadius: '1rem',
+                color: '#f3f4f6',
+                fontWeight: 700,
+                padding: '16px 20px',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
+                fontSize: '14px',
+              },
               action: {
                 label: '확인',
                 onClick: () => useGameStore.getState().openModal('alert'),

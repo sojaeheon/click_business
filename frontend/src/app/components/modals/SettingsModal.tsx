@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
-import { Mail, Volume2, LogOut, UserX } from "lucide-react";
+import { Mail, Volume2, VolumeX, LogOut, UserX } from "lucide-react";
 import { useAlertStore } from "../../../store/useAlertStore";
 import { UserAPI, AuthAPI } from "../../../api/gameApi";
+import { useGameStore } from "../../../store/gameStore";
 
 export function SettingsModal() {
-  const [volume, setVolume] = useState(70);
+  const volume = useGameStore(state => state.bgmVolume);
+  const setVolume = useGameStore(state => state.setBgmVolume);
   const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
   const [userProfile, setUserProfile] = useState<{ email: string; loginMethod: string }>({
     email: "로딩 중...",
@@ -99,7 +101,11 @@ export function SettingsModal() {
         {/* 음량조절 */}
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-500 w-28 flex-shrink-0">음량조절 :</span>
-          <Volume2 className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          <button onClick={() => setVolume(volume > 0 ? 0 : 70)} className="flex-shrink-0 cursor-pointer">
+            {volume > 0
+              ? <Volume2 className="w-4 h-4 text-gray-400" />
+              : <VolumeX className="w-4 h-4 text-red-400" />}
+          </button>
           <input
             type="range"
             min="0"

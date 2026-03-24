@@ -9,6 +9,7 @@ import { MinigameAPI } from "../../api/gameApi";
 import { BackButton } from "../../app/components/ui/backbutton";
 import { useAlertStore } from "../../store/useAlertStore";
 import { WORKER_LEVEL_IMAGES } from "../../constants/workers";
+import { playSfx } from "../../utils/sfx";
 
 // ✨ shadcn/ui AlertDialog 임포트 추가 (경로는 프로젝트에 맞게 확인해주세요!)
 import {
@@ -59,7 +60,7 @@ export function MinigamePage() {
   const closeBuildingPage = useGameStore((state) => state.closeBuildingPage);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  const TOTAL_CLICKS = 1;
+  const TOTAL_CLICKS = 80;
   const [gameState, setGameState] = useState<"locked" | "playing" | "success" | "failure">("locked");
   const [timeLeft, setTimeLeft] = useState(10);
   const [clicksLeft, setClicksLeft] = useState(TOTAL_CLICKS);
@@ -169,6 +170,8 @@ export function MinigamePage() {
   const handleClickBuilding = () => {
     if (gameState !== "playing") return;
 
+    playSfx("/audio/hit.wav", 0.4);
+
     if (buttonRef.current) {
       buttonRef.current.classList.remove("hit-shake-anim");
       void buttonRef.current.offsetWidth;
@@ -178,15 +181,16 @@ export function MinigamePage() {
     const hitX = 350;
     const hitY = 350;
 
-    const offsetX = (Math.random() - 0.5) * 200;
-    const offsetY = (Math.random() - 0.5) * 200;
-
-    const newEffect = { id: Date.now(), x: hitX + offsetX, y: hitY + offsetY };
-    setClickEffects((prev) => [...prev, newEffect]);
+    const newEffects = [{
+      id: Date.now(),
+      x: hitX + (Math.random() - 0.5) * 180,
+      y: hitY + (Math.random() - 0.5) * 180,
+    }];
+    setClickEffects((prev) => [...prev, ...newEffects]);
 
     setTimeout(() => {
-      setClickEffects((prev) => prev.filter((ef) => ef.id !== newEffect.id));
-    }, 400);
+      setClickEffects((prev) => prev.filter((ef) => !newEffects.some(ne => ne.id === ef.id)));
+    }, 500);
 
     setClicksLeft((prev) => {
       const damage = isFever ? Math.floor(Math.random() * 2) + 2 : 1;
@@ -218,13 +222,25 @@ export function MinigamePage() {
                }
             }
 
-            setRewardItem({
-              type: typeStr as any,
-              name: data.itemName,
-              quantity: 1,
-              icon: iconStr,
-              level: data.workerLevel || undefined
-            });
+            // 이미지 프리로드 후 rewardItem 세팅 (이전 아이템 잔상 방지)
+            const imgSrc = data.itemType === "EQUIPMENT" ? WORKER_LEVEL_IMAGES[data.workerLevel || 1] : null;
+            const setReward = () => {
+              setRewardItem({
+                type: typeStr as any,
+                name: data.itemName,
+                quantity: 1,
+                icon: iconStr,
+                level: data.workerLevel || undefined
+              });
+            };
+            if (imgSrc) {
+              const img = new Image();
+              img.src = imgSrc;
+              img.onload = setReward;
+              img.onerror = setReward;
+            } else {
+              setReward();
+            }
 
             useGameStore.getState().fetchCompanyData(1);
           })
@@ -365,8 +381,24 @@ export function MinigamePage() {
           <div className="absolute inset-0 z-50 bg-black/80 flex flex-col items-center justify-center backdrop-blur-sm animate-fade-in pointer-events-auto overflow-hidden">
             {/* 난리 부루스 배경 이펙트 (회전하는 빛) */}
             {isHighTier && (
-              <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-60 mix-blend-screen">
-                <div className="w-[150vw] h-[150vw] bg-[conic-gradient(from_0deg,transparent_0deg,rgba(252,211,77,1)_20deg,transparent_40deg,rgba(252,211,77,1)_60deg,transparent_80deg,rgba(252,211,77,1)_100deg,transparent_120deg,rgba(252,211,77,1)_140deg,transparent_160deg,rgba(252,211,77,1)_180deg,transparent_200deg,rgba(252,211,77,1)_220deg,transparent_240deg,rgba(252,211,77,1)_260deg,transparent_280deg,rgba(252,211,77,1)_300deg,transparent_320deg,rgba(252,211,77,1)_340deg,transparent_360deg)] animate-[spin_3s_linear_infinite]" />
+              <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-60 mix-blend-screen">
+                <style dangerouslySetInnerHTML={{ __html: `
+                  @keyframes spinCenter {
+                    from { transform: translate(-50%, -50%) rotate(0deg); }
+                    to { transform: translate(-50%, -50%) rotate(360deg); }
+                  }
+                `}} />
+                <div
+                  style={{
+                    position: 'absolute',
+                    width: '400%',
+                    height: '400%',
+                    top: '50%',
+                    left: '50%',
+                    animation: 'spinCenter 3s linear infinite',
+                    background: 'conic-gradient(from 0deg, transparent 0deg, rgba(252,211,77,1) 20deg, transparent 40deg, rgba(252,211,77,1) 60deg, transparent 80deg, rgba(252,211,77,1) 100deg, transparent 120deg, rgba(252,211,77,1) 140deg, transparent 160deg, rgba(252,211,77,1) 180deg, transparent 200deg, rgba(252,211,77,1) 220deg, transparent 240deg, rgba(252,211,77,1) 260deg, transparent 280deg, rgba(252,211,77,1) 300deg, transparent 320deg, rgba(252,211,77,1) 340deg, transparent 360deg)',
+                  }}
+                />
               </div>
             )}
             <div className={`relative bg-white rounded-[32px] p-10 max-w-md w-full border-[6px] shadow-2xl flex flex-col items-center z-10 transition-transform ${isHighTier ? "border-amber-400 scale-[1.02] shadow-[0_0_100px_rgba(251,191,36,0.8)]" : "border-slate-800"}`}>

@@ -199,8 +199,10 @@ export const BankAPI = {
 };
 
 export const HRAPI = {
-  recruitWorker: (data: { companyId: number; type: 'NORMAL' | 'PREMIUM' }) => apiClient.post('/hr/recruit', data),
-  upgradeWorker: (data: { companyId: number; currentLevel: number }) => apiClient.post('/hr/upgrade', data),
+  upgradeWorker: async (currentLevel: number) => {
+    const res = await apiClient.post('/hr/upgrade', { currentLevel });
+    return { data: res.data.data as { result: string; newLevel: number } };
+  },
 };
 
 export const MinigameAPI = {

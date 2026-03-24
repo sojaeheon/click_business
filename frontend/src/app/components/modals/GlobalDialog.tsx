@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { UserPlus } from "lucide-react";
-import { useGame } from "../../../store/gameStore";
+import { useGame, toEnIndustry } from "../../../store/gameStore";
 
 import { useAlertStore } from "../../../store/useAlertStore";
 import { getWorkerIcon, WorkerCard } from "../ui/WorkerCard";
@@ -84,7 +84,7 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
     const totalProduced = laps * resProd;
 
     // ✅ 속도 가중치: 백엔드에서 받은 값 우선, 없으면 로컬 일꾼 정의에서 계산
-    const industryName = state.industry as IndustryKey;
+    const industryName = toEnIndustry(state.industry) as IndustryKey;
     let speedMult = 1.0;
     if (wsState.speedMultiplier) {
       speedMult = wsState.speedMultiplier;

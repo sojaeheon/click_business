@@ -205,11 +205,11 @@ export const IndustrySelectionPage = () => {
               placeholder="예: SSAFY"
               value={companyName}
               autoFocus
-              onChange={(e) => setCompanyName(e.target.value)}
+              onChange={(e) => { if (e.target.value.length <= 15) setCompanyName(e.target.value); }}
               onKeyDown={(e) => e.key === 'Enter' && handleConfirm()}
             />
             <p style={{ fontSize: '13px', color: '#6c757d', alignSelf: 'flex-start', margin: '-16px 0 20px 4px' }}>
-              * 한 번 설정한 이름은 이후에 수정할 수 없습니다.
+              * 한 번 설정한 이름은 이후에 수정할 수 없습니다. ({companyName.length}/15)
             </p>
             <div className="modal-buttons">
               <button className="modal-cancel-btn" onClick={() => {

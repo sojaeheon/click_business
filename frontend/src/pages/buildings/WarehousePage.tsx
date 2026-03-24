@@ -383,7 +383,7 @@ export function WarehousePage() {
           <div className="flex items-center gap-3">
             <div className="w-3 h-3 rounded-full shadow-inner bg-yellow-500" />
             <span className="text-gray-700 font-bold tracking-tight">
-              원자재 총 <span className="text-yellow-700 font-black ml-1">{totalMaterial.toLocaleString()}</span> 개
+              재료 총 <span className="text-yellow-700 font-black ml-1">{totalMaterial.toLocaleString()}</span> 개
             </span>
           </div>
           <div className="flex items-center gap-3">
