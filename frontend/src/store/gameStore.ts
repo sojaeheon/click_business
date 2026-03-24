@@ -105,7 +105,6 @@ export interface GameState {
   equipWorker: (slotIndex: number) => Promise<void>;
   unequipWorker: () => Promise<void>;
 
-  // 작업장 로컬 상태 캐시
   workstationState: {
     isStarting?: boolean;
     isWorking: boolean;
@@ -118,9 +117,9 @@ export interface GameState {
     collectedTotal: number;
     uncollectedPile: number;
     // ✅ 백엔드에서 받는 생산 관련 추가 필드
-    minuteOutput: number | null;      // 분당 생산량 (백엔드에서 산업별로 계산)
+    minuteOutput: number | null;      // 분당 생산량
     workerLevel: number | null;       // 장착 캐릭터 레벨
-    speedMultiplier: number | null;   // 속도 가중치 (레벨별 1.0, 1.5, 2.0 등)
+    speedMultiplier: number | null;   // 속도 가중치
   };
   setWorkstationState: (updater: Partial<GameState["workstationState"]>) => void;
 
@@ -205,9 +204,15 @@ export const useGameStore = create<GameState>()(
       isWorking: false,
       startTime: 0,
       totalMs: 0,
+      endTime: null,
       requestedQty: 0,
       storedCount: 0,
       producedCount: 0,
+      collectedTotal: 0,
+      uncollectedPile: 0,
+      minuteOutput: null,
+      workerLevel: null,
+      speedMultiplier: null,
     },
     setWorkstationState: (updater) => set(s => ({
       workstationState: { ...s.workstationState, ...updater }
@@ -372,6 +377,10 @@ export const useGameStore = create<GameState>()(
             producedCount: wsStatusRes.data?.producedQuantity ?? 0,
             storedCount: wsStatusRes.data?.producedQuantity ?? 0,
             requestedQty: wsStatusRes.data?.totalQuantity ?? 0,
+            endTime: wsStatusRes.data?.expectedEndTime ? new Date(wsStatusRes.data.expectedEndTime).getTime() : null,
+            minuteOutput: wsStatusRes.data?.minuteOutput ?? null,
+            workerLevel: wsStatusRes.data?.workerLevel ?? null,
+            speedMultiplier: wsStatusRes.data?.speedMultiplier ?? null,
           },
           // ✅ 장착된 일꾼 ID 동기화 (equipped: true인 아이템의 id 사용)
           equippedWorkerId: allItems.find(i => i.equipped)?.id ?? null,

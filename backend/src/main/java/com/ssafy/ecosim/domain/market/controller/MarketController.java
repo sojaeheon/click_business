@@ -64,13 +64,32 @@ public class MarketController {
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
-    @Operation(summary = "5분봉 차트 데이터 조회", description = "특정 아이템의 5분봉 캔들 데이터를 반환합니다. 확정된 분봉과 현재 진행중인 분봉을 포함합니다.")
-    @GetMapping("/candles")
+    @Operation(summary = "5분봉 차트 데이터 조회", description = "특정 아이템의 5분봉 캔들 데이터를 반환합니다.")
+    @GetMapping("/candles/5min")
     public ResponseEntity<ApiResponse<List<com.ssafy.ecosim.domain.market.dto.response.CandleResponse>>> get5MinCandles(
             @Parameter(description = "조회할 아이템 ID", example = "1") @RequestParam("item_id") Integer itemId,
             @Parameter(description = "조회할 분봉 개수", example = "100") @RequestParam(value = "count", defaultValue = "100") int count) {
         
         List<com.ssafy.ecosim.domain.market.dto.response.CandleResponse> response = candleService.get5MinCandles(itemId, count);
         return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @Operation(summary = "1분봉 차트 데이터 조회", description = "특정 아이템의 1분봉 캔들 데이터를 반환합니다.")
+    @GetMapping("/candles/1min")
+    public ResponseEntity<ApiResponse<List<com.ssafy.ecosim.domain.market.dto.response.CandleResponse>>> get1MinCandles(
+            @Parameter(description = "조회할 아이템 ID", example = "1") @RequestParam("item_id") Integer itemId,
+            @Parameter(description = "조회할 분봉 개수", example = "100") @RequestParam(value = "count", defaultValue = "100") int count) {
+        
+        List<com.ssafy.ecosim.domain.market.dto.response.CandleResponse> response = candleService.get1MinCandles(itemId, count);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @Operation(summary = "캔들 데이터 조회 (구 버전 호환)", description = "기존 5분봉 조회를 유지합니다.")
+    @GetMapping("/candles")
+    public ResponseEntity<ApiResponse<List<com.ssafy.ecosim.domain.market.dto.response.CandleResponse>>> getCandlesLegacy(
+            @Parameter(description = "조회할 아이템 ID", example = "1") @RequestParam("item_id") Integer itemId,
+            @Parameter(description = "조회할 분봉 개수", example = "100") @RequestParam(value = "count", defaultValue = "100") int count) {
+        
+        return get5MinCandles(itemId, count);
     }
 }

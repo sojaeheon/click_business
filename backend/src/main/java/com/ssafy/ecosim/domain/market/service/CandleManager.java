@@ -27,15 +27,19 @@ public class CandleManager {
     private final MarketCandleRepository marketCandleRepository;
     private final ObjectMapper objectMapper;
 
-    private static final String CANDLE_KEY_PREFIX = "market:candle:5m:%d";
-    private static final int MAX_REDIS_CANDLES = 120; // 10시간치 (120 * 5분 = 600분 = 10시간)
+    private static final String CANDLE_KEY_5M_PREFIX = "market:candle:5m:%d";
+    private static final String CANDLE_KEY_1M_PREFIX = "market:candle:1m:%d";
+    private static final int MAX_REDIS_CANDLES = 120; // 120개 유지
 
     /**
-     * 5분봉을 Redis에 저장합니다.
+     * 분봉을 Redis에 저장합니다.
      */
-    public void save5MinCandleToRedis(Integer itemId, CandleData candle) {
+    public void saveCandleToRedis(Integer itemId, CandleData candle, MarketCandle.CandleType type) {
         try {
-            String key = String.format(CANDLE_KEY_PREFIX, itemId);
+            String key = (type == MarketCandle.CandleType.MIN_1) 
+                ? String.format(CANDLE_KEY_1M_PREFIX, itemId) 
+                : String.format(CANDLE_KEY_5M_PREFIX, itemId);
+            
             String value = objectMapper.writeValueAsString(candle);
             
             // ZSet에 추가 (Score: timestamp)
@@ -47,16 +51,16 @@ public class CandleManager {
                 stringRedisTemplate.opsForZSet().removeRange(key, 0, count - MAX_REDIS_CANDLES - 1);
             }
             
-            log.debug("[CandleManager] Redis 저장: itemId={}, timestamp={}", itemId, candle.getTimestamp());
+            log.debug("[CandleManager] Redis 저장 ({}): itemId={}, timestamp={}", type, itemId, candle.getTimestamp());
         } catch (Exception e) {
-            log.error("[CandleManager] Redis 저장 실패", e);
+            log.error("[CandleManager] Redis 저장 실패 ({})", type, e);
         }
     }
 
     /**
-     * 개별 값을 받아 5분봉을 Redis에 추가합니다. (CandleService 백업용)
+     * 개별 값을 받아 분봉을 Redis에 추가합니다. (CandleService 백업용)
      */
-    public void addCandle(Integer itemId, Long open, Long high, Long low, Long close, Long volume, LocalDateTime candleTime) {
+    public void addCandle(Integer itemId, MarketCandle.CandleType type, Long open, Long high, Long low, Long close, Long volume, LocalDateTime candleTime) {
         long timestamp = candleTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
         
         CandleData candle = CandleData.builder()
@@ -68,14 +72,14 @@ public class CandleManager {
             .timestamp(timestamp)
             .build();
             
-        save5MinCandleToRedis(itemId, candle);
+        saveCandleToRedis(itemId, candle, type);
     }
 
     /**
-     * 5분봉을 DB에 비동기로 저장합니다.
+     * 분봉을 DB에 비동기로 저장합니다.
      */
     @Async
-    public void save5MinCandleToDB(Integer itemId, CandleData candle) {
+    public void saveCandleToDB(Integer itemId, CandleData candle, MarketCandle.CandleType type) {
         try {
             LocalDateTime candleTime = LocalDateTime.ofInstant(
                 Instant.ofEpochMilli(candle.getTimestamp()), 
@@ -84,6 +88,7 @@ public class CandleManager {
             
             MarketCandle entity = MarketCandle.builder()
                 .itemId(itemId)
+                .candleType(type)
                 .openPrice(candle.getOpen())
                 .highPrice(candle.getHigh())
                 .lowPrice(candle.getLow())
@@ -93,29 +98,31 @@ public class CandleManager {
                 .build();
             
             marketCandleRepository.save(entity);
-            log.debug("[CandleManager] DB 저장: itemId={}, candleTime={}", itemId, candleTime);
+            log.debug("[CandleManager] DB 저장 ({}): itemId={}, candleTime={}", type, itemId, candleTime);
         } catch (Exception e) {
-            log.error("[CandleManager] DB 저장 실패", e);
+            log.error("[CandleManager] DB 저장 실패 ({})", type, e);
         }
     }
 
     /**
-     * Redis에서 최근 N개의 5분봉을 조회합니다.
+     * Redis에서 최근 N개의 분봉을 조회합니다.
      */
-    public List<CandleData> get5MinCandles(Integer itemId, int count) {
+    public List<CandleData> getCandles(Integer itemId, int count, MarketCandle.CandleType type) {
         try {
-            String key = String.format(CANDLE_KEY_PREFIX, itemId);
+            String key = (type == MarketCandle.CandleType.MIN_1) 
+                ? String.format(CANDLE_KEY_1M_PREFIX, itemId) 
+                : String.format(CANDLE_KEY_5M_PREFIX, itemId);
             
             // reverseRangeWithScores로 명시적 순서 보장
             Set<ZSetOperations.TypedTuple<String>> valuesWithScores = 
                 stringRedisTemplate.opsForZSet().reverseRangeWithScores(key, 0, count - 1);
             
             if (valuesWithScores == null || valuesWithScores.isEmpty()) {
-                log.warn("[CandleManager] Redis에 분봉 데이터 없음: itemId={}", itemId);
+                log.warn("[CandleManager] Redis에 분봉 데이터 없음 ({}): itemId={}", type, itemId);
                 return new ArrayList<>();
             }
             
-            log.info("[CandleManager] Redis에서 {}개 분봉 조회: itemId={}", valuesWithScores.size(), itemId);
+            log.info("[CandleManager] Redis에서 {}개 분봉 조회 ({}): itemId={}", valuesWithScores.size(), type, itemId);
             
             List<CandleData> candles = new ArrayList<>();
             for (ZSetOperations.TypedTuple<String> tuple : valuesWithScores) {
@@ -129,17 +136,18 @@ public class CandleManager {
             
             return candles;
         } catch (Exception e) {
-            log.error("[CandleManager] Redis 조회 실패", e);
+            log.error("[CandleManager] Redis 조회 실패 ({})", type, e);
             return new ArrayList<>();
         }
     }
 
     /**
-     * DB에서 최근 N개의 5분봉을 조회합니다 (Redis 백업용).
+     * DB에서 최근 N개의 분봉을 조회합니다 (Redis 백업용).
      */
-    public List<CandleData> get5MinCandlesFromDB(Integer itemId, int count) {
+    public List<CandleData> getCandlesFromDB(Integer itemId, int count, MarketCandle.CandleType type) {
         try {
-            List<MarketCandle> entities = marketCandleRepository.findTop100ByItemIdOrderByCandleTimeDesc(itemId);
+            List<MarketCandle> entities = marketCandleRepository
+                .findTop100ByItemIdAndCandleTypeOrderByCandleTimeDesc(itemId, type);
             
             return entities.stream()
                 .limit(count)
@@ -156,7 +164,7 @@ public class CandleManager {
                     .build())
                 .toList();
         } catch (Exception e) {
-            log.error("[CandleManager] DB 조회 실패", e);
+            log.error("[CandleManager] DB 조회 실패 ({})", type, e);
             return new ArrayList<>();
         }
     }
