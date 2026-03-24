@@ -92,6 +92,35 @@ def cancel_order(conn, payload):
             WHERE market_order_id = %s
         """, (payload["order_id"],))
 
+
+def process_event_with_retry(conn, event_type, data, payload, retries=20, delay=0.5):
+    order_id = payload.get("order_id")
+
+    for attempt in range(retries):
+        try:
+            if event_type == "market.order.created":
+                insert_order(conn, data, payload)
+            elif event_type == "market.order.cancelled":
+                cancel_order(conn, payload)
+            else:
+                print(f"[INFO] 알 수 없는 이벤트: {event_type}")
+                return False
+
+            conn.commit()
+            return True
+        except Exception as e:
+            conn.rollback()
+
+            if attempt == retries - 1:
+                print(f"[ERROR] {event_type} 최종 실패 → order_id={order_id}, error={e}")
+                raise
+
+            print(
+                f"[RETRY] {event_type} 재시도 중 ({attempt + 1}/{retries}) "
+                f"→ order_id={order_id}, error={e}"
+            )
+            time.sleep(delay)
+
 # -----------------------------
 # 메인 루프
 # -----------------------------
@@ -105,28 +134,19 @@ for message in consumer:
         data = message.value
         event_type = data.get("event_type")
         payload = data.get("payload")
-        print(json.dumps(data, indent=2, ensure_ascii=False))
+        # print(json.dumps(data, indent=2, ensure_ascii=False))
 
         if not payload:
             continue
 
-        if event_type == "market.order.created":
-            insert_order(conn, data, payload)
-
-        elif event_type == "market.order.cancelled":
-            cancel_order(conn, payload)
-
-        else:
-            print(f"[INFO] 알 수 없는 이벤트: {event_type}")
+        success = process_event_with_retry(conn, event_type, data, payload)
+        if not success:
             continue
-
-        # DB commit
-        conn.commit()
 
         # Kafka commit
         consumer.commit()
 
-        print(f"[SUCCESS] {event_type} 처리 완료")
+        # print(f"[SUCCESS] {event_type} 처리 완료")
 
     except Exception as e:
         print(f"[ERROR] {e}")

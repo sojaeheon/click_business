@@ -122,12 +122,15 @@ public class MarketMatchingService {
 
         // TradeEvent 발행
         TradeEventDto tradeEvent = TradeEventDto.builder()
+                .tradeId((System.currentTimeMillis() << 20) | (java.util.concurrent.ThreadLocalRandom.current().nextLong(1 << 20)))
                 .buyOrderId(buyOrder.getId())
                 .sellOrderId(sellOrder.getId())
                 .itemId(itemId)
                 .makerOrderType(OrderType.SELL)
                 .price(matchedPrice)
                 .quantity(matchedQuantity)
+                .buyRemainingQuantity(buyOrder.getRemainingQuantity())
+                .sellRemainingQuantity(sellOrder.getRemainingQuantity())
                 .executedAt(System.currentTimeMillis())
                 .build();
 

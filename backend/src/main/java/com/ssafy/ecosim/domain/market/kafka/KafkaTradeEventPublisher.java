@@ -26,14 +26,14 @@ public class KafkaTradeEventPublisher implements TradeEventPublisher {
     @Override
     public void publishTradeEvent(TradeEventDto event) {
         TradeEventPayload payload = TradeEventPayload.builder()
-                .tradeId(null)                          // trade ID는 매칭엔진(DE)에서 부여
+                .tradeId(event.getTradeId())
                 .itemId(event.getItemId())
                 .buyOrderId(event.getBuyOrderId())
                 .sellOrderId(event.getSellOrderId())
                 .price(event.getPrice())
                 .quantity(event.getQuantity())
-                .buyRemainingQuantity(null)             // 매칭엔진(DE)에서 채우는 필드
-                .sellRemainingQuantity(null)
+                .buyRemainingQuantity(event.getBuyRemainingQuantity())
+                .sellRemainingQuantity(event.getSellRemainingQuantity())
                 .executedAt(Instant.ofEpochMilli(event.getExecutedAt()))
                 .build();
 

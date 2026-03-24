@@ -52,21 +52,21 @@ jwt:
 minigame:
   rewards:
     - item-name: "초보 일꾼"
-      weight: 59.5
+      weight: 70
     - item-name: "인벤토리 확장권"
-      weight: 10.5
+      weight: 24.7
     - item-name: "창고 확장권"
-      weight: 10.5
+      weight: 4.7
     - item-name: "견습 일꾼"
-      weight: 10.0
+      weight: 0.4
     - item-name: "숙련 일꾼"
-      weight: 5.0
+      weight: 0.18
     - item-name: "마스터 일꾼"
-      weight: 3.0
+      weight: 0.01
     - item-name: "에픽 일꾼"
-      weight: 1.0
+      weight: 0.009
     - item-name: "레전드 일꾼"
-      weight: 0.5
+      weight: 0.001
 
 # 창고 설정 (MATERIAL/PRODUCT)
 warehouse:

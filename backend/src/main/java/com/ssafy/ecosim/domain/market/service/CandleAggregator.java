@@ -1,6 +1,7 @@
 package com.ssafy.ecosim.domain.market.service;
-
+    
 import com.ssafy.ecosim.domain.market.dto.CandleData;
+import com.ssafy.ecosim.domain.market.entity.MarketCandle;
 import com.ssafy.ecosim.domain.market.repository.redis.OrderBookManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,40 +24,53 @@ public class CandleAggregator {
     private static final List<Integer> TARGET_ITEM_IDS = List.of(1, 2, 3);
 
     /**
-     * 매 5분마다 실행 (0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55분에 실행)
+     * 매 1분마다 실행
+     * 최근 1분간 시장가를 집계하여 1분봉 생성
+     */
+    @Scheduled(cron = "0 * * * * *")
+    public void aggregate1MinCandles() {
+        aggregateCandles(MarketCandle.CandleType.MIN_1);
+    }
+
+    /**
+     * 매 5분마다 실행
      * 최근 5분간 시장가를 집계하여 5분봉 생성
      */
     @Scheduled(cron = "0 */5 * * * *")
     public void aggregate5MinCandles() {
-        log.info("[CandleAggregator] 5분봉 집계 시작");
+        aggregateCandles(MarketCandle.CandleType.MIN_5);
+    }
+
+    private void aggregateCandles(MarketCandle.CandleType type) {
+        log.info("[CandleAggregator] {} 집계 시작", type);
         
         for (Integer itemId : TARGET_ITEM_IDS) {
             try {
-                CandleData candle = buildCandle(itemId);
+                CandleData candle = buildCandle(itemId, type);
                 
                 if (candle == null) {
-                    log.warn("[CandleAggregator] itemId={} 데이터 부족으로 스킵", itemId);
+                    log.warn("[CandleAggregator] itemId={} {} 데이터 부족으로 스킵", itemId, type);
                     continue;
                 }
                 
-                // Redis 저장 (빠른 조회용)
-                candleManager.save5MinCandleToRedis(itemId, candle);
+                // Redis 저장
+                candleManager.saveCandleToRedis(itemId, candle, type);
                 
-                // DB 저장 (영구 보관용) - 비동기
-                candleManager.save5MinCandleToDB(itemId, candle);
+                // DB 저장
+                candleManager.saveCandleToDB(itemId, candle, type);
                 
-                log.info("[CandleAggregator] itemId={} 5분봉 생성 완료: OHLC={}/{}/{}/{}", 
-                    itemId, candle.getOpen(), candle.getHigh(), candle.getLow(), candle.getClose());
+                log.info("[CandleAggregator] itemId={} {} 생성 완료: OHLC={}/{}/{}/{}", 
+                    itemId, type, candle.getOpen(), candle.getHigh(), candle.getLow(), candle.getClose());
             } catch (Exception e) {
-                log.error("[CandleAggregator] itemId={} 5분봉 생성 실패", itemId, e);
+                log.error("[CandleAggregator] itemId={} {} 생성 실패", itemId, type, e);
             }
         }
     }
 
     /**
-     * 최근 시장가 데이터를 기반으로 5분봉을 생성합니다.
+     * 최근 시장가 데이터를 기반으로 분봉을 생성합니다.
      */
-    private CandleData buildCandle(Integer itemId) {
+    private CandleData buildCandle(Integer itemId, MarketCandle.CandleType type) {
         // Redis에서 최근 체결 데이터 조회 (market:chart:{itemId})
         List<String> chartData = orderBookManager.getChartData(itemId);
         
@@ -85,31 +99,27 @@ public class CandleAggregator {
         prices.sort((a, b) -> Long.compare(a.timestamp, b.timestamp));
         
         // OHLC 계산
-        long open = prices.get(0).price;  // 첫 번째 가격
-        long close = prices.get(prices.size() - 1).price;  // 마지막 가격
+        long open = prices.get(0).price;
+        long close = prices.get(prices.size() - 1).price;
         long high = prices.stream().mapToLong(p -> p.price).max().orElse(close);
         long low = prices.stream().mapToLong(p -> p.price).min().orElse(close);
         
-        // 분봉 시작 시간 (현재 시간을 5분 단위로 내림)
         long now = System.currentTimeMillis();
-        long candleStart = roundTo5Min(now) - 300_000; // 5분 전
+        long durationMillis = (type == MarketCandle.CandleType.MIN_1) ? 60_000 : 300_000;
+        long candleStart = roundToDuration(now, durationMillis) - durationMillis;
         
         return CandleData.builder()
             .open(open)
             .high(high)
             .low(low)
             .close(close)
-            .volume(0L)  // 추후 체결량 집계 로직 추가 가능
+            .volume(0L)
             .timestamp(candleStart)
             .build();
     }
 
-    /**
-     * 밀리초를 5분 단위로 내림합니다.
-     */
-    private long roundTo5Min(long millis) {
-        long fiveMin = 5 * 60 * 1000; // 5분 = 300,000ms
-        return (millis / fiveMin) * fiveMin;
+    private long roundToDuration(long millis, long durationMillis) {
+        return (millis / durationMillis) * durationMillis;
     }
 
     /**

@@ -22,11 +22,11 @@ public class TradeHistory {
     @Column(name = "trade_history_id")
     private Long id;
 
-    // 단방향 매핑 (MarketOrder가 TradeHistory를 몰라도 됨)
-    // 외래 키를 직접 ID로 관리 (또는 ManyToOne 연관관계 매핑 선택 가능)
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "market_order_id", nullable = false)
-    private MarketOrder marketOrder;
+    @Column(name = "market_order_id", nullable = false)
+    private Long marketOrderId;
+
+    @Column(name = "item_id")
+    private Integer itemId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "order_type", nullable = false)
@@ -47,8 +47,9 @@ public class TradeHistory {
     private LocalDateTime createdAt;
 
     @Builder
-    public TradeHistory(MarketOrder marketOrder, OrderType orderType, Long price, Long executionQuantity) {
-        this.marketOrder = marketOrder;
+    public TradeHistory(Long marketOrderId, Integer itemId, OrderType orderType, Long price, Long executionQuantity) {
+        this.marketOrderId = marketOrderId;
+        this.itemId = itemId;
         this.orderType = orderType;
         this.price = price;
         this.executionQuantity = executionQuantity;

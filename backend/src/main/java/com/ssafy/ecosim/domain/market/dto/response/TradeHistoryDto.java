@@ -39,8 +39,8 @@ public class TradeHistoryDto {
 
     public TradeHistoryDto(TradeHistory tradeHistory) {
         this.tradeHistoryId = tradeHistory.getId();
-        this.orderId = tradeHistory.getMarketOrder().getId();
-        this.itemId = tradeHistory.getMarketOrder().getItemId();
+        this.orderId = tradeHistory.getMarketOrderId();
+        this.itemId = tradeHistory.getItemId() != null ? tradeHistory.getItemId() : 0;
         this.price = tradeHistory.getPrice();
         this.executionQuantity = tradeHistory.getExecutionQuantity();
         this.orderType = tradeHistory.getOrderType();

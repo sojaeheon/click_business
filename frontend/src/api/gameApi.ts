@@ -34,7 +34,7 @@ export const CompanyAPI = {
         industry_type: company.industry,
         cash: company.money,
         total_asset: company.capital,
-        slots: undefined,
+        slots: undefined as { warehouse_slots?: number; inventory_slots?: number } | undefined,
       }
     };
   },
@@ -188,6 +188,8 @@ export const MarketAPI = {
   },
 
   getMarketChart: (itemId: number) => apiClient.get('/market/chart', { params: { item_id: itemId } }),
+  get5MinCandles: (itemId: number, count: number = 100) => apiClient.get('/market/candles/5min', { params: { item_id: itemId, count: count } }),
+  get1MinCandles: (itemId: number, count: number = 100) => apiClient.get('/market/candles/1min', { params: { item_id: itemId, count: count } }),
 };
 
 export const BankAPI = {
@@ -206,12 +208,16 @@ export const HRAPI = {
 };
 
 export const MinigameAPI = {
-  claimReward: async (data: { companyId: number; clicks: number; isFever: boolean }) => {
-    const res = await apiClient.post('/minigame/claim');
+  getStatus: async () => {
+    const res = await apiClient.get('/minigame/status');
     return { data: res.data.data };
   },
-  unlockGame: async (data: { companyId: number; amount: number }) => {
-    const res = await apiClient.post('/minigame/unlock', data);
+  start: async () => {
+    const res = await apiClient.post('/minigame/start');
+    return { data: res.data.data };
+  },
+  claimReward: async (data: { companyId: number; clicks: number; isFever: boolean }) => {
+    const res = await apiClient.post('/minigame/claim');
     return { data: res.data.data };
   },
 };

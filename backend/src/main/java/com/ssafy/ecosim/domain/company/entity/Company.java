@@ -51,6 +51,13 @@ public class Company extends BaseEntity {
     @Column(name = "total_asset", nullable = false)
     private Long totalAsset;
 
+    @Column(name = "minigame_paid", nullable = false)
+    private boolean minigamePaid = false;
+
+    public void setMinigamePaid(boolean minigamePaid) {
+        this.minigamePaid = minigamePaid;
+    }
+
     public Company(User user, String name, IndustryType industryType) {
         this.user = user;
         this.name = name;
