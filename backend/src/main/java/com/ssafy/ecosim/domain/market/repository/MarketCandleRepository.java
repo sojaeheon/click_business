@@ -17,7 +17,8 @@ public interface MarketCandleRepository extends JpaRepository<MarketCandle, Long
         Integer itemId, LocalDateTime after);
     
     /**
-     * 특정 아이템의 최근 N개 분봉 조회
+     * 특정 아이템의 특정 타입 최근 N개 분봉 조회
      */
-    List<MarketCandle> findTop100ByItemIdOrderByCandleTimeDesc(Integer itemId);
+    List<MarketCandle> findTop100ByItemIdAndCandleTypeOrderByCandleTimeDesc(
+        Integer itemId, MarketCandle.CandleType candleType);
 }

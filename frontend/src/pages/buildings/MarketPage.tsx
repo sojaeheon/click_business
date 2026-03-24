@@ -215,9 +215,9 @@ export function MarketPage() {
           setOrderBook({ asks: [], bids: [] });
         }
 
-        // [2] 백엔드 5분봉 차트 조회
+        // [2] 백엔드 1분봉 차트 조회
         try {
-          const chartRes = await MarketAPI.get5MinCandles(itemId, 100);
+          const chartRes = await MarketAPI.get1MinCandles(itemId, 100);
 
           const candles = chartRes.data?.data ?? chartRes.data;
 
@@ -352,9 +352,8 @@ export function MarketPage() {
     let prevClose = currentPrice || (chartData.length > 0 ? chartData[0].close : 0);
 
     for (let i = 59; i >= 0; i--) {
-      const d = new Date(now.getTime() - i * 5 * 60000);
-      const bucketM = Math.floor(d.getMinutes() / 5) * 5;
-      const tStr = `${d.getHours().toString().padStart(2, '0')}:${bucketM.toString().padStart(2, '0')}`;
+      const d = new Date(now.getTime() - i * 60000); // 1분 단위
+      const tStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 
       const backendCandle = map.get(tStr);
 
@@ -403,14 +402,14 @@ export function MarketPage() {
 
   const displayChartData = getDisplayChartData();
   const visibleDataLen = displayChartData.length;
-  // 5분봉 12개가 100% 한 화면 분량. 60개 캔들이므로 500% 너비를 주어 드래그 가능하게 만듬
-  const chartWidthPct = Math.max(100, (visibleDataLen / 12) * 100);
+  // 1분봉 60개가 100% 한 화면 분량. 60개 캔들이므로 200% 너비를 주어 어느 정도 드래그 가능하게 만듬
+  const chartWidthPct = Math.max(100, (visibleDataLen / 30) * 100); 
 
-  // 🌟 당일 시가 대비 현재가 비교 (한국 주식 HTS 표준)
+  // 🌟 게임 시간(10분 사이클) 당일 시가 대비 현재가 비교
   const lastCandle = displayChartData.length > 0 ? displayChartData[displayChartData.length - 1] : null;
 
-  // 당일 첫 분봉의 시가를 기준가로 사용 (시간 순 정렬 후 첫 번째)
-  const todayOpenPrice = displayChartData.length > 0 ? displayChartData[0].open : currentPrice;
+  // 백엔드에서 제공하는 changePrice를 역해산하여 당일 시가(10분 사이클 시작가) 도출
+  const todayOpenPrice = currentPrice - changePrice;
 
   const currentCandleOpen = lastCandle?.open ?? currentPrice;
 
@@ -424,9 +423,9 @@ export function MarketPage() {
 
   const currentPriceToCompare = currentPrice || (lastCandle?.close ?? 0);
 
-  const customDiff = currentPriceToCompare - todayOpenPrice;
+  const customDiff = changePrice;
   const isUpTrend = customDiff > 0;
-  const customPct = todayOpenPrice > 0 ? (customDiff / todayOpenPrice) * 100 : 0;
+  const customPct = changeRate;
 
   // 가격 색상 결정
   const priceColor = isUpTrend ? "text-rose-500" : (customDiff < 0 ? "text-blue-500" : "text-slate-800");
@@ -464,9 +463,9 @@ export function MarketPage() {
       }
     };
   }, [hasDragged, chartData, mode, snapToRight]);
-  const customDiffSign = customDiff > 0 ? "+" : customDiff < 0 ? "-" : "";
+  const customDiffSign = customDiff > 0 ? "+" : customDiff < 0 ? (customDiff === 0 ? "" : "-") : "";
   const customPctStr = Math.abs(customPct).toFixed(1);
-  const diffStr = `${customDiffSign}${Math.abs(customDiff).toLocaleString()}원 (${customDiffSign}${customPctStr}%)`;
+  const diffStr = `${customDiff > 0 ? "+" : ""}${customDiff.toLocaleString()}원 (${customDiff > 0 ? "+" : ""}${customPctStr}%)`;
 
   const getPriceColor = (p: number) => {
     const defaultPriceColor = "text-slate-800";
@@ -577,9 +576,9 @@ export function MarketPage() {
                       {diffStr}
                     </span>
                     <div className="flex items-center gap-2 mt-1 justify-end">
-                      {/* 5분봉 안내 */}
+                      {/* 1분봉 안내 */}
                       <span className="text-xs text-slate-400 font-bold flex items-center gap-1">
-                        <Clock className="w-3 h-3" /> 5분봉
+                        <Clock className="w-3 h-3" /> 1분봉
                       </span>
                     </div>
                   </div>
@@ -625,7 +624,7 @@ export function MarketPage() {
                             interval={0}
                             tickFormatter={(timeStr) => {
                               const [, m] = timeStr.split(':').map(Number);
-                              return m % 5 === 0 ? timeStr : '';
+                              return m % 5 === 0 ? timeStr : ''; // 5분 단위로 라벨 표시
                             }}
                             height={24}
                           />
@@ -791,12 +790,12 @@ export function MarketPage() {
                           key={idx}
                           ref={currentPriceRef}
                           className="grid grid-cols-[1fr_110px_1fr] items-center h-[64px] shrink-0 border-y-2 border-slate-300 hover:bg-slate-100 bg-slate-50/50 relative z-10 transition-colors cursor-pointer shadow-sm"
-                          onClick={() => { setPrice(item.price); setQuantity(q => q === 0 ? 1 : q); }}
+                          onClick={() => { if (item.price) setPrice(item.price); setQuantity(q => q === 0 ? 1 : q); }}
                         >
                           <div className="h-full" />
                           <div className="h-full flex items-center justify-center relative z-10">
                             <span className="font-black text-[30px] text-slate-800">
-                              {item.price.toLocaleString()}
+                              {item.price?.toLocaleString()}
                             </span>
                           </div>
                           <div className="h-full flex items-center justify-start pl-4">
@@ -814,26 +813,26 @@ export function MarketPage() {
                       <div
                         key={idx}
                         className="grid grid-cols-[1fr_110px_1fr] items-center h-[100px] hover:bg-slate-50 cursor-pointer transition-colors"
-                        onClick={() => { setPrice(item.price); setQuantity(q => q === 0 ? 1 : q); }}
+                        onClick={() => { if (item.price) setPrice(item.price); setQuantity(q => q === 0 ? 1 : q); }}
                       >
                         <div className="relative h-full flex items-center justify-end pr-4">
-                          {isAsk && qty > 0 && (
+                          {isAsk && qty !== undefined && qty > 0 && (
                             <>
-                              <div className="absolute right-0 top-1.5 bottom-1.5 bg-blue-100/40 rounded-l transition-all" style={{ width: `${Math.min((qty / 400) * 100, 100)}%` }} />
-                              <span className="text-blue-500 font-bold text-[20px] z-10 tracking-tight">{qty.toLocaleString()}</span>
+                              <div className="absolute right-0 top-1.5 bottom-1.5 bg-blue-100/40 rounded-l transition-all" style={{ width: `${Math.min(((qty ?? 0) / 400) * 100, 100)}%` }} />
+                              <span className="text-blue-500 font-bold text-[20px] z-10 tracking-tight">{qty?.toLocaleString()}</span>
                             </>
                           )}
                         </div>
                         <div className="h-full flex items-center justify-center relative z-10">
                           <span className={`font-black text-[26px] ${isAsk ? 'text-blue-500' : 'text-rose-500'}`}>
-                            {item.price.toLocaleString()}
+                            {item.price?.toLocaleString()}
                           </span>
                         </div>
                         <div className="relative h-full flex items-center justify-start pl-4">
-                          {!isAsk && qty > 0 && (
+                          {!isAsk && qty !== undefined && qty > 0 && (
                             <>
-                              <div className="absolute left-0 top-1.5 bottom-1.5 bg-rose-100/40 rounded-r transition-all" style={{ width: `${Math.min((qty / 400) * 100, 100)}%` }} />
-                              <span className="text-rose-500 font-bold text-[20px] z-10 tracking-tight">{qty.toLocaleString()}</span>
+                              <div className="absolute left-0 top-1.5 bottom-1.5 bg-rose-100/40 rounded-r transition-all" style={{ width: `${Math.min(((qty ?? 0) / 400) * 100, 100)}%` }} />
+                              <span className="text-rose-500 font-bold text-[20px] z-10 tracking-tight">{qty?.toLocaleString()}</span>
                             </>
                           )}
                         </div>
