@@ -217,40 +217,29 @@ export function MarketPage() {
 
         // [2] 백엔드 5분봉 차트 조회
         try {
-          const chartRes = await MarketAPI.getMarketChart(itemId);
-          const cData = chartRes.data?.data ?? chartRes.data;
-          if (cData && Array.isArray(cData.points)) {
-            // 5분 단위 버킷으로 OHLC 집계
-            const minMap = new Map<string, { open: number; high: number; low: number; close: number; time: string }>();
-
-            cData.points.forEach((d: any) => {
-              const dt = d.timestamp ? new Date(d.timestamp) : new Date();
-              const bucketM = Math.floor(dt.getMinutes() / 5) * 5;
-              const minStr = `${dt.getHours().toString().padStart(2, '0')}:${bucketM.toString().padStart(2, '0')}`;
-              const p = d.price ?? 0;
-              if (minMap.has(minStr)) {
-                const ex = minMap.get(minStr)!;
-                ex.high = Math.max(ex.high, p);
-                ex.low = Math.min(ex.low, p);
-                ex.close = p;
-              } else {
-                minMap.set(minStr, { time: minStr, open: p, high: p, low: p, close: p });
-              }
-            });
-
-            // 시간 순서대로 정렬 후 chartData로 변환
-            const sorted = Array.from(minMap.entries())
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(([, v]) => ({
-                time: v.time,
-                price: v.close,
-                open: v.open,
-                high: v.high,
-                low: v.low,
-                close: v.close
-              }));
-
-            setChartData(sorted);
+          const chartRes = await MarketAPI.get5MinCandles(itemId, 100);
+          
+          const candles = chartRes.data?.data ?? chartRes.data;
+          
+          if (candles && Array.isArray(candles)) {
+            // 백엔드에서 이미 계산된 5분봉 데이터를 시간 순으로 정렬
+            const formatted = candles
+              .filter((c: any) => !c.isLive)  // 확정된 분봉만 사용
+              .sort((a: any, b: any) => a.timestamp - b.timestamp)  // 시간 오름차순 정렬
+              .map((c: any) => {
+                const dt = new Date(c.timestamp);
+                const timeStr = `${dt.getHours().toString().padStart(2, '0')}:${dt.getMinutes().toString().padStart(2, '0')}`;
+                return {
+                  time: timeStr,
+                  price: c.close,
+                  open: c.open,
+                  high: c.high,
+                  low: c.low,
+                  close: c.close
+                };
+              });
+            
+            setChartData(formatted);
           }
         } catch (e) {
           console.warn("차트 조회 실패:", e);
@@ -360,59 +349,55 @@ export function MarketPage() {
 
     const result = [];
     const now = new Date();
-    
-    const defaultOhlc = { open: currentPrice, high: currentPrice, low: currentPrice, close: currentPrice };
-    let lastKnownOhlc = chartData.length > 0 && chartData[0].close !== undefined 
-      ? { 
-          open: chartData[0].open ?? currentPrice, 
-          high: chartData[0].high ?? currentPrice, 
-          low: chartData[0].low ?? currentPrice, 
-          close: chartData[0].close ?? currentPrice 
-        } 
-      : defaultOhlc;
+    let prevClose = currentPrice || (chartData.length > 0 ? chartData[0].close : 0);
 
     for (let i = 59; i >= 0; i--) {
       const d = new Date(now.getTime() - i * 5 * 60000);
       const bucketM = Math.floor(d.getMinutes() / 5) * 5;
       const tStr = `${d.getHours().toString().padStart(2, '0')}:${bucketM.toString().padStart(2, '0')}`;
       
-      const actualPrevClose = lastKnownOhlc.close; // 🌟 갱신 전 직전 종가 보관
-
-      let ohlc = { 
-        open: actualPrevClose, 
-        high: actualPrevClose, 
-        low: actualPrevClose, 
-        close: actualPrevClose 
-      };
-      if (map.has(tStr)) {
-        const item = map.get(tStr)!;
-        ohlc = {
-          open: actualPrevClose, 
-          high: Math.max(actualPrevClose, item.high ?? item.price),
-          low: Math.min(actualPrevClose, item.low ?? item.price),
-          close: item.close ?? item.price
+      const backendCandle = map.get(tStr);
+      
+      let candle;
+      if (backendCandle) {
+        // ✅ 백엔드에서 받은 OHLC를 그대로 사용
+        candle = {
+          time: tStr,
+          price: backendCandle.close,
+          open: backendCandle.open,     // ✅ 백엔드 시가 그대로 사용
+          high: backendCandle.high,
+          low: backendCandle.low,
+          close: backendCandle.close,
+          bounds: [backendCandle.low, backendCandle.high],
+          prevClose: prevClose  // 🌟 직전 분봉의 종가 (색상 판단용)
         };
-        lastKnownOhlc = ohlc;
+        prevClose = backendCandle.close;
+      } else {
+        // 데이터 없으면 이전 종가로 평평하게 채움
+        candle = {
+          time: tStr,
+          price: prevClose,
+          open: prevClose,
+          high: prevClose,
+          low: prevClose,
+          close: prevClose,
+          bounds: [prevClose, prevClose],
+          prevClose: prevClose
+        };
       }
       
-      let displayOhlc = { ...ohlc };
+      // 현재 시간(i === 0)이면 실시간 가격 반영
       if (i === 0 && currentPrice) {
-        displayOhlc.close = currentPrice;
-        displayOhlc.high = Math.max(displayOhlc.high ?? currentPrice, currentPrice);
-        displayOhlc.low = Math.min(displayOhlc.low ?? currentPrice, currentPrice);
+        candle.close = currentPrice;
+        candle.high = Math.max(candle.high, currentPrice);
+        candle.low = Math.min(candle.low, currentPrice);
+        candle.price = currentPrice;
+        candle.bounds = [candle.low, candle.high];
       }
       
-      result.push({ 
-        time: tStr, 
-        price: displayOhlc.close ?? 0, 
-        open: displayOhlc.open ?? 0, 
-        high: displayOhlc.high ?? 0, 
-        low: displayOhlc.low ?? 0, 
-        close: displayOhlc.close ?? 0,
-        bounds: [displayOhlc.low ?? 0, displayOhlc.high ?? 0],
-        prevClose: actualPrevClose // 🌟 갱신 전 고유 이전 종가 주입
-      });
+      result.push(candle);
     }
+    
     return result;
   };
 
@@ -421,16 +406,23 @@ export function MarketPage() {
   // 5분봉 12개가 100% 한 화면 분량. 60개 캔들이므로 500% 너비를 주어 드래그 가능하게 만듬
   const chartWidthPct = Math.max(100, (visibleDataLen / 12) * 100);
 
-  // 🌟 5분 전 가격 스냅샷 연동 (현재가 및 툴팁/캔들 색상 동기화)
+  // 🌟 당일 시가 대비 현재가 비교 (한국 주식 HTS 표준)
   const lastCandle = displayChartData.length > 0 ? displayChartData[displayChartData.length - 1] : null;
-  const prevCandle = displayChartData.length > 1 ? displayChartData[displayChartData.length - 2] : null;
+  
+  // 당일 첫 분봉의 시가를 기준가로 사용 (시간 순 정렬 후 첫 번째)
+  const todayOpenPrice = displayChartData.length > 0 ? displayChartData[0].open : currentPrice;
+  
+  // 현재 진행 중인 분봉의 시가 (Y축 중심용)
+  const currentCandleOpen = lastCandle?.open ?? currentPrice;
   
   const currentPriceToCompare = currentPrice || (lastCandle?.close ?? 0);
-  const fiveMinAgoPrice = prevCandle?.close ?? currentPriceToCompare; // 5분 전 캔들의 종가
   
-  const customDiff = currentPriceToCompare - fiveMinAgoPrice;
-  const isUpTrend = customDiff >= 0;
-  const customPct = fiveMinAgoPrice > 0 ? (customDiff / fiveMinAgoPrice) * 100 : 0;
+  const customDiff = currentPriceToCompare - todayOpenPrice;
+  const isUpTrend = customDiff > 0;
+  const customPct = todayOpenPrice > 0 ? (customDiff / todayOpenPrice) * 100 : 0;
+  
+  // 가격 색상 결정
+  const priceColor = isUpTrend ? "text-rose-500" : (customDiff < 0 ? "text-blue-500" : "text-slate-800");
 
   useEffect(() => {
     setHasDragged(false);
@@ -472,8 +464,8 @@ export function MarketPage() {
   const getPriceColor = (p: number) => {
     const defaultPriceColor = "text-slate-800";
     if (currentPrice <= 0) return defaultPriceColor;
-    if (p > fiveMinAgoPrice) return "text-rose-500";
-    if (p < fiveMinAgoPrice) return "text-blue-500";
+    if (p > todayOpenPrice) return "text-rose-500";
+    if (p < todayOpenPrice) return "text-blue-500";
     return defaultPriceColor;
   };
 
@@ -631,7 +623,13 @@ export function MarketPage() {
                             }}
                             height={24} 
                           />
-                          <YAxis domain={['dataMin - 100', 'dataMax + 100']} hide />
+                          <YAxis 
+                            domain={[
+                              currentCandleOpen * 0.95,  // 현재 분봉 시가 -5%
+                              currentCandleOpen * 1.05   // 현재 분봉 시가 +5%
+                            ]} 
+                            hide 
+                          />
                           <Tooltip content={<CustomTooltip />} />
                           
                           {chartType === "candle" ? (
@@ -661,7 +659,10 @@ export function MarketPage() {
                       <ComposedChart data={displayChartData} margin={{ top: 10, right: 0, left: -20, bottom: 5 }}>
                         <XAxis hide height={24} />
                         <YAxis
-                          domain={['dataMin - 100', 'dataMax + 100']}
+                          domain={[
+                            currentCandleOpen * 0.95,  // 현재 분봉 시가 -5%
+                            currentCandleOpen * 1.05   // 현재 분봉 시가 +5%
+                          ]}
                           stroke="#cbd5e1"
                           tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 'bold' }}
                           tickFormatter={formatPrice}
@@ -714,80 +715,128 @@ export function MarketPage() {
                 <h2 className="text-xl font-black text-slate-700">호가창</h2>
               </div>
 
-              <div className="flex-1 flex flex-col text-sm font-bold overflow-y-auto overflow-x-hidden scroll-smooth [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
-                {/* 매도 (Asks) 영역 */}
-                <div className="flex flex-col shrink-0">
-                  {[...orderBook.asks].reverse().map((ask, idx) => {
-                    const isCurrent = ask.price === currentMarketPrice;
+              <div className="flex-1 flex flex-col text-sm font-bold overflow-hidden">
+                {(() => {
+                  const DISPLAY_LEVELS = 10; // 위아래 각 10개씩
+                  
+                  // 현재가보다 높은 매도 호가만 필터링 (가격 내림차순)
+                  const askPrices = [...orderBook.asks]
+                    .filter(ask => ask.price > currentMarketPrice)
+                    .sort((a, b) => b.price - a.price)
+                    .slice(0, DISPLAY_LEVELS);
+                  
+                  // 현재가보다 낮은 매수 호가만 필터링 (가격 내림차순)
+                  const bidPrices = [...orderBook.bids]
+                    .filter(bid => bid.price < currentMarketPrice)
+                    .sort((a, b) => b.price - a.price)
+                    .slice(0, DISPLAY_LEVELS);
+                  
+                  const displayPrices = [];
+                  
+                  // 빈 행 개수 계산
+                  const emptyAsksCount = DISPLAY_LEVELS - askPrices.length;
+                  const emptyBidsCount = DISPLAY_LEVELS - bidPrices.length;
+                  
+                  // 위쪽 빈 행 추가 (매도 호가가 부족한 경우)
+                  for (let i = 0; i < emptyAsksCount; i++) {
+                    displayPrices.push({ type: 'empty' });
+                  }
+                  
+                  // 매도 호가 추가 (높은 가격 → 낮은 가격)
+                  askPrices.forEach(ask => {
+                    displayPrices.push({
+                      price: ask.price,
+                      askQty: ask.quantity,
+                      bidQty: 0,
+                      type: 'ask'
+                    });
+                  });
+                  
+                  // 현재가 추가 (중앙 고정)
+                  displayPrices.push({
+                    price: currentMarketPrice,
+                    askQty: 0,
+                    bidQty: 0,
+                    type: 'current'
+                  });
+                  
+                  // 매수 호가 추가 (높은 가격 → 낮은 가격)
+                  bidPrices.forEach(bid => {
+                    displayPrices.push({
+                      price: bid.price,
+                      askQty: 0,
+                      bidQty: bid.quantity,
+                      type: 'bid'
+                    });
+                  });
+                  
+                  // 아래쪽 빈 행 추가 (매수 호가가 부족한 경우)
+                  for (let i = 0; i < emptyBidsCount; i++) {
+                    displayPrices.push({ type: 'empty' });
+                  }
+                  
+                  return displayPrices.map((item, idx) => {
+                    // 빈 행 렌더링
+                    if (item.type === 'empty') {
+                      return <div key={idx} className="h-[48px]" />;
+                    }
+                    
+                    if (item.type === 'current') {
+                      return (
+                        <div
+                          key={idx}
+                          ref={currentPriceRef}
+                          className="grid grid-cols-[1fr_110px_1fr] items-center h-[64px] shrink-0 my-1 border-y-2 border-slate-300 hover:bg-slate-100 bg-slate-50/50 relative z-10 transition-colors cursor-pointer shadow-sm"
+                          onClick={() => { setPrice(item.price); setQuantity(q => q === 0 ? 1 : q); }}
+                        >
+                          <div className="h-full" />
+                          <div className="h-full flex items-center justify-center relative z-10">
+                            <span className="font-black text-[30px] text-slate-800">
+                              {item.price.toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="h-full flex items-center justify-start pl-4">
+                            <span className="text-slate-600 text-[16px] font-bold tracking-tight">현재가</span>
+                          </div>
+                        </div>
+                      );
+                    }
+                    
+                    // 매도/매수 호가
+                    const isAsk = item.type === 'ask';
+                    const qty = isAsk ? item.askQty : item.bidQty;
+                    
                     return (
                       <div
-                        key={`ask-${idx}`}
-                        className={`grid grid-cols-[1fr_110px_1fr] items-center cursor-pointer transition-colors ${isCurrent ? 'h-[64px] my-1 border-y-2 border-slate-300 bg-slate-50/50 hover:bg-slate-100 shadow-sm' : 'h-[48px] hover:bg-slate-50'
-                          }`}
-                        onClick={() => { setPrice(ask.price); setQuantity(q => q === 0 ? 1 : q); }}
+                        key={idx}
+                        className="grid grid-cols-[1fr_110px_1fr] items-center h-[48px] hover:bg-slate-50 cursor-pointer transition-colors"
+                        onClick={() => { setPrice(item.price); setQuantity(q => q === 0 ? 1 : q); }}
                       >
                         <div className="relative h-full flex items-center justify-end pr-4">
-                          <div className="absolute right-0 top-1.5 bottom-1.5 bg-blue-100/40 rounded-l transition-all" style={{ width: `${(ask.quantity / 400) * 100}%` }} />
-                          <span className="text-blue-500 font-bold text-[17px] z-10 tracking-tight">{ask.quantity.toLocaleString()}</span>
+                          {isAsk && qty > 0 && (
+                            <>
+                              <div className="absolute right-0 top-1.5 bottom-1.5 bg-blue-100/40 rounded-l transition-all" style={{ width: `${Math.min((qty / 400) * 100, 100)}%` }} />
+                              <span className="text-blue-500 font-bold text-[17px] z-10 tracking-tight">{qty.toLocaleString()}</span>
+                            </>
+                          )}
                         </div>
                         <div className="h-full flex items-center justify-center relative z-10">
-                          <span className={`font-black ${isCurrent ? 'text-[30px] text-slate-800' : 'text-[22px] text-blue-500'}`}>{ask.price.toLocaleString()}</span>
-                        </div>
-                        <div className="h-full flex items-center justify-start pl-4">
-                          {isCurrent && <span className="text-slate-600 text-[16px] font-bold tracking-tight">현재가</span>}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-
-                {/* 현재가가 호가 잔량 배열에 아예 없어서 사라졌을 경우 가운데에 따로 표시 */}
-                {!orderBook.asks.some(a => a.price === currentMarketPrice) &&
-                  !orderBook.bids.some(b => b.price === currentMarketPrice) && currentMarketPrice > 0 && (
-                    <div
-                      ref={currentPriceRef}
-                      className="grid grid-cols-[1fr_110px_1fr] items-center h-[64px] shrink-0 my-1 border-y-2 border-slate-300 hover:bg-slate-100 bg-slate-50/50 relative z-10 transition-colors cursor-pointer shadow-sm"
-                      onClick={() => { setPrice(currentMarketPrice); setQuantity(q => q === 0 ? 1 : q); }}
-                    >
-                      <div className="h-full" />
-                      <div className="h-full flex items-center justify-center relative z-10">
-                        <span className="font-black text-[30px] text-slate-800">
-                          {currentMarketPrice.toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="h-full flex items-center justify-start pl-4">
-                        <span className="text-slate-600 text-[16px] font-bold tracking-tight">현재가</span>
-                      </div>
-                    </div>
-                  )}
-
-                {/* 매수 (Bids) 영역 */}
-                <div className="flex flex-col shrink-0">
-                  {orderBook.bids.map((bid, idx) => {
-                    // 💡 매도(asks)에 현재가 항목이 이미 가동 중이라면 매수에서는 일반 스타일로 처리해 중복 표기 방지
-                    const isCurrent = bid.price === currentMarketPrice &&
-                      !orderBook.asks.some(a => a.price === currentMarketPrice);
-                    return (
-                      <div
-                        key={`bid-${idx}`}
-                        className={`grid grid-cols-[1fr_110px_1fr] items-center cursor-pointer transition-colors ${isCurrent ? 'h-[64px] my-1 border-y-2 border-slate-300 bg-slate-50/50 hover:bg-slate-100 shadow-sm' : 'h-[48px] hover:bg-slate-50'
-                          }`}
-                        onClick={() => { setPrice(bid.price); setQuantity(q => q === 0 ? 1 : q); }}
-                      >
-                        <div className="h-full flex items-center justify-end pr-4">
-                          {isCurrent && <span className="text-slate-600 text-[16px] font-bold tracking-tight">현재가</span>}
-                        </div>
-                        <div className="h-full flex items-center justify-center relative z-10">
-                          <span className={`font-black ${isCurrent ? 'text-[30px] text-slate-800' : 'text-[22px] text-rose-500'}`}>{bid.price.toLocaleString()}</span>
+                          <span className={`font-black text-[22px] ${isAsk ? 'text-blue-500' : 'text-rose-500'}`}>
+                            {item.price.toLocaleString()}
+                          </span>
                         </div>
                         <div className="relative h-full flex items-center justify-start pl-4">
-                          <div className="absolute left-0 top-1.5 bottom-1.5 bg-rose-100/40 rounded-r transition-all" style={{ width: `${(bid.quantity / 400) * 100}%` }} />
-                          <span className="text-rose-500 font-bold text-[17px] z-10 tracking-tight">{bid.quantity.toLocaleString()}</span>
+                          {!isAsk && qty > 0 && (
+                            <>
+                              <div className="absolute left-0 top-1.5 bottom-1.5 bg-rose-100/40 rounded-r transition-all" style={{ width: `${Math.min((qty / 400) * 100, 100)}%` }} />
+                              <span className="text-rose-500 font-bold text-[17px] z-10 tracking-tight">{qty.toLocaleString()}</span>
+                            </>
+                          )}
                         </div>
                       </div>
-                    )
-                  })}
-                </div>
+                    );
+                  });
+                })()}
               </div>
             </div>
 

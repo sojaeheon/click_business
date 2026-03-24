@@ -7,6 +7,7 @@ import com.ssafy.ecosim.domain.market.repository.MarketCandleRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
@@ -53,6 +54,24 @@ public class CandleManager {
     }
 
     /**
+     * 개별 값을 받아 5분봉을 Redis에 추가합니다. (CandleService 백업용)
+     */
+    public void addCandle(Integer itemId, Long open, Long high, Long low, Long close, Long volume, LocalDateTime candleTime) {
+        long timestamp = candleTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        
+        CandleData candle = CandleData.builder()
+            .open(open)
+            .high(high)
+            .low(low)
+            .close(close)
+            .volume(volume)
+            .timestamp(timestamp)
+            .build();
+            
+        save5MinCandleToRedis(itemId, candle);
+    }
+
+    /**
      * 5분봉을 DB에 비동기로 저장합니다.
      */
     @Async
@@ -87,20 +106,24 @@ public class CandleManager {
         try {
             String key = String.format(CANDLE_KEY_PREFIX, itemId);
             
-            // 최신순으로 조회 (ZREVRANGE)
-            Set<String> values = stringRedisTemplate.opsForZSet().reverseRange(key, 0, count - 1);
+            // reverseRangeWithScores로 명시적 순서 보장
+            Set<ZSetOperations.TypedTuple<String>> valuesWithScores = 
+                stringRedisTemplate.opsForZSet().reverseRangeWithScores(key, 0, count - 1);
             
-            if (values == null || values.isEmpty()) {
+            if (valuesWithScores == null || valuesWithScores.isEmpty()) {
+                log.warn("[CandleManager] Redis에 분봉 데이터 없음: itemId={}", itemId);
                 return new ArrayList<>();
             }
             
+            log.info("[CandleManager] Redis에서 {}개 분봉 조회: itemId={}", valuesWithScores.size(), itemId);
+            
             List<CandleData> candles = new ArrayList<>();
-            for (String value : values) {
+            for (ZSetOperations.TypedTuple<String> tuple : valuesWithScores) {
                 try {
-                    CandleData candle = objectMapper.readValue(value, CandleData.class);
+                    CandleData candle = objectMapper.readValue(tuple.getValue(), CandleData.class);
                     candles.add(candle);
                 } catch (Exception e) {
-                    log.warn("[CandleManager] JSON 파싱 실패: {}", value, e);
+                    log.warn("[CandleManager] JSON 파싱 실패: {}", tuple.getValue(), e);
                 }
             }
             

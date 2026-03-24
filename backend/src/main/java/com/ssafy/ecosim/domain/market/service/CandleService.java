@@ -2,6 +2,8 @@ package com.ssafy.ecosim.domain.market.service;
 
 import com.ssafy.ecosim.domain.market.dto.CandleData;
 import com.ssafy.ecosim.domain.market.dto.response.CandleResponse;
+import com.ssafy.ecosim.domain.market.entity.MarketCandle;
+import com.ssafy.ecosim.domain.market.repository.MarketCandleRepository;
 import com.ssafy.ecosim.domain.market.repository.redis.OrderBookManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +19,7 @@ public class CandleService {
 
     private final CandleManager candleManager;
     private final OrderBookManager orderBookManager;
+    private final MarketCandleRepository marketCandleRepository;
 
     /**
      * 5분봉 데이터를 조회합니다.
@@ -34,6 +37,41 @@ public class CandleService {
         
         // 2. 확정된 분봉 조회 (isLive = false)
         List<CandleData> confirmedCandles = candleManager.get5MinCandles(itemId, count - 1);
+        
+        // 3. Redis에 데이터가 없으면 DB에서 조회 후 Redis에 백업
+        if (confirmedCandles == null || confirmedCandles.isEmpty()) {
+            log.info("[CandleService] Redis에 분봉 데이터 없음. DB에서 조회 시작: itemId={}", itemId);
+            
+            // DB에서 최근 100개 분봉 조회
+            List<MarketCandle> dbCandles = marketCandleRepository
+                .findTop100ByItemIdOrderByCandleTimeDesc(itemId);
+            
+            if (!dbCandles.isEmpty()) {
+                log.info("[CandleService] DB에서 {}개 분봉 조회 완료. Redis로 백업 시작...", dbCandles.size());
+                
+                // DB 데이터를 Redis에 백업 (역순으로 추가 - 오래된 것부터)
+                for (int i = dbCandles.size() - 1; i >= 0; i--) {
+                    MarketCandle candle = dbCandles.get(i);
+                    candleManager.addCandle(
+                        itemId,
+                        candle.getOpen(),
+                        candle.getHigh(),
+                        candle.getLow(),
+                        candle.getClose(),
+                        candle.getVolume(),
+                        candle.getCandleTime()
+                    );
+                }
+                
+                log.info("[CandleService] Redis 백업 완료: itemId={}, 백업된 분봉 개수={}", itemId, dbCandles.size());
+                
+                // Redis에서 다시 조회 (백업된 데이터)
+                confirmedCandles = candleManager.get5MinCandles(itemId, count - 1);
+            } else {
+                log.warn("[CandleService] DB에도 분봉 데이터 없음: itemId={}", itemId);
+            }
+        }
+        
         for (CandleData candle : confirmedCandles) {
             result.add(CandleResponse.from(candle, false));
         }
