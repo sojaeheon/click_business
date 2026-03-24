@@ -46,4 +46,3 @@ services:
 networks:
   ecosim-network:
     name: ecosim-network
-

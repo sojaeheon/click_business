@@ -4,8 +4,20 @@ from typing import List
 import psycopg2
 from psycopg2.extras import execute_values
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, from_json, to_timestamp, coalesce, lit
+from pyspark.sql.functions import (
+    col,
+    from_json,
+    to_timestamp,
+    coalesce,
+    lit,
+    from_unixtime,
+    current_timestamp,
+    row_number,
+    sum as spark_sum,
+    max as spark_max,
+)
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, MapType
+from pyspark.sql.window import Window
 
 # -----------------------------
 # Spark 세션
@@ -155,11 +167,22 @@ trade_events = (
             col("payload").getItem("matched_price"),
             col("payload").getItem("price")
         ).cast("bigint").alias("last_price"),
-        to_timestamp(
-            coalesce(col("payload").getItem("executed_at"), col("occurred_at"))
+        coalesce(
+            from_unixtime(
+                coalesce(
+                    col("payload").getItem("executed_at"),
+                    col("occurred_at")
+                ).cast("double")
+            ).cast("timestamp"),
+            col("kafka_timestamp").cast("timestamp"),
+            current_timestamp()
         ).alias("updated_at")
     )
-    .filter(col("item_id").isNotNull() & col("last_price").isNotNull())
+    .filter(
+        col("item_id").isNotNull()
+        & col("last_price").isNotNull()
+        & col("updated_at").isNotNull()
+    )
 )
 
 # -----------------------------
@@ -291,7 +314,24 @@ def sync_ranking_current(company_ids: List[int]):
 # foreachBatch: cash state
 # -----------------------------
 def upsert_cash_state(batch_df, batch_id: int):
-    rows = batch_df.select("company_id", "cash", "updated_at").collect()
+    dedup_df = (
+        batch_df
+        .filter(
+            col("company_id").isNotNull()
+            & col("cash").isNotNull()
+            & col("updated_at").isNotNull()
+        )
+        .withColumn(
+            "rn",
+            row_number().over(
+                Window.partitionBy("company_id").orderBy(col("updated_at").desc())
+            )
+        )
+        .filter(col("rn") == 1)
+        .select("company_id", "cash", "updated_at")
+    )
+
+    rows = dedup_df.collect()
     if not rows:
         return
 
@@ -324,7 +364,22 @@ def upsert_cash_state(batch_df, batch_id: int):
 # foreachBatch: qty state
 # -----------------------------
 def upsert_item_qty_state(batch_df, batch_id: int):
-    rows = batch_df.select("company_id", "item_id", "qty_delta", "updated_at").collect()
+    agg_df = (
+        batch_df
+        .filter(
+            col("company_id").isNotNull()
+            & col("item_id").isNotNull()
+            & col("qty_delta").isNotNull()
+            & col("updated_at").isNotNull()
+        )
+        .groupBy("company_id", "item_id")
+        .agg(
+            spark_sum("qty_delta").alias("qty_delta"),
+            spark_max("updated_at").alias("updated_at")
+        )
+    )
+
+    rows = agg_df.collect()
     if not rows:
         return
 
@@ -363,7 +418,24 @@ def upsert_item_qty_state(batch_df, batch_id: int):
 # foreachBatch: price state
 # -----------------------------
 def upsert_item_price_state(batch_df, batch_id: int):
-    rows = batch_df.select("item_id", "last_price", "updated_at").collect()
+    dedup_df = (
+        batch_df
+        .filter(
+            col("item_id").isNotNull()
+            & col("last_price").isNotNull()
+            & col("updated_at").isNotNull()
+        )
+        .withColumn(
+            "rn",
+            row_number().over(
+                Window.partitionBy("item_id").orderBy(col("updated_at").desc())
+            )
+        )
+        .filter(col("rn") == 1)
+        .select("item_id", "last_price", "updated_at")
+    )
+
+    rows = dedup_df.collect()
     if not rows:
         return
 
