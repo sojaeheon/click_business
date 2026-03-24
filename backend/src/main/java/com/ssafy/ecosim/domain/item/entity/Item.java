@@ -41,4 +41,7 @@ public class Item {
         this.maxStackSize = maxStackSize;
         this.workerLevel = workerLevel;
     }
+    public void updateMaxStackSize(Long maxStackSize) {
+        this.maxStackSize = maxStackSize;
+    }
 }

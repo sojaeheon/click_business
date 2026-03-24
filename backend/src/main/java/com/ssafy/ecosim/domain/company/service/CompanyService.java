@@ -45,10 +45,6 @@ public class CompanyService {
         warehouseService.createDefaultWarehouse(saved);
         inventoryService.createDefaultInventory(saved);
 
-        // 회사 생성 시 Lv1 초보 일꾼 1개 지급
-        itemRepository.findByName("초보 일꾼").ifPresent(workerItem ->
-                inventoryService.addItem(saved.getId(), workerItem.getId(), 1L));
-
         return saved;
     }
 

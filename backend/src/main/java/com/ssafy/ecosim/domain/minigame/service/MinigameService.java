@@ -25,6 +25,10 @@ public class MinigameService {
     private final Random random = new Random();
     private static final long MINIGAME_COST = 100000L; // 미니게임 비용
 
+    public long getMinigameCost() {
+        return MINIGAME_COST;
+    }
+
     /**
      * 보상 수령:
      * 1) 미니게임 비용(100,000원) 차감
@@ -33,16 +37,55 @@ public class MinigameService {
      * 4) InventoryService.addItem()으로 인벤토리 슬롯에 저장
      * 5) 획득한 아이템 정보 반환
      */
-    @Transactional
-    public MinigameClaimResponse claimReward(Company company) {
-        // 1. 현금 확인 및 차감
+    /**
+     * 미니게임 플레이 가능 여부 확인
+     */
+    public void checkPlayable(Company company) {
+        // 1. 인벤토리 공간 확인
+        if (!inventoryService.hasSpace(company.getId())) {
+            throw new IllegalStateException("인벤토리가 가득 찼습니다. 먼저 공간을 비워주세요.");
+        }
+    }
+
+    /**
+     * 현금 잔액 확인
+     */
+    public void checkAffordable(Company company) {
         if (company.getCash() < MINIGAME_COST) {
             throw new IllegalStateException("잔액이 부족합니다. 필요 금액: " + MINIGAME_COST + "원");
         }
+    }
+
+    /**
+     * 미니게임 시작 (비용 차감)
+     */
+    @Transactional
+    public void start(Company company) {
+        // 검증
+        checkPlayable(company);
+        checkAffordable(company);
+
+        // 비용 차감 및 상태 저장
         company.spendCash(MINIGAME_COST);
+        company.setMinigamePaid(true);
+        companyRepository.save(company);
+    }
+
+    @Transactional
+    public MinigameClaimResponse claimReward(Company company) {
+        // 1. 지불 여부 확인
+        if (!company.isMinigamePaid()) {
+            throw new IllegalStateException("미니게임 비용이 지불되지 않았습니다.");
+        }
+
+        // 2. 인벤토리 공간 재확인 (보상 지급 전)
+        checkPlayable(company);
+
+        // 3. 지불 상태 초기화 및 저장
+        company.setMinigamePaid(false);
         companyRepository.save(company);
 
-        // 2. 랜덤 아이템 선택
+        // 4. 랜덤 아이템 선택
         String pickedName = pickItemName();
 
         Item item = itemRepository.findByName(pickedName)
@@ -50,7 +93,7 @@ public class MinigameService {
                         "보상 아이템을 찾을 수 없습니다: " + pickedName
                                 + " (DataInitializer가 실행되었는지 확인하세요)"));
 
-        // 3. 인벤토리에 아이템 추가
+        // 5. 인벤토리에 아이템 추가
         inventoryService.addItem(company.getId(), item.getId(), 1L);
 
         return new MinigameClaimResponse(item);

@@ -204,12 +204,16 @@ export const HRAPI = {
 };
 
 export const MinigameAPI = {
-  claimReward: async (data: { companyId: number; clicks: number; isFever: boolean }) => {
-    const res = await apiClient.post('/minigame/claim');
+  getStatus: async () => {
+    const res = await apiClient.get('/minigame/status');
     return { data: res.data.data };
   },
-  unlockGame: async (data: { companyId: number; amount: number }) => {
-    const res = await apiClient.post('/minigame/unlock', data);
+  start: async () => {
+    const res = await apiClient.post('/minigame/start');
+    return { data: res.data.data };
+  },
+  claimReward: async (data: { companyId: number; clicks: number; isFever: boolean }) => {
+    const res = await apiClient.post('/minigame/claim');
     return { data: res.data.data };
   },
 };
