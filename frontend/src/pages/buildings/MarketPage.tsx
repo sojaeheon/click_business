@@ -42,20 +42,20 @@ const CustomCandle = (props: any) => {
   const { x, y, width, height, payload } = props;
   if (!payload || payload.open === undefined || payload.close === undefined || payload.low === undefined || payload.high === undefined) return null;
   const { open, close, low, high, prevClose } = payload;
-  
+
   // 한국 주식 관례: 5분전(직전) 종가 대비 현재 종가가 높거나 같으면 빨간색(상승), 낮으면 파란색(하락)
   const isUp = close >= (prevClose ?? open);
   const color = isUp ? "#f43f5e" : "#3b82f6";
-  
+
   const ratio = (val: number) => high === low ? 0.5 : (high - val) / (high - low);
   const pyHigh = y;
   const pyLow = y + height;
   const pyOpen = y + height * ratio(open);
   const pyClose = y + height * ratio(close);
-  
+
   const bodyY = Math.min(pyOpen, pyClose);
   const bodyHeight = Math.max(Math.abs(pyOpen - pyClose), 1.5);
-  
+
   return (
     <g>
       {/* 윗꼬리, 아랫꼬리 라인 (최고가, 최저가) */}
@@ -218,9 +218,9 @@ export function MarketPage() {
         // [2] 백엔드 5분봉 차트 조회
         try {
           const chartRes = await MarketAPI.get5MinCandles(itemId, 100);
-          
+
           const candles = chartRes.data?.data ?? chartRes.data;
-          
+
           if (candles && Array.isArray(candles)) {
             // 백엔드에서 이미 계산된 5분봉 데이터를 시간 순으로 정렬
             const formatted = candles
@@ -238,7 +238,7 @@ export function MarketPage() {
                   close: c.close
                 };
               });
-            
+
             setChartData(formatted);
           }
         } catch (e) {
@@ -355,9 +355,9 @@ export function MarketPage() {
       const d = new Date(now.getTime() - i * 5 * 60000);
       const bucketM = Math.floor(d.getMinutes() / 5) * 5;
       const tStr = `${d.getHours().toString().padStart(2, '0')}:${bucketM.toString().padStart(2, '0')}`;
-      
+
       const backendCandle = map.get(tStr);
-      
+
       let candle;
       if (backendCandle) {
         // ✅ 백엔드에서 받은 OHLC를 그대로 사용
@@ -385,7 +385,7 @@ export function MarketPage() {
           prevClose: prevClose
         };
       }
-      
+
       // 현재 시간(i === 0)이면 실시간 가격 반영
       if (i === 0 && currentPrice) {
         candle.close = currentPrice;
@@ -394,10 +394,10 @@ export function MarketPage() {
         candle.price = currentPrice;
         candle.bounds = [candle.low, candle.high];
       }
-      
+
       result.push(candle);
     }
-    
+
     return result;
   };
 
@@ -408,19 +408,26 @@ export function MarketPage() {
 
   // 🌟 당일 시가 대비 현재가 비교 (한국 주식 HTS 표준)
   const lastCandle = displayChartData.length > 0 ? displayChartData[displayChartData.length - 1] : null;
-  
+
   // 당일 첫 분봉의 시가를 기준가로 사용 (시간 순 정렬 후 첫 번째)
   const todayOpenPrice = displayChartData.length > 0 ? displayChartData[0].open : currentPrice;
-  
-  // 현재 진행 중인 분봉의 시가 (Y축 중심용)
+
   const currentCandleOpen = lastCandle?.open ?? currentPrice;
-  
+
+  // 📊 Y축 1,000 단위 틱 격자 계산
+  const minY = Math.floor((currentCandleOpen * 0.95) / 1000) * 1000;
+  const maxY = Math.ceil((currentCandleOpen * 1.05) / 1000) * 1000;
+  const yTicks = [];
+  for (let t = minY; t <= maxY; t += 1000) {
+    yTicks.push(t);
+  }
+
   const currentPriceToCompare = currentPrice || (lastCandle?.close ?? 0);
-  
+
   const customDiff = currentPriceToCompare - todayOpenPrice;
   const isUpTrend = customDiff > 0;
   const customPct = todayOpenPrice > 0 ? (customDiff / todayOpenPrice) * 100 : 0;
-  
+
   // 가격 색상 결정
   const priceColor = isUpTrend ? "text-rose-500" : (customDiff < 0 ? "text-blue-500" : "text-slate-800");
 
@@ -483,8 +490,7 @@ export function MarketPage() {
   };
 
   return (
-    <div className={`absolute inset-0 z-40 flex flex-col pt-8 transition-colors duration-700 ease-out ${marketTrend === "up" ? "bg-rose-50" : marketTrend === "down" ? "bg-blue-50" : "bg-[#f5f0e8]"
-      }`}
+    <div className="absolute inset-0 z-40 flex flex-col pt-8 bg-[#131a3d]"
       style={{
         backgroundImage: "url('/images/market.png')",
         backgroundSize: 'cover',
@@ -492,12 +498,14 @@ export function MarketPage() {
         backgroundPosition: 'center',
       }}
     >
+      {/* 🌌 프리미엄 딥 네이비 그라디언트 오버레이 */}
+      <div className="absolute inset-0 bg-gradient-to-br from-[#0b1426]/30 via-[#0F1A30]/40 to-[#040810]/50 z-0 pointer-events-none" />
       <BackButton onClick={() => { if (mode) setMode(null); else closeBuildingPage(); }} className="absolute top-6 left-6" />
       {!mode ? (
         // --- DEPTH 1: 메인 화면 ---
         <div className="flex-1 flex flex-col justify-center items-center gap-12 p-6 max-w-4xl mx-auto w-full relative z-10">
           <div className="flex gap-8 w-full h-80">
-            <button onClick={() => setMode("buy")} className="flex-1 bg-white hover:bg-rose-50 border-4 border-slate-300 hover:border-rose-400 rounded-[2rem] shadow-xl flex flex-col items-center justify-center gap-6 group transition-all duration-300 active:scale-95 cursor-pointer relative overflow-hidden">
+            <button onClick={() => setMode("buy")} className="flex-1 bg-white/90 backdrop-blur-xl border border-white/20 hover:bg-rose-50/90 rounded-[2rem] shadow-2xl flex flex-col items-center justify-center gap-6 group transition-all duration-300 active:scale-95 cursor-pointer relative overflow-hidden">
               <div className="w-24 h-24 rounded-full bg-rose-100 flex items-center justify-center group-hover:scale-110 transition-transform relative z-10">
                 <TrendingUp className="w-12 h-12 text-rose-500" />
               </div>
@@ -513,7 +521,7 @@ export function MarketPage() {
                 </Canvas>
               </div>
             </button>
-            <button onClick={() => setMode("sell")} className="flex-1 bg-white hover:bg-blue-50 border-4 border-slate-300 hover:border-blue-400 rounded-[2rem] shadow-xl flex flex-col items-center justify-center gap-6 group transition-all duration-300 active:scale-95 cursor-pointer relative overflow-hidden">
+            <button onClick={() => setMode("sell")} className="flex-1 bg-white/90 backdrop-blur-xl border border-white/20 hover:bg-blue-50/90 rounded-[2rem] shadow-2xl flex flex-col items-center justify-center gap-6 group transition-all duration-300 active:scale-95 cursor-pointer relative overflow-hidden">
               <div className="w-24 h-24 rounded-full bg-blue-100 flex items-center justify-center group-hover:scale-110 transition-transform relative z-10">
                 <TrendingDown className="w-12 h-12 text-blue-500" />
               </div>
@@ -537,28 +545,26 @@ export function MarketPage() {
           <div className="flex w-full gap-4 items-stretch h-[calc(100vh-180px)] min-h-[500px]">
 
             {/* 📈 1. 실시간 차트 영역 (w-1/2) */}
-            <div className="w-1/2 bg-white border-4 border-slate-300 rounded-3xl p-6 flex flex-col shadow-xl relative overflow-hidden">
+            <div className="w-1/2 bg-white/95 backdrop-blur-xl border border-white/10 rounded-3xl p-6 flex flex-col shadow-[0_20px_50px_rgba(0,0,0,0.15)] relative overflow-hidden">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-2xl font-black text-slate-700 flex items-center gap-3 relative">
                   <Activity className="w-6 h-6 text-slate-500" /> 실시간 시장 동향
-                  
+
                   {/* 토글형 스위치 단추 */}
                   <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/60 gap-1 ml-2 shadow-inner">
-                    <button 
+                    <button
                       onClick={() => setChartType("candle")}
-                      className={`text-xs font-black px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1 cursor-pointer ${
-                        chartType === "candle" ? "bg-white text-slate-800 shadow-sm" : "text-slate-400 hover:text-slate-600"
-                      }`}
+                      className={`text-xs font-black px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1 cursor-pointer ${chartType === "candle" ? "bg-white text-slate-800 shadow-sm" : "text-slate-400 hover:text-slate-600"
+                        }`}
                     >
-                      <BarChart2 className="w-3.5 h-3.5"/> 캔들
+                      <BarChart2 className="w-3.5 h-3.5" /> 캔들
                     </button>
-                    <button 
+                    <button
                       onClick={() => setChartType("line")}
-                      className={`text-xs font-black px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1 cursor-pointer ${
-                        chartType === "line" ? "bg-white text-slate-800 shadow-sm" : "text-slate-400 hover:text-slate-600"
-                      }`}
+                      className={`text-xs font-black px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-1 cursor-pointer ${chartType === "line" ? "bg-white text-slate-800 shadow-sm" : "text-slate-400 hover:text-slate-600"
+                        }`}
                     >
-                      <Activity className="w-3.5 h-3.5"/> 선
+                      <Activity className="w-3.5 h-3.5" /> 선
                     </button>
                   </div>
                 </h2>
@@ -585,7 +591,7 @@ export function MarketPage() {
                   {/* 스크롤 가능한 차트 영역 */}
                   <div
                     ref={scrollRef}
-                    className="absolute inset-0 overflow-x-auto overflow-y-hidden cursor-grab active:cursor-grabbing [&::-webkit-scrollbar]:hidden focus:outline-none"
+                    className="absolute inset-y-0 right-0 left-[60px] overflow-x-auto overflow-y-hidden cursor-grab active:cursor-grabbing [&::-webkit-scrollbar]:hidden focus:outline-none"
                     onMouseEnter={() => scrollRef.current?.focus()}
                     onMouseDown={(e) => {
                       scrollRef.current?.focus();
@@ -603,7 +609,7 @@ export function MarketPage() {
                       if (e.key === 'ArrowRight') { scrollRef.current.scrollLeft += step; setHasDragged(true); e.preventDefault(); }
                     }}
                   >
-                    <div style={{ width: `${chartWidthPct}%`, height: '100%', paddingLeft: '60px' }}>
+                    <div style={{ width: `${chartWidthPct}%`, height: '100%' }}>
                       <ResponsiveContainer width="100%" height="100%">
                         <ComposedChart data={displayChartData} margin={{ top: 10, right: 10, left: 20, bottom: 5 }}>
                           <defs>
@@ -612,31 +618,30 @@ export function MarketPage() {
                               <stop offset="95%" stopColor={isUpTrend ? "#f43f5e" : "#3b82f6"} stopOpacity={0.0} />
                             </linearGradient>
                           </defs>
-                          <XAxis 
-                            dataKey="time" 
-                            stroke="#cbd5e1" 
-                            tick={{ fill: '#94a3b8', fontSize: 11 }} 
-                            interval={0} 
+                          <XAxis
+                            dataKey="time"
+                            stroke="#cbd5e1"
+                            tick={{ fill: '#94a3b8', fontSize: 11 }}
+                            interval={0}
                             tickFormatter={(timeStr) => {
                               const [, m] = timeStr.split(':').map(Number);
                               return m % 5 === 0 ? timeStr : '';
                             }}
-                            height={24} 
+                            height={24}
                           />
-                          <YAxis 
-                            domain={[
-                              currentCandleOpen * 0.95,  // 현재 분봉 시가 -5%
-                              currentCandleOpen * 1.05   // 현재 분봉 시가 +5%
-                            ]} 
-                            hide 
+                          <YAxis
+                            domain={[minY, maxY]}
+                            ticks={yTicks}
+                            allowDataOverflow={true}
+                            hide
                           />
                           <Tooltip content={<CustomTooltip />} />
-                          
+
                           {chartType === "candle" ? (
-                            <Bar 
-                              dataKey="bounds" 
-                              shape={<CustomCandle />} 
-                              isAnimationActive={false} 
+                            <Bar
+                              dataKey="bounds"
+                              shape={<CustomCandle />}
+                              isAnimationActive={false}
                             />
                           ) : (
                             <Area
@@ -654,15 +659,14 @@ export function MarketPage() {
                   </div>
 
                   {/* 좌측 고정 Y축 (Fixed YAxis Overlay) */}
-                  <div className="absolute top-0 left-0 bottom-0 w-[60px] z-10 bg-white/95 backdrop-blur shadow-[2px_0_5px_rgba(0,0,0,0.03)] pointer-events-none select-none overflow-hidden border-r border-slate-100">
+                  <div className="absolute top-0 left-0 bottom-0 w-[60px] z-10 bg-transparent pointer-events-none select-none overflow-hidden">
                     <ResponsiveContainer width="100%" height="100%">
                       <ComposedChart data={displayChartData} margin={{ top: 10, right: 0, left: -20, bottom: 5 }}>
                         <XAxis hide height={24} />
                         <YAxis
-                          domain={[
-                            currentCandleOpen * 0.95,  // 현재 분봉 시가 -5%
-                            currentCandleOpen * 1.05   // 현재 분봉 시가 +5%
-                          ]}
+                          domain={[minY, maxY]}
+                          ticks={yTicks}
+                          allowDataOverflow={true}
                           stroke="#cbd5e1"
                           tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 'bold' }}
                           tickFormatter={formatPrice}
@@ -672,10 +676,10 @@ export function MarketPage() {
                         />
                         {/* 왼쪽 호가 축 배경에도 동일하게 차트 노출(Y축 연동용) */}
                         {chartType === "candle" ? (
-                          <Bar 
-                            dataKey="bounds" 
-                            shape={<CustomCandle />} 
-                            isAnimationActive={false} 
+                          <Bar
+                            dataKey="bounds"
+                            shape={<CustomCandle />}
+                            isAnimationActive={false}
                           />
                         ) : (
                           <Area
@@ -700,7 +704,7 @@ export function MarketPage() {
                   {hasDragged && (
                     <button
                       onClick={() => setHasDragged(false)}
-                      className="absolute right-0 flex items-center gap-2 px-4 py-1.5 bg-rose-500 hover:bg-rose-600 text-white text-[13px] font-black rounded-full shadow-[0_4px_15px_rgba(244,63,94,0.4)] transition-transform hover:scale-105 active:scale-95 animate-bounce cursor-pointer z-40"
+                      className="absolute right-0 flex items-center gap-2 px-4 py-1.5 bg-[#1A2342] hover:bg-[#232F59] text-white text-[11px] font-black rounded-full shadow-[0_4px_12px_rgba(0,0,0,0.3)] transition-transform hover:scale-105 active:scale-95 cursor-pointer z-40 border border-white/20"
                     >
                       <Activity className="w-4 h-4" /> 실시간 가격 보기
                     </button>
@@ -710,38 +714,38 @@ export function MarketPage() {
             </div>
 
             {/* 📊 2. 주식 호가창 영역 (w-1/4) */}
-            <div className="w-1/4 bg-white border-4 border-slate-300 rounded-3xl p-4 flex flex-col shadow-xl overflow-hidden select-none">
-              <div className="flex items-center justify-center mb-3 border-b-2 border-slate-100 pb-3">
-                <h2 className="text-xl font-black text-slate-700">호가창</h2>
+            <div className="w-1/4 bg-white/95 backdrop-blur-xl border border-white/10 rounded-3xl p-4 flex flex-col shadow-[0_20px_50px_rgba(0,0,0,0.15)] overflow-hidden select-none relative">
+              <div className="absolute top-4 left-4 right-4 z-20 flex bg-transparent pb-1.5 border-b border-slate-100/40 items-center justify-center">
+                <h2 className="text-xl font-black text-slate-700">호가</h2>
               </div>
 
-              <div className="flex-1 flex flex-col text-sm font-bold overflow-hidden">
+              <div className="flex-1 flex flex-col text-sm font-bold overflow-y-auto [&::-webkit-scrollbar]:hidden gap-4 pt-12 pb-12">
                 {(() => {
                   const DISPLAY_LEVELS = 10; // 위아래 각 10개씩
-                  
+
                   // 현재가보다 높은 매도 호가만 필터링 (가격 내림차순)
                   const askPrices = [...orderBook.asks]
                     .filter(ask => ask.price > currentMarketPrice)
                     .sort((a, b) => b.price - a.price)
                     .slice(0, DISPLAY_LEVELS);
-                  
+
                   // 현재가보다 낮은 매수 호가만 필터링 (가격 내림차순)
                   const bidPrices = [...orderBook.bids]
                     .filter(bid => bid.price < currentMarketPrice)
                     .sort((a, b) => b.price - a.price)
                     .slice(0, DISPLAY_LEVELS);
-                  
+
                   const displayPrices = [];
-                  
+
                   // 빈 행 개수 계산
                   const emptyAsksCount = DISPLAY_LEVELS - askPrices.length;
                   const emptyBidsCount = DISPLAY_LEVELS - bidPrices.length;
-                  
+
                   // 위쪽 빈 행 추가 (매도 호가가 부족한 경우)
                   for (let i = 0; i < emptyAsksCount; i++) {
-                    displayPrices.push({ type: 'empty' });
+                    displayPrices.push({ type: 'empty', side: 'ask' as const });
                   }
-                  
+
                   // 매도 호가 추가 (높은 가격 → 낮은 가격)
                   askPrices.forEach(ask => {
                     displayPrices.push({
@@ -751,7 +755,7 @@ export function MarketPage() {
                       type: 'ask'
                     });
                   });
-                  
+
                   // 현재가 추가 (중앙 고정)
                   displayPrices.push({
                     price: currentMarketPrice,
@@ -759,7 +763,7 @@ export function MarketPage() {
                     bidQty: 0,
                     type: 'current'
                   });
-                  
+
                   // 매수 호가 추가 (높은 가격 → 낮은 가격)
                   bidPrices.forEach(bid => {
                     displayPrices.push({
@@ -769,24 +773,24 @@ export function MarketPage() {
                       type: 'bid'
                     });
                   });
-                  
+
                   // 아래쪽 빈 행 추가 (매수 호가가 부족한 경우)
                   for (let i = 0; i < emptyBidsCount; i++) {
-                    displayPrices.push({ type: 'empty' });
+                    displayPrices.push({ type: 'empty', side: 'bid' as const });
                   }
-                  
+
                   return displayPrices.map((item, idx) => {
                     // 빈 행 렌더링
                     if (item.type === 'empty') {
-                      return <div key={idx} className="h-[48px]" />;
+                      return <div key={idx} className="h-[100px]" />;
                     }
-                    
+
                     if (item.type === 'current') {
                       return (
                         <div
                           key={idx}
                           ref={currentPriceRef}
-                          className="grid grid-cols-[1fr_110px_1fr] items-center h-[64px] shrink-0 my-1 border-y-2 border-slate-300 hover:bg-slate-100 bg-slate-50/50 relative z-10 transition-colors cursor-pointer shadow-sm"
+                          className="grid grid-cols-[1fr_110px_1fr] items-center h-[64px] shrink-0 border-y-2 border-slate-300 hover:bg-slate-100 bg-slate-50/50 relative z-10 transition-colors cursor-pointer shadow-sm"
                           onClick={() => { setPrice(item.price); setQuantity(q => q === 0 ? 1 : q); }}
                         >
                           <div className="h-full" />
@@ -801,27 +805,27 @@ export function MarketPage() {
                         </div>
                       );
                     }
-                    
+
                     // 매도/매수 호가
                     const isAsk = item.type === 'ask';
                     const qty = isAsk ? item.askQty : item.bidQty;
-                    
+
                     return (
                       <div
                         key={idx}
-                        className="grid grid-cols-[1fr_110px_1fr] items-center h-[48px] hover:bg-slate-50 cursor-pointer transition-colors"
+                        className="grid grid-cols-[1fr_110px_1fr] items-center h-[100px] hover:bg-slate-50 cursor-pointer transition-colors"
                         onClick={() => { setPrice(item.price); setQuantity(q => q === 0 ? 1 : q); }}
                       >
                         <div className="relative h-full flex items-center justify-end pr-4">
                           {isAsk && qty > 0 && (
                             <>
                               <div className="absolute right-0 top-1.5 bottom-1.5 bg-blue-100/40 rounded-l transition-all" style={{ width: `${Math.min((qty / 400) * 100, 100)}%` }} />
-                              <span className="text-blue-500 font-bold text-[17px] z-10 tracking-tight">{qty.toLocaleString()}</span>
+                              <span className="text-blue-500 font-bold text-[20px] z-10 tracking-tight">{qty.toLocaleString()}</span>
                             </>
                           )}
                         </div>
                         <div className="h-full flex items-center justify-center relative z-10">
-                          <span className={`font-black text-[22px] ${isAsk ? 'text-blue-500' : 'text-rose-500'}`}>
+                          <span className={`font-black text-[26px] ${isAsk ? 'text-blue-500' : 'text-rose-500'}`}>
                             {item.price.toLocaleString()}
                           </span>
                         </div>
@@ -829,7 +833,7 @@ export function MarketPage() {
                           {!isAsk && qty > 0 && (
                             <>
                               <div className="absolute left-0 top-1.5 bottom-1.5 bg-rose-100/40 rounded-r transition-all" style={{ width: `${Math.min((qty / 400) * 100, 100)}%` }} />
-                              <span className="text-rose-500 font-bold text-[17px] z-10 tracking-tight">{qty.toLocaleString()}</span>
+                              <span className="text-rose-500 font-bold text-[20px] z-10 tracking-tight">{qty.toLocaleString()}</span>
                             </>
                           )}
                         </div>
@@ -841,7 +845,7 @@ export function MarketPage() {
             </div>
 
             {/* 📝 3. 주문 폼 & 탭 패널 영역 (w-1/4) */}
-            <div className="w-1/4 bg-white border-4 border-slate-300 rounded-3xl p-4 flex flex-col justify-between shadow-xl">
+            <div className="w-1/4 bg-white/95 backdrop-blur-xl border border-white/10 rounded-3xl p-4 flex flex-col justify-between shadow-[0_20px_50px_rgba(0,0,0,0.15)]">
               <div className="flex flex-col gap-4 h-full">
 
                 {/* 3탭 헤더 */}

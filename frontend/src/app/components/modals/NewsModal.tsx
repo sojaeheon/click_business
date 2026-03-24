@@ -52,12 +52,15 @@ function NewsDetail({ news, onBack }: { news: NewsItem; onBack: () => void }) {
 
         <hr className="border-slate-200 mb-6" />
 
-        {/* 본문 (왼쪽 블랙 바 포인트) */}
-        <div className="flex-1 flex items-start">
-          <div className="w-[4px] self-stretch bg-slate-800 rounded-full mr-5 flex-shrink-0" />
-          <p className="text-lg font-bold text-slate-700 leading-relaxed break-keep">
-            {news.summary || "상세 기사 내용이 여기에 표시됩니다. 본문 데이터가 로드되면 확인 가능합니다."}
-          </p>
+        {/* 본문 */}
+        <div className="flex-1">
+          <div className="text-lg font-bold text-slate-700 leading-loose break-keep space-y-2">
+            {news.summary ? news.summary.split('. ').map((sentence, index, array) => (
+              <p key={index}>
+                {sentence}{index < array.length - 1 ? '.' : ''}
+              </p>
+            )) : "상세 기사 내용이 여기에 표시됩니다. 본문 데이터가 로드되면 확인 가능합니다."}
+          </div>
         </div>
       </div>
     </div>
@@ -162,12 +165,46 @@ export function NewsModal() {
 
   // 뉴스 모달 전체 레이아웃
   return (
-    <div className="flex-1 flex flex-col h-full min-h-0">
-      {selectedNews ? (
-        <NewsDetail news={selectedNews} onBack={() => setSelectedNews(null)} />
-      ) : (
-        <NewsList onSelect={(news) => setSelectedNews(news)} />
-      )}
-    </div>
+    <>
+      <style>{`
+        @font-face {
+            font-family: 'NanumSquareNeo';
+            src: url(https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareNeo/NanumSquareNeoTTF-aLt.woff2);
+            font-weight: 300;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'NanumSquareNeo';
+            src: url(https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareNeo/NanumSquareNeoTTF-bRg.woff2);
+            font-weight: 400;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'NanumSquareNeo';
+            src: url(https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareNeo/NanumSquareNeoTTF-cBd.woff2);
+            font-weight: 700;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'NanumSquareNeo';
+            src: url(https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareNeo/NanumSquareNeoTTF-dEb.woff2);
+            font-weight: 800;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'NanumSquareNeo';
+            src: url(https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareNeo/NanumSquareNeoTTF-eHv.woff2);
+            font-weight: 900;
+            font-display: swap;
+        }
+      `}</style>
+      <div className="flex-1 flex flex-col h-full min-h-0" style={{ fontFamily: 'NanumSquareNeo, sans-serif' }}>
+        {selectedNews ? (
+          <NewsDetail news={selectedNews} onBack={() => setSelectedNews(null)} />
+        ) : (
+          <NewsList onSelect={(news) => setSelectedNews(news)} />
+        )}
+      </div>
+    </>
   );
 }
