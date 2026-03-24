@@ -46,41 +46,17 @@ def to_datetime(iso_time_str):
         return datetime.utcnow()
 
 # -----------------------------
-# order 존재 확인 (retry)
-# -----------------------------
-def wait_for_order(cur, order_id, retries=20, delay=0.5):
-    for i in range(retries):
-        cur.execute("""
-            SELECT 1 FROM market_order WHERE market_order_id = %s
-        """, (order_id,))
-        if cur.fetchone():
-            return True
-
-        print(f"[RETRY] order 확인 중 ({i+1}/{retries}) → {order_id}")
-        time.sleep(delay)
-
-    return False
-
-# -----------------------------
 # 체결 저장 (핵심)
 # -----------------------------
-def insert_trade(conn, data, payload):
+def insert_trade(conn, payload):
+    price = payload["price"]
+    quantity = payload["quantity"]
+    executed_at = to_datetime(payload.get("executed_at"))
+
+    buy_order_id = payload["buy_order_id"]
+    sell_order_id = payload["sell_order_id"]
+
     with conn.cursor() as cur:
-
-        price = payload["price"]
-        quantity = payload["quantity"]
-        executed_at = to_datetime(payload.get("executed_at"))
-
-        buy_order_id = payload["buy_order_id"]
-        sell_order_id = payload["sell_order_id"]
-
-        # -----------------------------
-        # order 존재 확인
-        # -----------------------------
-        if not wait_for_order(cur, buy_order_id) or not wait_for_order(cur, sell_order_id):
-            print(f"[SKIP] order 없음 → buy={buy_order_id}, sell={sell_order_id}")
-            return False
-
         # -----------------------------
         # BUY row
         # -----------------------------
@@ -123,8 +99,6 @@ def insert_trade(conn, data, payload):
             executed_at
         ))
 
-        return True
-
 # -----------------------------
 # 메인 루프
 # -----------------------------
@@ -132,7 +106,6 @@ conn = get_connection()
 conn.autocommit = False
 
 print("Trade DB Consumer 시작...")
-
 for message in consumer:
     try:
         data = message.value
@@ -144,10 +117,7 @@ for message in consumer:
             continue
 
         if event_type == "market.trade.executed":
-            success = insert_trade(conn, data, payload)
-            if not success:
-                conn.rollback()
-                continue
+            insert_trade(conn, payload)
         else:
             print(f"[INFO] 알 수 없는 이벤트: {event_type}")
             continue
