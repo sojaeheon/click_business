@@ -14,10 +14,6 @@ services:
       SPRING_DATA_REDIS_HOST: redis
       CORS_ALLOWED_ORIGINS: http://j14b109.p.ssafy.io,http://15.165.236.217,http://localhost
       SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_GOOGLE_TOKEN_URI: https://oauth2.googleapis.com/token
-    depends_on:
-      - postgres
-      - redis
-      - kafka
     networks:
       - ecosim-network
 
