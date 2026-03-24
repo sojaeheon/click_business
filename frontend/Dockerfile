@@ -9,7 +9,7 @@ RUN npm ci --legacy-peer-deps
 
 # 소스코드 복사 후 빌드
 COPY . .
-RUN npm run build
+RUN npx vite build
 
 # 2. 실행 스테이지 (Run Stage)
 FROM nginx:stable-alpine
