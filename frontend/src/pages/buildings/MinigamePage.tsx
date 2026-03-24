@@ -10,6 +10,7 @@ import { BackButton } from "../../app/components/ui/backbutton";
 import { useAlertStore } from "../../store/useAlertStore";
 import { WORKER_LEVEL_IMAGES } from "../../constants/workers";
 import { playSfx } from "../../utils/sfx";
+import { toast } from 'sonner';
 
 // ✨ shadcn/ui AlertDialog 임포트 추가 (경로는 프로젝트에 맞게 확인해주세요!)
 import {
@@ -69,10 +70,10 @@ export function MinigamePage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [rewardItem, setRewardItem] = useState<Omit<InventoryItem, "id"> | null>(null);
 
-  // ✨ 게임 종료 확인용 팝업 상태 추가
   const [showExitConfirm, setShowExitConfirm] = useState(false);
-  // ✨ 잔액 부족 알림용 팝업 상태 추가 (alert 대체)
   const [showErrorAlert, setShowErrorAlert] = useState(false);
+  // ★ 결과 팝업 버튼 쿨다운 (광클 방지)
+  const [retryReady, setRetryReady] = useState(false);
 
   const isFever = false; // Fever 기능 삭제
 
@@ -92,12 +93,22 @@ export function MinigamePage() {
     return () => clearInterval(timer);
   }, [gameState, timeLeft, isStarted]);
 
-  // ⌨️ 스페이스바 타격 이벤트 리스너
+  // ⌨️ 스페이스바 타격 + ESC 나가기
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === "Escape") {
+        e.preventDefault();
+        // ★ gameState를 직접 참조 (클로저 캡처 문제 해결)
+        if (gameState === "playing") {
+          setShowExitConfirm(true);
+        } else {
+          closeBuildingPage();
+        }
+        return;
+      }
       if (gameState === "playing" && e.code === "Space") {
-        e.preventDefault(); // 스크롤 방지
-        if (e.repeat) return; // 연속 누름(꾹 누르기) 방어
+        e.preventDefault();
+        if (e.repeat) return;
         if (!isStarted) {
           setIsStarted(true);
         }
@@ -106,7 +117,7 @@ export function MinigamePage() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [gameState, isStarted]);
+  }, [gameState, isStarted, closeBuildingPage]);
 
   // 🚪 뒤로가기 방지 로직 (기본 confirm 창 대체)
   const handleBackClick = () => {
@@ -154,6 +165,15 @@ export function MinigamePage() {
     }
   };
 
+  // ★ 결과 팝업 1.5초 후 버튼 활성화
+  useEffect(() => {
+    if (gameState === "success" || gameState === "failure") {
+      setRetryReady(false);
+      const t = setTimeout(() => setRetryReady(true), 1500);
+      return () => clearTimeout(t);
+    }
+  }, [gameState]);
+
   const handleRetry = () => {
     setGameState("locked");
     setTimeLeft(10);
@@ -165,7 +185,7 @@ export function MinigamePage() {
   const handleClickBuilding = () => {
     if (gameState !== "playing") return;
 
-    playSfx("/audio/hit.wav", 0.4);
+    playSfx("/audio/hit.wav", 0.8);
 
     if (buttonRef.current) {
       buttonRef.current.classList.remove("hit-shake-anim");
@@ -436,10 +456,38 @@ export function MinigamePage() {
               </div>
               
               <div className="w-full flex flex-col gap-4 mt-2 relative z-20">
-                <button onClick={handleRetry} className="w-full py-5 bg-blue-50 border-[3px] border-blue-400 rounded-2xl font-black text-blue-800 text-xl hover:bg-blue-100 active:scale-95 transition-all shadow-sm cursor-pointer">
-                  한번 더 도전하기
+                <button
+                  onClick={() => {
+                    // 토스트로 획득 아이템 알림
+                    if (rewardItem) {
+                      toast(`🎁 ${rewardItem.name} 획득!`, {
+                        duration: 5000,
+                        style: {
+                          background: '#111827', border: '2px solid #374151',
+                          borderRadius: '1rem', color: '#f3f4f6',
+                          fontWeight: 700, padding: '16px 20px',
+                          boxShadow: '0 20px 40px rgba(0,0,0,0.4)', fontSize: '14px',
+                        },
+                      });
+                    }
+                    setGameState("locked");
+                    setRewardItem(null);
+                  }}
+                  className="w-full py-5 bg-slate-800 border-[3px] border-slate-800 rounded-2xl font-black text-white text-xl hover:bg-slate-700 active:scale-95 transition-all shadow-sm cursor-pointer"
+                >
+                  확인
                 </button>
-                <button onClick={closeBuildingPage} className="w-full py-5 bg-slate-100 border-[3px] border-slate-300 rounded-2xl font-black text-slate-600 text-xl hover:bg-slate-200 active:scale-95 transition-all shadow-sm cursor-pointer">
+                <button
+                  onClick={retryReady ? handleRetry : undefined}
+                  className={`w-full py-5 border-[3px] rounded-2xl font-black text-xl transition-all shadow-sm
+                    ${retryReady
+                      ? 'bg-blue-50 border-blue-400 text-blue-800 hover:bg-blue-100 active:scale-95 cursor-pointer'
+                      : 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed'
+                    }`}
+                >
+                  {retryReady ? '한번 더 도전하기' : '잠시 후 도전 가능...'}
+                </button>
+                <button onClick={closeBuildingPage} className="w-full py-3 text-slate-400 font-bold text-sm hover:text-slate-600 transition-colors cursor-pointer">
                   나가기
                 </button>
               </div>
@@ -452,13 +500,22 @@ export function MinigamePage() {
         <div className="absolute inset-0 z-50 bg-black/80 flex flex-col items-center justify-center backdrop-blur-sm animate-fade-in pointer-events-auto">
           <div className="bg-white rounded-[32px] p-10 max-w-md w-full border-[6px] border-slate-800 shadow-2xl flex flex-col items-center">
             <h2 className="text-5xl font-black text-rose-600 mb-8 tracking-wider">실 패 !</h2>
-            <div className="w-40 h-40 bg-slate-100 rounded-3xl border-4 border-slate-300 flex flex-col items-center justify-center mb-8 shadow-inner">
+            <div className="w-40 h-40 flex flex-col items-center justify-center mb-8">
               <span className="text-6xl mb-3 opacity-70">💦</span>
-              <span className="font-bold text-slate-500 text-xl">시간 초과</span>
+              <span className="font-bold text-slate-500 text-3xl">시간 초과</span>
             </div>
             <div className="w-full flex flex-col gap-4">
-              <button onClick={handleRetry} className="w-full py-5 bg-slate-800 border-[3px] border-slate-800 rounded-2xl font-black text-white text-xl hover:bg-slate-700 active:scale-95 transition-all shadow-sm cursor-pointer">다시 도전하기</button>
-              <button onClick={closeBuildingPage} className="w-full py-5 bg-slate-100 border-[3px] border-slate-300 rounded-2xl font-black text-slate-600 text-xl hover:bg-slate-200 active:scale-95 transition-all shadow-sm cursor-pointer">나가기</button>
+              <button
+                onClick={retryReady ? handleRetry : undefined}
+                className={`w-full py-5 border-[3px] rounded-2xl font-black text-xl transition-all shadow-sm
+                  ${retryReady
+                    ? 'bg-slate-800 border-slate-800 text-white hover:bg-slate-700 active:scale-95 cursor-pointer'
+                    : 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed'
+                  }`}
+              >
+                {retryReady ? '다시 도전하기' : '잠시 후 도전 가능...'}
+              </button>
+              <button onClick={closeBuildingPage} className="w-full py-3 text-slate-400 font-bold text-sm hover:text-slate-600 transition-colors cursor-pointer">나가기</button>
             </div>
           </div>
         </div>

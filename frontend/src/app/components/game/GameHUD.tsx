@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useGame, useGameStore } from "../../../store/gameStore";
 import type { ModalTab } from "../../../store/gameStore";
 
@@ -21,6 +22,27 @@ export function GameHUD({ onOpenGuide }: { onOpenGuide?: () => void }) {
   const inGameDate = useGameStore(s => s.inGameDate);
   const dayProgress = useGameStore(s => s.dayProgress);
   const unreadAlerts = state.alerts.filter((n) => !n.read).length;
+
+  // ★ 게임 날짜 폴링 (뉴스 API에서 추출) — 60초마다 갱신
+  useEffect(() => {
+    useGameStore.getState().fetchNews();
+    const interval = setInterval(() => useGameStore.getState().fetchNews(), 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // ★ 하루 경과 슬라이더 (10분 = 1일, 프론트 자체 계산)
+  // inGameDate가 바뀔 때마다 dayStart를 기록, 이후 elapsed / 600초로 progress 계산
+  useEffect(() => {
+    if (!inGameDate || inGameDate === "2020-01-01") return;
+    const dayStartRef = Date.now();
+    const DAY_MS = 10 * 60 * 1000; // 10분
+    const tick = setInterval(() => {
+      const elapsed = Date.now() - dayStartRef;
+      useGameStore.setState({ dayProgress: Math.min(1, elapsed / DAY_MS) });
+    }, 1000);
+    // 날짜 바뀌면 리셋
+    return () => clearInterval(tick);
+  }, [inGameDate]);
 
   const [year, month, day] = inGameDate.split('-');
   const progressPct = Math.min(Math.max(dayProgress * 100, 0), 100);

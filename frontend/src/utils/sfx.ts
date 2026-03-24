@@ -1,4 +1,6 @@
-/** 경량 효과음 재생 유틸 — 동시 다발 재생 지원 */
+import { useGameStore } from '../store/gameStore';
+
+/** 경량 효과음 재생 유틸 — 동시 다발 재생 지원, sfxVolume 반영 */
 const cache = new Map<string, HTMLAudioElement>();
 
 function preload(src: string) {
@@ -10,11 +12,12 @@ function preload(src: string) {
 }
 
 export function playSfx(src: string, volume = 0.5) {
+  const sfxVolume = useGameStore.getState().sfxVolume / 100;
   preload(src);
   const a = cache.get(src)!.cloneNode(true) as HTMLAudioElement;
-  a.volume = Math.min(1, Math.max(0, volume));
+  a.volume = Math.min(1, Math.max(0, volume * sfxVolume));
   a.play().catch(() => {});
 }
 
 // 프리로드
-["/audio/hit.wav", "/audio/jump.wav", "/audio/leveling.wav", "/audio/spawn.wav"].forEach(preload);
+["/audio/hit.wav", "/audio/jump.wav", "/audio/leveling.wav", "/audio/spawn.wav", "/audio/footstep.mp3"].forEach(preload);

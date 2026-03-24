@@ -5,7 +5,7 @@ import { useAlertStore } from "../store/useAlertStore";
 
 // 배경 3D 씬
 import { IsometricScene } from '../app/components/game/IsometricScene';
-import { AuthAPI as authApi } from '../api/gameApi';
+import { AuthAPI as authApi, CompanyAPI } from '../api/gameApi';
 
 export const LoginPage = () => {
   const navigate = useNavigate();
@@ -22,12 +22,19 @@ const handleGuestMode = async () => {
     setIsLoading(true);
     try {
       const { data } = await authApi.createGuest();
-      // 기존 잔여 게임 데이터가 존재할 수 있으므로 삭제 (state 초기화 용도)
       sessionStorage.removeItem('game-storage');
       sessionStorage.setItem('accessToken', data.data.accessToken);
       sessionStorage.setItem('isGuest', 'true');
-      
-      // Zustand의 in-memory 상태(persist)까지 강제 초기화하기 위해 강제 리로드(새로고침) 이동을 수행
+
+      // ★ 기업이 이미 존재하면 산업선택 건너뛰고 바로 메인으로
+      try {
+        const company = await CompanyAPI.getStatus();
+        if (company.data?.name) {
+          window.location.href = '/main';
+          return;
+        }
+      } catch { /* 기업 없음 → 산업선택으로 */ }
+
       window.location.href = '/industry-selection';
     } catch (error) {
       console.error("게스트 로그인 실패:", error);

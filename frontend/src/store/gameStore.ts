@@ -162,6 +162,8 @@ export interface GameState {
   // BGM 볼륨 (0~100, localStorage 연동)
   bgmVolume: number;
   setBgmVolume: (v: number) => void;
+  sfxVolume: number;
+  setSfxVolume: (v: number) => void;
 
   fetchCompanyData: (companyId: number) => Promise<void>;
   fetchNews: () => Promise<void>;
@@ -199,6 +201,8 @@ export const useGameStore = create<GameState>()(
 
     bgmVolume: Number(localStorage.getItem("bgmVolume") ?? 70),
     setBgmVolume: (v) => { localStorage.setItem("bgmVolume", String(v)); set({ bgmVolume: v }); },
+    sfxVolume: Number(localStorage.getItem("sfxVolume") ?? 50),
+    setSfxVolume: (v) => { localStorage.setItem("sfxVolume", String(v)); set({ sfxVolume: v }); },
 
     equippedWorkerId: null,
     hasNewWorker: false,
@@ -449,6 +453,19 @@ export const useGameStore = create<GameState>()(
         });
 
         set({ news: mappedNews });
+
+        // ★ 뉴스의 가장 최근 publishedAt에서 인게임 날짜 추출
+        if (newsData.length > 0) {
+          const latest = newsData[0];
+          let dateStr = "";
+          if (typeof latest.publishedAt === "string") {
+            dateStr = latest.publishedAt.split('T')[0];
+          } else if (Array.isArray(latest.publishedAt)) {
+            const [y, m, d] = latest.publishedAt;
+            dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          }
+          if (dateStr) set({ inGameDate: dateStr });
+        }
       } catch (err) {
         console.error("뉴스 데이터 로드 실패:", err);
       }

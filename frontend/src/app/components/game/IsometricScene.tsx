@@ -100,6 +100,7 @@ function PlayerCharacter({
   const [showMenu, setShowMenu] = useState(false);
   const jumpVelocityRef = useRef(0);
   const [emotionAnim, setEmotionAnim] = useState<string | null>(null);
+  const footstepRef = useRef<HTMLAudioElement | null>(null);
 
   // 장착된 일꾼 레벨에 따라 캐릭터 모델 결정
   const equippedWorkerLevel = useGameStore(s => {
@@ -152,7 +153,7 @@ function PlayerCharacter({
         }
         if (modeRef.current !== "jumping" && modeRef.current !== "spawning") {
           keysRef.current.jump = true;
-          playSfx("/audio/jump.wav", 0.4);
+          playSfx("/audio/jump.wav", 0.8);
         }
       }
       if (e.code === 'KeyE' && !e.repeat && !isPaused) {
@@ -162,7 +163,7 @@ function PlayerCharacter({
         if (modeRef.current !== "spawning" && modeRef.current !== "attacking") {
           modeRef.current = "attacking";
           setMode("attacking");
-          playSfx("/audio/hit.wav", 0.4);
+          playSfx("/audio/hit.wav", 0.8);
         }
       }
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
@@ -232,7 +233,17 @@ function PlayerCharacter({
     } else if (mode === "walking") {
       const act = actions["Running_A"] || actions["Walking_A"] || Object.values(actions)[0];
       if (act) act.setEffectiveTimeScale(1.5).reset().fadeIn(0.3).play();
+      // 발걸음 SFX 루프
+      if (!footstepRef.current) {
+        const a = new Audio("/audio/footstep.mp3");
+        a.loop = true;
+        a.volume = 0.3 * (useGameStore.getState().sfxVolume / 100);
+        footstepRef.current = a;
+      }
+      footstepRef.current.play().catch(() => {});
     } else {
+      // 걷기 아닐 때 발걸음 정지
+      if (footstepRef.current) { footstepRef.current.pause(); footstepRef.current.currentTime = 0; }
       const act = actions["Idle_A"] || actions["Idle_B"] || null;
       if (act) act.setEffectiveTimeScale(1).reset().fadeIn(0.3).play();
     }
