@@ -110,14 +110,14 @@ public class DataInitializer implements ApplicationRunner {
                     .name("창고 확장권")
                     .type(ItemType.TICKET)
                     .description("창고 슬롯을 1칸 확장합니다.")
-                    .maxStackSize(10L)
+                    .maxStackSize(1L)
                     .build(),
 
             Item.builder()
                     .name("인벤토리 확장권")
                     .type(ItemType.TICKET)
                     .description("인벤토리 슬롯을 1칸 확장합니다.")
-                    .maxStackSize(10L)
+                    .maxStackSize(1L)
                     .build()
     );
 
@@ -125,9 +125,17 @@ public class DataInitializer implements ApplicationRunner {
     @Transactional
     public void run(ApplicationArguments args) {
         for (Item item : ITEMS) {
-            if (!itemRepository.existsByName(item.getName())) {
-                itemRepository.save(item);
-            }
+            itemRepository.findByName(item.getName())
+                    .ifPresentOrElse(
+                            existing -> {
+                                // 기존 아이템의 maxStackSize가 다르면 업데이트 (특히 확장권 10 -> 1 등)
+                                if (!existing.getMaxStackSize().equals(item.getMaxStackSize())) {
+                                    existing.updateMaxStackSize(item.getMaxStackSize());
+                                    itemRepository.save(existing);
+                                }
+                            },
+                            () -> itemRepository.save(item)
+                    );
         }
     }
 }
