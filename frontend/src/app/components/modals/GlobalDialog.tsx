@@ -239,7 +239,7 @@ export function GlobalDialog({ data, onClose }: { data: ConfirmData; onClose: ()
                 작업이 진행 중입니다
               </button>
             )}
-            <button className="px-6 py-4 rounded-xl bg-slate-100 text-slate-500 border-2 border-slate-200 font-black hover:bg-slate-200 cursor-pointer" onClick={() => !isCollecting && onClose()}>닫기</button>
+            <button className="px-6 py-4 rounded-xl bg-slate-100 text-slate-500 border-2 border-slate-200 font-black hover:bg-slate-200 cursor-pointer" onClick={() => !isCollecting && onClose()}>닫기(ESC)</button>
           </div>
         </div>
 

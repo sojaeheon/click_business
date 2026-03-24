@@ -45,7 +45,7 @@ function DiscardPanel({ totalMaterial, totalProduct, materialName, productName, 
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center">
-      {/* 딤드 배경 */}
+      {/* 배경 */}
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
       <div className="relative bg-white rounded-3xl border-4 border-red-300 shadow-2xl p-8 w-[420px] animate-fade-in">
