@@ -39,6 +39,10 @@ public class CompanyService {
             throw new IllegalArgumentException("이 유저는 이미 기업을 보유하고 있습니다.");
         });
 
+        if (companyRepository.existsByName(companyName)) {
+            throw new IllegalArgumentException("이미 사용 중인 기업명입니다.");
+        }
+
         Company company = new Company(user, companyName, industryType);
         Company saved = companyRepository.save(company);
 
