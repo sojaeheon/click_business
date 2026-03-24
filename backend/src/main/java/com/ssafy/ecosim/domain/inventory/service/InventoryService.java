@@ -90,23 +90,12 @@ public class InventoryService {
         slots.sort(Comparator.comparingInt(InventorySlot::getSlotIndex));
         long remaining = amount;
 
-        for (InventorySlot slot : slots) {
-            if (slot.getItem() != null && slot.getItem().getId().equals(itemId)) {
-                long space = item.getMaxStackSize() - slot.getQuantity();
-                if (space > 0) {
-                    long added = Math.min(space, remaining);
-                    slot.addItem(item, added);
-                    remaining -= added;
-                    if (remaining == 0) return;
-                }
-            }
-        }
+        // 인벤토리는 슬롯당 1개만 저장하므로 기존 슬롯 병합 로직 제거
 
         for (InventorySlot slot : slots) {
             if (slot.getItem() == null) {
-                long added = Math.min(item.getMaxStackSize(), remaining);
-                slot.addItem(item, added);
-                remaining -= added;
+                slot.addItem(item, 1L);
+                remaining -= 1L;
                 if (remaining == 0) return;
             }
         }
@@ -137,18 +126,7 @@ public class InventoryService {
             return;
         }
 
-        if (to.getItem().getId().equals(from.getItem().getId())) {
-            long space = to.getItem().getMaxStackSize() - to.getQuantity();
-            if (space > 0) {
-                long move = Math.min(space, from.getQuantity());
-                to.addItem(to.getItem(), move);
-                long left = from.getQuantity() - move;
-                if (left <= 0) from.clearSlot();
-                else from.setItemAndQuantity(from.getItem(), left);
-            }
-            return;
-        }
-
+        // 인벤토리는 슬롯당 1개만 저장하므로 병합 로직 불필요 (항상 Swap)
         Item tmp = to.getItem();
         long tmpQty = to.getQuantity();
         to.setItemAndQuantity(from.getItem(), from.getQuantity());
@@ -204,6 +182,7 @@ public class InventoryService {
         // 새 슬롯 추가
         InventorySlot newSlot = new InventorySlot(inventory, currentMaxSlot);
         inventorySlotRepository.save(newSlot);
+        inventory.getSlots().add(newSlot); // 영속성 컨텍스트 내 컬렉션 동기화
     }
 
     /**
@@ -235,6 +214,15 @@ public class InventoryService {
     public void unequipWorker(Long companyId) {
         Inventory inventory = findInventory(companyId);
         inventory.getSlots().forEach(InventorySlot::unequip);
+    }
+
+    /**
+     * 인벤토리에 빈 슬롯이 있는지 확인합니다.
+     */
+    public boolean hasSpace(Long companyId) {
+        Inventory inventory = findInventory(companyId);
+        return inventory.getSlots().stream()
+                .anyMatch(slot -> slot.getItem() == null);
     }
 
     private Inventory findInventory(Long companyId) {

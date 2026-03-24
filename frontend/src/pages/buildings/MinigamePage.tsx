@@ -123,35 +123,30 @@ export function MinigamePage() {
     isProcessingRef.current = true;
     setIsProcessing(true);
 
-    const { money, inventoryItems, inventoryMax } = useGameStore.getState();
-
-    // 인벤토리 가득 찼으면 게임 결제 차단 (워커 슬롯 기준, 티켓 제외)
-    const workerCount = inventoryItems.filter(i => i.type?.startsWith("worker_")).length;
-    if (workerCount >= inventoryMax) {
-      useAlertStore.getState().openAlert(
-        `인벤토리가 가득 찼습니다. (${workerCount}/${inventoryMax})\n아이템을 버리거나 인벤토리를 확장한 후 이용하세요.`,
-        "게임 참여 불가"
-      );
-      isProcessingRef.current = false;
-      setIsProcessing(false);
-      return;
-    }
-
-    if (money < 100000) {
-      setShowErrorAlert(true);
-      isProcessingRef.current = false;
-      setIsProcessing(false);
-      return;
-    }
-
     try {
+      const statusRes = await MinigameAPI.getStatus();
+      if (!statusRes.data.canPlay) {
+        useAlertStore.getState().openAlert(
+          statusRes.data.reason || "게임을 시작할 수 없는 상태입니다.",
+          "게임 참여 불가"
+        );
+        return;
+      }
+
+      // 💳 실제 서버에 비용 지불 요청
+      await MinigameAPI.start();
+      
+      // 즉시 로컬 캐시 갱신 (현금 차감 반영)
+      useGameStore.getState().fetchCompanyData(1);
+
       setGameState("playing");
       setTimeLeft(10);
       setClicksLeft(TOTAL_CLICKS);
       setIsStarted(false); // 준비 상태
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      useAlertStore.getState().openAlert("게임 입장에 실패했습니다.", "오류");
+      const errorMsg = e?.response?.data?.message || "게임 입장에 실패했습니다.";
+      useAlertStore.getState().openAlert(errorMsg, "오류");
     } finally {
       isProcessingRef.current = false;
       setIsProcessing(false);
