@@ -34,7 +34,7 @@ export const CompanyAPI = {
         industry_type: company.industry,
         cash: company.money,
         total_asset: company.capital,
-        slots: undefined,
+        slots: undefined as { warehouse_slots?: number; inventory_slots?: number } | undefined,
       }
     };
   },

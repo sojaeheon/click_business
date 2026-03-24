@@ -1,4 +1,17 @@
 services:
+  nginx:
+    image: nginx:stable-alpine
+    container_name: ecosim-nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      - jenkins
+    networks:
+      - ecosim-network
+
   jenkins:
     build: .
     user: root
@@ -29,12 +42,8 @@ services:
       - GIT_BRANCH
     networks:
       - ecosim-network
-      - kind
 
 networks:
   ecosim-network:
     name: ecosim-network
-  kind:
-    external: true
-    name: kind
 
