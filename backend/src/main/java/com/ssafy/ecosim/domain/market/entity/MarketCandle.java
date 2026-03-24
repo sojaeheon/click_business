@@ -53,4 +53,20 @@ public class MarketCandle extends BaseEntity {
         this.volume = volume;
         this.candleTime = candleTime;
     }
+
+    public Long getOpen() {
+        return openPrice;
+    }
+
+    public Long getHigh() {
+        return highPrice;
+    }
+
+    public Long getLow() {
+        return lowPrice;
+    }
+
+    public Long getClose() {
+        return closePrice;
+    }
 }

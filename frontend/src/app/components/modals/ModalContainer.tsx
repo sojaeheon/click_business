@@ -50,7 +50,7 @@ export function ModalContainer() {
       <div className="relative bg-gradient-to-b from-gray-100 to-gray-200 rounded-2xl shadow-2xl border-2 border-gray-400 w-[720px] h-[520px] max-w-[90vw] max-h-[90vh] flex flex-col overflow-hidden">
 
         {/* Tab bar — 아이콘만 표시 */}
-        <div className="flex items-center bg-transparent border-b-2 border-gray-400 px-4 pt-2">
+        <div className="flex items-center bg-gray-200 border-b-2 border-gray-400 px-4 pt-2 relative z-50">
           <div className="flex gap-2 flex-1">
             {tabs.map((tab) => {
               const Icon = tab.icon;
@@ -74,9 +74,9 @@ export function ModalContainer() {
           {/* 닫기 버튼 */}
           <button
             onClick={closeModal}
-            className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-400/50 transition-colors cursor-pointer ml-2 mb-1"
+            className="w-12 h-12 flex items-center justify-center rounded-xl hover:bg-gray-400/30 transition-colors cursor-pointer ml-2 mb-1"
           >
-            <X className="w-6 h-6 text-gray-700" />
+            <X className="w-8 h-8 text-gray-800 font-black" />
           </button>
         </div>
 

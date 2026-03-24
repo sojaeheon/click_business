@@ -188,6 +188,7 @@ export const MarketAPI = {
   },
 
   getMarketChart: (itemId: number) => apiClient.get('/market/chart', { params: { item_id: itemId } }),
+  get5MinCandles: (itemId: number, count: number = 100) => apiClient.get('/market/candles', { params: { item_id: itemId, count: count } }),
 };
 
 export const BankAPI = {
