@@ -135,6 +135,7 @@ export function MarketPage() {
   const [hasDragged, setHasDragged] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const isAutoScrolling = useRef(false);
+  const [visibleRange, setVisibleRange] = useState<{ start: number; end: number } | null>(null);
 
   const snapToRight = useCallback(() => {
     if (scrollRef.current) {
@@ -167,28 +168,43 @@ export function MarketPage() {
   };
 
   // 🏷️ 아이템 ID 매핑 헬퍼
+  // gameStore의 industry는 한국어로 저장됨 ("금광업", "금 제련업", "제조업")
+  // 영어("GOLD_MINING" 등)와 한국어 모두 처리
   const getItemId = (m: MarketMode): number => {
-    if (industry === "GOLD_MINING") return m === "buy" ? 3 : 1;
-    if (industry === "GOLD_SMELTING") return m === "buy" ? 1 : 2;
-    if (industry === "MANUFACTURING") return m === "buy" ? 2 : 3;
+    if (industry === "GOLD_MINING" || industry === "금광업") return m === "buy" ? 3 : 1;
+    if (industry === "GOLD_SMELTING" || industry === "금 제련업" || industry === "제철업") return m === "buy" ? 1 : 2;
+    if (industry === "MANUFACTURING" || industry === "제조업") return m === "buy" ? 2 : 3;
     return 1;
   };
 
   const itemId = mode ? getItemId(mode) : 1;
 
-  // 모드/아이템 변경 시 차트 초기화
+  // 모드/아이템 변경 시 모든 상태 즉시 초기화
   useEffect(() => {
     setChartData([]);
+    setOrderBook({ asks: [], bids: [] });
+    setTradeHistory([]);
+    setPendingOrders([]);
+    setCurrentPrice(0);
+    setChangePrice(0);
+    setChangeRate(0);
   }, [itemId]);
 
   // ⏱️ 실시간 데이터 업데이트 (오더북, 체결내역, 미체결 주문)
   useEffect(() => {
     if (!mode) return;
 
+    const controller = new AbortController();
+    // 이 effect가 실행된 시점의 itemId를 캡처
+    const capturedItemId = itemId;
+
     const fetchData = async () => {
       try {
         // [1] 오더북/호가창 조회
-        const res = await MarketAPI.getOrderbook(itemId);
+        const res = await MarketAPI.getOrderbook(capturedItemId);
+        // ✅ 응답 도착 시점에 itemId가 바뀌었으면 무시 (race condition 방지)
+        if (controller.signal.aborted) return;
+
         const data = res.data as any;
 
         if (data && (data.sellOrders || data.buyOrders)) {
@@ -217,15 +233,15 @@ export function MarketPage() {
 
         // [2] 백엔드 1분봉 차트 조회
         try {
-          const chartRes = await MarketAPI.get1MinCandles(itemId, 100);
+          const chartRes = await MarketAPI.get1MinCandles(capturedItemId, 100);
+          if (controller.signal.aborted) return;
 
           const candles = chartRes.data?.data ?? chartRes.data;
 
           if (candles && Array.isArray(candles)) {
-            // 백엔드에서 이미 계산된 5분봉 데이터를 시간 순으로 정렬
             const formatted = candles
-              .filter((c: any) => !c.isLive)  // 확정된 분봉만 사용
-              .sort((a: any, b: any) => a.timestamp - b.timestamp)  // 시간 오름차순 정렬
+              .filter((c: any) => !c.isLive)
+              .sort((a: any, b: any) => a.timestamp - b.timestamp)
               .map((c: any) => {
                 const dt = new Date(c.timestamp);
                 const timeStr = `${dt.getHours().toString().padStart(2, '0')}:${dt.getMinutes().toString().padStart(2, '0')}`;
@@ -242,12 +258,14 @@ export function MarketPage() {
             setChartData(formatted);
           }
         } catch (e) {
-          console.warn("차트 조회 실패:", e);
+          if (!controller.signal.aborted) console.warn("차트 조회 실패:", e);
         }
 
-        // [3] 체결 내역 조회 (항상)
+        // [3] 체결 내역 조회
         try {
-          const tradeRes = await MarketAPI.getTrades(itemId);
+          const tradeRes = await MarketAPI.getTrades(capturedItemId);
+          if (controller.signal.aborted) return;
+
           const tradeData = tradeRes.data;
           if (tradeData?.success && Array.isArray(tradeData.data)) {
             setTradeHistory(tradeData.data);
@@ -259,35 +277,41 @@ export function MarketPage() {
             setTradeHistory([]);
           }
         } catch {
-          setTradeHistory([]);
+          if (!controller.signal.aborted) setTradeHistory([]);
         }
 
-        // [3] 미체결(대기중) 주문 조회 (항상)
+        // [4] 미체결(대기중) 주문 조회
         try {
-          const pendingRes = await MarketAPI.getMyOrders(itemId);
+          const pendingRes = await MarketAPI.getMyOrders(capturedItemId);
+          if (controller.signal.aborted) return;
+
           const pendingData = pendingRes.data;
-          let orders = [];
+          let orders: any[] = [];
           if (Array.isArray(pendingData?.data)) {
             orders = pendingData.data;
           } else if (Array.isArray(pendingData)) {
             orders = pendingData;
           }
-          // COMPLETED나 CANCELED가 아닌, 잔량이 남아있는 주문만 대기중으로 표시
           setPendingOrders(orders.filter((o: any) =>
             o.status !== 'COMPLETED' && o.status !== 'CANCELED' && o.orderStatus !== 'COMPLETED' && o.orderStatus !== 'CANCELED' && (o.remainingQuantity ?? o.totalQuantity) > 0
           ));
         } catch {
-          setPendingOrders([]);
+          if (!controller.signal.aborted) setPendingOrders([]);
         }
 
       } catch (err) {
-        console.warn("마켓 데이터 조회 실패:", err);
+        if (!controller.signal.aborted) console.warn("마켓 데이터 조회 실패:", err);
       }
     };
 
     fetchData();
     const interval = setInterval(fetchData, 3000);
-    return () => clearInterval(interval);
+
+    return () => {
+      // itemId가 바뀌거나 컴포넌트가 언마운트될 때 진행 중인 요청 취소
+      controller.abort();
+      clearInterval(interval);
+    };
   }, [mode, itemId]);
 
   const totalAmount = price * quantity;
@@ -349,7 +373,7 @@ export function MarketPage() {
 
     const result = [];
     const now = new Date();
-    let prevClose = currentPrice || (chartData.length > 0 ? chartData[0].close : 0);
+    let prevClose: number = chartData.length > 0 ? (chartData[0].close ?? 0) : (currentPrice || 0);
 
     for (let i = 59; i >= 0; i--) {
       const d = new Date(now.getTime() - i * 60000); // 1분 단위
@@ -357,13 +381,12 @@ export function MarketPage() {
 
       const backendCandle = map.get(tStr);
 
-      let candle;
       if (backendCandle) {
         // ✅ 백엔드에서 받은 OHLC를 그대로 사용
-        candle = {
+        const candle = {
           time: tStr,
           price: backendCandle.close,
-          open: backendCandle.open,     // ✅ 백엔드 시가 그대로 사용
+          open: backendCandle.open,
           high: backendCandle.high,
           low: backendCandle.low,
           close: backendCandle.close,
@@ -371,34 +394,27 @@ export function MarketPage() {
           prevClose: prevClose  // 🌟 직전 분봉의 종가 (색상 판단용)
         };
         prevClose = backendCandle.close;
-      } else {
-        // 데이터 없으면 이전 종가로 평평하게 채움
-        candle = {
+        result.push(candle);
+      } else if (i === 0 && currentPrice) {
+        // 현재 진행 중인 분봉: 실시간 가격 반영 (확정 데이터 없을 때만)
+        const liveCandle = {
           time: tStr,
-          price: prevClose,
-          open: prevClose,
-          high: prevClose,
-          low: prevClose,
-          close: prevClose,
-          bounds: [prevClose, prevClose],
+          price: currentPrice,
+          open: prevClose,   // 직전 종가가 현재 분봉의 시가
+          high: Math.max(prevClose, currentPrice),
+          low: Math.min(prevClose, currentPrice),
+          close: currentPrice,
+          bounds: [Math.min(prevClose, currentPrice), Math.max(prevClose, currentPrice)],
           prevClose: prevClose
         };
+        result.push(liveCandle);
       }
-
-      // 현재 시간(i === 0)이면 실시간 가격 반영
-      if (i === 0 && currentPrice) {
-        candle.close = currentPrice;
-        candle.high = Math.max(candle.high, currentPrice);
-        candle.low = Math.min(candle.low, currentPrice);
-        candle.price = currentPrice;
-        candle.bounds = [candle.low, candle.high];
-      }
-
-      result.push(candle);
+      // 데이터 없는 슬롯은 건너뜀 (flat 캔들 제거)
     }
 
     return result;
   };
+
 
   const displayChartData = getDisplayChartData();
   const visibleDataLen = displayChartData.length;
@@ -413,11 +429,45 @@ export function MarketPage() {
 
   const currentCandleOpen = lastCandle?.open ?? currentPrice;
 
-  // 📊 Y축 1,000 단위 틱 격자 계산
-  const minY = Math.floor((currentCandleOpen * 0.95) / 1000) * 1000;
-  const maxY = Math.ceil((currentCandleOpen * 1.05) / 1000) * 1000;
+  // 📊 보이는 캔들 범위에서 실제 high/low 계산 (동적 Y축)
+  const computeVisibleDomain = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || displayChartData.length === 0) return;
+    const totalWidth = el.scrollWidth;
+    const viewWidth = el.clientWidth;
+    const scrollLeft = el.scrollLeft;
+    const total = displayChartData.length;
+    // 보이는 비율로 인덱스 계산
+    const startIdx = Math.max(0, Math.floor((scrollLeft / totalWidth) * total) - 1);
+    const endIdx = Math.min(total - 1, Math.ceil(((scrollLeft + viewWidth) / totalWidth) * total) + 1);
+    setVisibleRange({ start: startIdx, end: endIdx });
+  }, [displayChartData]);
+
+  // 보이는 캔들의 실제 가격 범위 계산
+  const visibleCandles = visibleRange
+    ? displayChartData.slice(visibleRange.start, visibleRange.end + 1).filter(c => c.high > 0 && c.low > 0)
+    : displayChartData.filter(c => c.high > 0 && c.low > 0);
+
+  let minY: number;
+  let maxY: number;
+
+  if (visibleCandles.length > 0) {
+    const rawMin = Math.min(...visibleCandles.map(c => c.low ?? 0));
+    const rawMax = Math.max(...visibleCandles.map(c => c.high ?? 0));
+    const padding = Math.max((rawMax - rawMin) * 0.1, 500); // 최소 500원 패딩
+    minY = Math.floor((rawMin - padding) / 500) * 500;
+    maxY = Math.ceil((rawMax + padding) / 500) * 500;
+  } else {
+    // 데이터 없으면 현재가 기준 fallback
+    minY = Math.floor((currentCandleOpen * 0.97) / 500) * 500;
+    maxY = Math.ceil((currentCandleOpen * 1.03) / 500) * 500;
+  }
+
+  // 틱 간격을 범위에 맞게 자동 결정
+  const yRange = maxY - minY;
+  const tickStep = yRange <= 3000 ? 500 : yRange <= 8000 ? 1000 : yRange <= 20000 ? 2000 : 5000;
   const yTicks = [];
-  for (let t = minY; t <= maxY; t += 1000) {
+  for (let t = minY; t <= maxY; t += tickStep) {
     yTicks.push(t);
   }
 
@@ -452,8 +502,12 @@ export function MarketPage() {
       if (!isAutoScrolling.current) {
         setHasDragged(true);
       }
+      computeVisibleDomain();
     };
     scrollRef.current.addEventListener('scroll', handleScroll);
+
+    // 초기 마운트 시 한 번 계산
+    computeVisibleDomain();
 
     return () => {
       clearInterval(interval);
@@ -462,7 +516,7 @@ export function MarketPage() {
         scrollRef.current.removeEventListener('scroll', handleScroll);
       }
     };
-  }, [hasDragged, chartData, mode, snapToRight]);
+  }, [hasDragged, chartData, mode, snapToRight, computeVisibleDomain]);
   const customDiffSign = customDiff > 0 ? "+" : customDiff < 0 ? (customDiff === 0 ? "" : "-") : "";
   const customPctStr = Math.abs(customPct).toFixed(1);
   const diffStr = `${customDiff > 0 ? "+" : ""}${customDiff.toLocaleString()}원 (${customDiff > 0 ? "+" : ""}${customPctStr}%)`;
