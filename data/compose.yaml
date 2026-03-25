@@ -24,6 +24,9 @@ services:
       - "6379:6379"
     volumes:
       - ./redis_data:/data
+    # RDB 스냅샷 비활성화 (Kafka가 source of truth → Redis는 캐시 역할)
+    # AOF(appendonly)로 전환: 변경사항만 순차 append → CPU 스파이크 없음
+    command: redis-server --save "" --appendonly yes --appendfsync everysec
     networks:
       - ecosim-network
 
