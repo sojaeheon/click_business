@@ -12,7 +12,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-db:5432/ecosim
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       SPRING_DATA_REDIS_HOST: redis
-      CORS_ALLOWED_ORIGINS: http://j14b109.p.ssafy.io,http://15.165.236.217,http://localhost
+      CORS_ALLOWED_ORIGINS: http://j14b109.p.ssafy.io,http://15.165.236.217,http://localhost,http://localhost:5173
       SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_GOOGLE_TOKEN_URI: https://oauth2.googleapis.com/token
     networks:
       - ecosim-network
