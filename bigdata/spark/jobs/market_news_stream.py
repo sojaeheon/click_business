@@ -92,6 +92,11 @@ def parse_reference_time(reference_time: Optional[str]) -> datetime:
     return datetime.fromisoformat(normalized)
 
 
+def apply_reference_lag(reference_time: datetime, lag_minutes: int = 1) -> datetime:
+    aligned = reference_time.replace(second=0, microsecond=0)
+    return aligned - timedelta(minutes=lag_minutes)
+
+
 def resolve_reference_time(batch_df, override_reference_time: Optional[str]) -> datetime:
     if override_reference_time:
         return parse_reference_time(override_reference_time)
@@ -811,7 +816,8 @@ def main() -> None:
     )
 
     def process_batch(batch_df, batch_id: int) -> None:
-        reference_time = resolve_reference_time(batch_df, args.reference_time)
+        resolved_reference_time = resolve_reference_time(batch_df, args.reference_time)
+        reference_time = apply_reference_lag(resolved_reference_time, lag_minutes=1)
         print(
             f"[MARKET-NEWS-STREAM] batch_id={batch_id} "
             f"reference_time={reference_time.isoformat()}"
