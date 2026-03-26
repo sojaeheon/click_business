@@ -5,6 +5,7 @@ import { HRAPI } from "../../api/gameApi";
 import { BackButton } from "../../app/components/ui/backbutton";
 import { useAlertStore } from "../../store/useAlertStore";
 import { WORKER_LEVEL_NAMES, WORKER_LEVEL_ICONS, WORKER_LEVEL_IMAGES, getWorkerDefByLevel } from "../../constants/workers";
+import { playSfx } from "../../utils/sfx";
 
 // ── 강화 확률 (내부 전용) ──
 const UPGRADE_TABLE: Record<number, { success: number; stay: number; down: number; reset: number }> = {
@@ -81,6 +82,7 @@ export function HRPage() {
     }
 
     setBusy(true);
+    playSfx("/audio/leveling.wav", 0.5);
 
     // 1) 차징 (에너지 모으는 연출)
     setPhase("charging");
@@ -95,8 +97,8 @@ export function HRPage() {
     // 3) 결과 판정
     let res: { result: UpgradeResult; newLevel: number };
     try {
-      const api = await HRAPI.upgradeWorker({ companyId: 1, currentLevel: lv });
-      res = { result: api.data.result, newLevel: api.data.newLevel };
+      const api = await HRAPI.upgradeWorker(lv);
+      res = { result: api.data.result as UpgradeResult, newLevel: api.data.newLevel };
     } catch (e: any) {
       useAlertStore.getState().openAlert(e?.response?.data?.message || "서버 연동 실패. (미구현 또는 오류)", "경고");
       setPhase("idle");

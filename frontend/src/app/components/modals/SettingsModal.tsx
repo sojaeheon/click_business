@@ -1,10 +1,14 @@
 import { useState, useEffect } from "react";
-import { Mail, Volume2, LogOut, UserX } from "lucide-react";
+import { ClipboardList, Volume2, VolumeX, LogOut, UserX, Link2 } from "lucide-react";
 import { useAlertStore } from "../../../store/useAlertStore";
 import { UserAPI, AuthAPI } from "../../../api/gameApi";
+import { useGameStore } from "../../../store/gameStore";
 
 export function SettingsModal() {
-  const [volume, setVolume] = useState(70);
+  const volume = useGameStore(state => state.bgmVolume);
+  const setVolume = useGameStore(state => state.setBgmVolume);
+  const sfxVolume = useGameStore(state => state.sfxVolume);
+  const setSfxVolume = useGameStore(state => state.setSfxVolume);
   const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
   const [userProfile, setUserProfile] = useState<{ email: string; loginMethod: string }>({
     email: "로딩 중...",
@@ -82,24 +86,28 @@ export function SettingsModal() {
 
         <hr className="border-gray-200" />
 
-        {/* 문의하기 */}
+        {/* 설문 / 피드백 */}
         <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-500 w-28 flex-shrink-0">문의 :</span>
+          <span className="text-sm text-gray-500 w-28 flex-shrink-0">피드백 :</span>
           <button
-            onClick={() => window.open("mailto:support@example.com")}
+            onClick={() => window.open("https://forms.gle/sj3qf7MkmQmHT4Vw9", "_blank")}
             className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg text-sm text-gray-700 transition-colors cursor-pointer"
           >
-            <Mail className="w-4 h-4" />
-            이메일 문의
+            <ClipboardList className="w-4 h-4" />
+            설문 / 피드백
           </button>
         </div>
 
         <hr className="border-gray-200" />
 
-        {/* 음량조절 */}
+        {/* BGM 음량 */}
         <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-500 w-28 flex-shrink-0">음량조절 :</span>
-          <Volume2 className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          <span className="text-sm text-gray-500 w-28 flex-shrink-0">BGM :</span>
+          <button onClick={() => setVolume(volume > 0 ? 0 : 70)} className="flex-shrink-0 cursor-pointer">
+            {volume > 0
+              ? <Volume2 className="w-4 h-4 text-gray-400" />
+              : <VolumeX className="w-4 h-4 text-red-400" />}
+          </button>
           <input
             type="range"
             min="0"
@@ -110,6 +118,41 @@ export function SettingsModal() {
           />
           <span className="text-sm text-gray-500 w-8 text-right">{volume}%</span>
         </div>
+
+        {/* SFX 효과음 */}
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-500 w-28 flex-shrink-0">효과음 :</span>
+          <button onClick={() => setSfxVolume(sfxVolume > 0 ? 0 : 50)} className="flex-shrink-0 cursor-pointer">
+            {sfxVolume > 0
+              ? <Volume2 className="w-4 h-4 text-gray-400" />
+              : <VolumeX className="w-4 h-4 text-red-400" />}
+          </button>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={sfxVolume}
+            onChange={(e) => setSfxVolume(Number(e.target.value))}
+            className="flex-1 accent-gray-700"
+          />
+          <span className="text-sm text-gray-500 w-8 text-right">{sfxVolume}%</span>
+        </div>
+
+        <hr className="border-gray-200" />
+
+        {/* 게스트 → 소셜 연동 버튼 */}
+        {userProfile.loginMethod === "게스트 모드" && (
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-500 w-28 flex-shrink-0">계정 연동 :</span>
+            <button
+              onClick={() => AuthAPI.linkSocial()}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 border border-blue-300 rounded-lg text-sm text-blue-700 font-semibold transition-colors cursor-pointer"
+            >
+              <Link2 className="w-4 h-4" />
+              Google 계정 연동
+            </button>
+          </div>
+        )}
 
         <hr className="border-gray-200" />
 
