@@ -22,8 +22,8 @@ DB_NAME = os.getenv("DB_NAME", "ecosim")
 DB_USER = os.getenv("DB_USER", "ecosim")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "ecosim")
 
-NEWS_GLOBAL_COOLDOWN_MINUTES = int(os.getenv("NEWS_GLOBAL_COOLDOWN_MINUTES", "30"))
-NEWS_SIGNAL_COOLDOWN_MINUTES = int(os.getenv("NEWS_SIGNAL_COOLDOWN_MINUTES", "30"))
+NEWS_GLOBAL_COOLDOWN_MINUTES = int(os.getenv("NEWS_GLOBAL_COOLDOWN_MINUTES", "10"))
+NEWS_SIGNAL_COOLDOWN_MINUTES = int(os.getenv("NEWS_SIGNAL_COOLDOWN_MINUTES", "10"))
 NEWS_MIN_SEVERITY_SCORE = float(os.getenv("NEWS_MIN_SEVERITY_SCORE", "85.0"))
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("GMS_KEY", "")
@@ -57,13 +57,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--reference-time", default=None)
     parser.add_argument("--min-trade-qty", type=float, default=200.0)
     parser.add_argument("--min-order-qty", type=float, default=300.0)
-    parser.add_argument("--price-change-threshold", type=float, default=0.25)
-    parser.add_argument("--volume-spike-threshold", type=float, default=2.5)
-    parser.add_argument("--volume-drop-threshold", type=float, default=-0.9)
+    parser.add_argument("--price-change-threshold", type=float, default=0.005)
+    parser.add_argument("--volume-spike-threshold", type=float, default=1.0)
+    parser.add_argument("--volume-drop-threshold", type=float, default=-0.5)
     parser.add_argument("--volume-drop-min-previous-qty", type=float, default=3000.0)
     parser.add_argument("--min-market-activity-qty", type=float, default=200.0)
-    parser.add_argument("--pressure-ratio-threshold", type=float, default=3.0)
-    parser.add_argument("--cancel-rate-threshold", type=float, default=0.8)
+    parser.add_argument("--pressure-ratio-threshold", type=float, default=1.8)
+    parser.add_argument("--cancel-rate-threshold", type=float, default=0.5)
     parser.add_argument("--trigger-interval", default="10 minutes")
     parser.add_argument("--checkpoint-path", default=DEFAULT_CHECKPOINT_PATH)
     parser.add_argument("--rows-per-second", type=int, default=1)
@@ -581,19 +581,6 @@ def has_recent_news(cur) -> bool:
 
 
 def is_duplicate_or_cooling_down(cur, candidate: Candidate) -> bool:
-    cur.execute(
-        """
-        SELECT EXISTS (
-            SELECT 1
-            FROM internal_news
-            WHERE title = %s
-        ) AS exists
-        """,
-        (candidate.headline,),
-    )
-    if cur.fetchone()["exists"]:
-        return True
-
     cur.execute(
         """
         SELECT EXISTS (
