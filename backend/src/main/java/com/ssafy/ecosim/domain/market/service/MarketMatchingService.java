@@ -39,13 +39,11 @@ public class MarketMatchingService {
     public void matchItem(Integer itemId) {
         log.debug("Matching started for item: {}", itemId);
 
-        while (true) {
+        int iterations = 0;
+        while (iterations++ < 100) {
             // 1. 최우선 호가 조회 (매수 최고가, 매도 최저가)
             Set<ZSetOperations.TypedTuple<String>> topBuys = orderBookManager.getTopBuys(itemId, 1);
             Set<ZSetOperations.TypedTuple<String>> topSells = orderBookManager.getTopSells(itemId, 1);
-
-            // log.debug("Top Buys: {}", topBuys); //
-            // log.debug("Top Sells: {}", topSells); //
 
             if (topBuys == null || topBuys.isEmpty() || topSells == null || topSells.isEmpty()) {
                 break; // 매수 또는 매도 한쪽이라도 주문이 없으면 종료
@@ -62,29 +60,28 @@ public class MarketMatchingService {
             MarketOrder sellOrder = orderDetailsCacheManager.getOrderCache(sellOrderId);
 
             if (buyOrder == null || sellOrder == null) {
-                // 캐시가 유실된 경우 (있어서는 안 될 일이지만 안전장치)
-                // log.warn("Order cache missing - Buy: {}, Sell: {}", buyOrder == null, sellOrder == null); //
+                // 캐시가 유실된 경우 (고스트 주문 제거)
                 if (buyOrder == null) {
                     orderBookManager.removeOrder(itemId, "BUY", buyOrderId);
-                    // log.info("Removed missing buy order {} from orderbook", buyOrderId); //
+                    log.warn("[Matching] Ghost Buy Order {} removed for item {}", buyOrderId, itemId);
                 }
                 if (sellOrder == null) {
                     orderBookManager.removeOrder(itemId, "SELL", sellOrderId);
-                    // log.info("Removed missing sell order {} from orderbook", sellOrderId);
+                    log.warn("[Matching] Ghost Sell Order {} removed for item {}", sellOrderId, itemId);
                 }
                 continue;
             }
 
             // 3. 매칭 검사 (매수 최고가 >= 매도 최저가)
             if (buyOrder.getPrice() < sellOrder.getPrice()) {
-                // log.info("Top buy price {} < top sell price {}. Cannot match further.", buyOrder.getPrice(),
-                //         sellOrder.getPrice()); //
                 break; // 가격이 맞지 않으면 더 이상 매칭 불가
             }
 
             // 4. 체결 실행
-            // log.info("Executing trade for Buy {} and Sell {}", buyOrder.getId(), sellOrder.getId()); //
             executeTrade(itemId, buyOrder, sellOrder);
+        }
+        if (iterations >= 100) {
+            log.warn("[Matching] Iteration limit reached for item {}", itemId);
         }
         log.info("=== Matching finished for item: {} ===", itemId); //
     }

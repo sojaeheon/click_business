@@ -61,9 +61,9 @@ public class KafkaProducerConfig {
         // Kafka broker 주소
         config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
 
-        // Key는 문자열, Value는 JSON 직렬화
+        // Key는 문자열, Value는 JSON 직렬화 (인스턴스 방식으로 전달하여 deprecation 회피)
         config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+        // config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
 
         // 메시지 안정성 설정
         config.put(ProducerConfig.ACKS_CONFIG, "all");
@@ -81,9 +81,9 @@ public class KafkaProducerConfig {
         config.put(ProducerConfig.LINGER_MS_CONFIG, 1);
 
         // 🔥 중요: 타입 헤더 제거 (Consumer 호환성)
-        config.put(JsonSerializer.ADD_TYPE_INFO_HEADERS, false);
+        config.put("spring.json.add.type.headers", false);
 
-        return new DefaultKafkaProducerFactory<>(config);
+        return new DefaultKafkaProducerFactory<>(config, new StringSerializer(), new JsonSerializer<>());
 
         // // JsonSerializer에 우리가 만든 ObjectMapper 사용
         // JsonSerializer<Object> jsonSerializer = new JsonSerializer<>(kafkaObjectMapper);
