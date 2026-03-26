@@ -97,19 +97,21 @@ export const WorkstationAPI = {
     const res = await apiClient.get('/workstations/my');
     const data = res.data.data;
     if (data.workstationId) _cachedWorkstationId = data.workstationId;
+    // ★ reservedQuantity는 재료 기준 — 생산품 기준으로 변환
+    const reservedMat = data.reservedQuantity ?? 0;
+    const producedQty = data.outputQuantity ?? data.producedQuantity ?? 0;
     return {
       data: {
         isWorking: data.isActive,
         progress: data.progress ?? 0,
-        producedQuantity: data.outputQuantity ?? data.producedQuantity ?? 0,
-        totalQuantity: data.reservedQuantity ?? data.totalQuantity ?? 0,
+        producedQuantity: producedQty,
+        totalQuantity: reservedMat, // 재료 기준 (프론트에서 직접 사용하지 않음, fallback용)
         expectedEndTime: data.expectedEndTime,
         remainingMs: null as number | null,
-        // ✅ 백엔드 production 관련 추가 필드
-        minuteOutput: data.minuteOutput ?? null,      // 분당 생산량
-        workerLevel: data.workerLevel ?? null,        // 장착 캐릭터 레벨
-        speedMultiplier: data.speedMultiplier ?? null, // 속도 가중치
-        reservedQuantity: data.reservedQuantity ?? 0, // 예약 수량 (재료 기반)
+        minuteOutput: data.minuteOutput ?? null,
+        workerLevel: data.workerLevel ?? null,
+        speedMultiplier: data.speedMultiplier ?? null,
+        reservedQuantity: reservedMat,
       }
     };
   },
@@ -323,11 +325,6 @@ export const InventoryAPI = {
 
   moveSlot: async (data: { fromIdx: number; toIdx: number }) => {
     await apiClient.post('/inventory/swap', { fromSlot: data.fromIdx, toSlot: data.toIdx });
-    return { data: { success: true } };
-  },
-
-  addTestItem: async (data: { itemId: number, amount: number }) => {
-    await apiClient.post('/inventory/add', null, { params: { itemId: data.itemId, amount: data.amount } });
     return { data: { success: true } };
   },
 
