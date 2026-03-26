@@ -6,10 +6,15 @@ import type { NewsItem } from "../../../store/gameStore";
 // ... [NewsDetail & NewsList component remain identical] ...
 // (TargetContent can cover the rest using Replace content effectively)
 
-// 날짜 포맷 변환: 2020.01.18 -> 20xx년 01.18
+// 날짜 포맷 변환: 2020.01.18 -> 20XX년 01월 18일
 const formatDate = (dateStr?: string) => {
   if (!dateStr) return "";
-  return dateStr.replace(/^\d{4}\./, "20XX년 ");
+  const parts = dateStr.split('.');
+  if (parts.length === 3) {
+    const [, month, day] = parts;
+    return `20XX년 ${month}월 ${day}일`;
+  }
+  return dateStr;
 };
 
 // 뉴스 상세 페이지 뷰
