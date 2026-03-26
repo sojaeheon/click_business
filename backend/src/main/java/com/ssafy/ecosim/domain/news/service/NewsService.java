@@ -83,10 +83,10 @@ public class NewsService {
         
         try {
             LocalDate gameDate = LocalDate.parse(dateObj.toString());
-            // 하루 뒤의 뉴스까지 미리 보여주기 위해 +1일 추가
-            // 예: 게임 날짜가 2024-03-21이면 2024-03-22 00:00:00 뉴스까지 노출
+            // 이틀 뒤의 뉴스까지 미리 보여주기 위해 +2일 추가
+            // 예: 게임 날짜가 2024-03-21이면 2024-03-23 00:00:00 뉴스까지 노출
             // (데이터팀은 published_at을 해당 날짜의 00:00:00으로 입력)
-            LocalDate adjustedDate = gameDate.plusDays(1);
+            LocalDate adjustedDate = gameDate.plusDays(2);
             return adjustedDate.atTime(LocalTime.MAX);
         } catch (Exception e) {
             log.error("[NewsService] Redis game:simulation:date 파싱 실패: {}", dateObj, e);

@@ -100,13 +100,13 @@ export function MarketPage() {
   let matScale = 2;
   let prodScale = 2;
 
-  if (industry === "GOLD_MINING") {
+  if (industry === "GOLD_MINING" || industry === "금광업") {
     matUrl = "/models/props/drill.glb"; matScale = 2.5;
     prodUrl = "/models/props/Gold_Nuggets.gltf"; prodScale = 4;
-  } else if (industry === "GOLD_SMELTING") {
+  } else if (industry === "GOLD_SMELTING" || industry === "금 제련업") {
     matUrl = "/models/props/Gold_Nuggets.gltf"; matScale = 4;
     prodUrl = "/models/props/Gold_Bar.gltf"; prodScale = 3;
-  } else if (industry === "MANUFACTURING") {
+  } else if (industry === "MANUFACTURING" || industry === "제조업") {
     matUrl = "/models/props/Gold_Bar.gltf"; matScale = 3;
     prodUrl = "/models/props/drill.glb"; prodScale = 2.5;
   }
@@ -126,7 +126,7 @@ export function MarketPage() {
   const [tradeHistory, setTradeHistory] = useState<any[]>([]);
   const [pendingOrders, setPendingOrders] = useState<any[]>([]);
   const [marketTrend, setMarketTrend] = useState<"up" | "down" | "neutral">("neutral");
-  const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const currentPriceRef = useRef<HTMLDivElement>(null);
 
   const [currentPrice, setCurrentPrice] = useState<number>(0);
@@ -363,7 +363,7 @@ export function MarketPage() {
     }
   };
 
-  const handleCancelOrder = async (orderId: number) => {
+  const handleCancelOrder = async (orderId: string) => {
     setCancellingId(orderId);
     try {
       await MarketAPI.cancelOrder(orderId);
