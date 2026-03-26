@@ -181,14 +181,14 @@ export const IndustrySelectionPage = () => {
         <>
           <div className="fixed left-6 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-1 pointer-events-none animate-pulse">
             <span className="text-white/70 text-6xl leading-none">←</span>
-            <span className="text-white/50 text-lg font-bold tracking-widest mt-1">이전</span>
+            <span className="text-white/50 text-lg font-bold tracking-widest mt-1">방향키</span>
           </div>
           <div className="fixed right-6 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-1 pointer-events-none animate-pulse">
             <span className="text-white/70 text-6xl leading-none">→</span>
-            <span className="text-white/50 text-lg font-bold tracking-widest mt-1">다음</span>
+            <span className="text-white/50 text-lg font-bold tracking-widest mt-1">방향키</span>
           </div>
           <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-20 pointer-events-none animate-pulse">
-            <span className="text-white/55 text-lg font-bold tracking-wider">⏎ 선택 확정</span>
+            <span className="text-white/55 text-lg font-bold tracking-wider">⏎ 엔터</span>
           </div>
         </>
       )}
@@ -205,11 +205,11 @@ export const IndustrySelectionPage = () => {
               placeholder="예: SSAFY"
               value={companyName}
               autoFocus
-              onChange={(e) => setCompanyName(e.target.value)}
+              onChange={(e) => { if (e.target.value.length <= 15) setCompanyName(e.target.value); }}
               onKeyDown={(e) => e.key === 'Enter' && handleConfirm()}
             />
             <p style={{ fontSize: '13px', color: '#6c757d', alignSelf: 'flex-start', margin: '-16px 0 20px 4px' }}>
-              * 한 번 설정한 이름은 이후에 수정할 수 없습니다.
+              * 한 번 설정한 이름은 이후에 수정할 수 없습니다. ({companyName.length}/15)
             </p>
             <div className="modal-buttons">
               <button className="modal-cancel-btn" onClick={() => {

@@ -22,7 +22,7 @@
   - [NewsDetailModal.tsx](file:///c:/Users/SSAFY/Desktop/workspace/frontend-2nd/S14P21B109/frontend/src/app/components/modals/NewsDetailModal.tsx) (기존 Politics 등 분산 구조 통합 요망)
   - [InventoryModal.tsx](file:///c:/Users/SSAFY/Desktop/workspace/frontend-2nd/S14P21B109/frontend/src/app/components/modals/InventoryModal.tsx): 인벤토리 관리. 단순 UI 개선 요망
   - [CompanyProfile.tsx](file:///c:/Users/SSAFY/Desktop/workspace/frontend-2nd/S14P21B109/frontend/src/app/components/modals/CompanyProfile.tsx), [NotificationModal.tsx](file:///c:/Users/SSAFY/Desktop/workspace/frontend-2nd/S14P21B109/frontend/src/app/components/modals/NotificationModal.tsx), [SettingsModal.tsx](file:///c:/Users/SSAFY/Desktop/workspace/frontend-2nd/S14P21B109/frontend/src/app/components/modals/SettingsModal.tsx) 등 목적별 모달
-- **[ui/](file:///c:/Users/SSAFY/Desktop/workspace/frontend-2nd/S14P21B109/frontend/src/app/store/gameStore.ts#5-6)**: shadcn/ui 기반의 재사용 가능한 UI 컴포넌트(버튼, 배지, 카드 등)
+- **[ui/](file:///c:/Users/SSAFY/Desktop/workspace/frontend-2nd/S14P21B109/frontend/src/store/gameStore.ts#5-6)**: shadcn/ui 기반의 재사용 가능한 UI 컴포넌트(버튼, 배지, 카드 등)
 
 ### `src/pages/`
 - **[MainPage.tsx](file:///c:/Users/SSAFY/Desktop/workspace/frontend-2nd/S14P21B109/frontend/src/pages/MainPage.tsx)**: 게임 진입 및 Isometric 씬을 마운트하는 최상위 컨테이너
@@ -39,7 +39,7 @@
 ## 🛠 리팩토링 및 구조 개선 대상
 
 1. **명칭 및 API 동기화 (`factory` $\rightarrow$ `workstation`)**
-   - [gameStore.ts](file:///c:/Users/SSAFY/Desktop/workspace/frontend-2nd/S14P21B109/frontend/src/store/gameStore.ts): [BuildingPage](file:///c:/Users/SSAFY/Desktop/workspace/frontend-2nd/S14P21B109/frontend/src/app/store/gameStore.ts#5-6) 타입 및 상태 변수명 (`factory` -> `workstation`)
+   - [gameStore.ts](file:///c:/Users/SSAFY/Desktop/workspace/frontend-2nd/S14P21B109/frontend/src/store/gameStore.ts): [BuildingPage](file:///c:/Users/SSAFY/Desktop/workspace/frontend-2nd/S14P21B109/frontend/src/store/gameStore.ts#5-6) 타입 및 상태 변수명 (`factory` -> `workstation`)
    - [IsometricScene.tsx](file:///c:/Users/SSAFY/Desktop/workspace/frontend-2nd/S14P21B109/frontend/src/app/components/game/IsometricScene.tsx): `Factory` 컴포넌트 임포트 및 렌더링을 `Workstation`으로 일괄 변경
    - [Factory.tsx](file:///c:/Users/SSAFY/Desktop/workspace/frontend-2nd/S14P21B109/frontend/src/app/components/game/Factory.tsx) 파일명 $\rightarrow$ `Workstation.tsx` 로 변경 및 텍스트 수정
    - 기타 모달 아이콘 명칭 변경 (`lucide-react` 아이콘의 `Factory`는 에셋명으로 유지하되 도메인 관련 변수명 수정)

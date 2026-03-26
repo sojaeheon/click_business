@@ -9,6 +9,13 @@ export const AuthAPI = {
   refresh: () => apiClient.post('/auth/refresh'),
   logout: () => apiClient.post('/auth/logout'),
   createGuest: () => apiClient.post('/users/guest'),
+  // ★ 게스트 → 소셜 연동 (백엔드 구현 필요: POST /api/v1/auth/link-social)
+  linkSocial: () => {
+    const baseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+    const token = sessionStorage.getItem('accessToken') ?? '';
+    // 현재 게스트 토큰을 쿼리로 전달하여 백엔드가 기존 계정에 OAuth 정보를 연결
+    window.location.href = baseUrl.replace('/api/v1', '') + `/oauth2/authorization/google?link_token=${token}`;
+  },
 };
 
 export const UserAPI = {
@@ -90,19 +97,21 @@ export const WorkstationAPI = {
     const res = await apiClient.get('/workstations/my');
     const data = res.data.data;
     if (data.workstationId) _cachedWorkstationId = data.workstationId;
+    // ★ reservedQuantity는 재료 기준 — 생산품 기준으로 변환
+    const reservedMat = data.reservedQuantity ?? 0;
+    const producedQty = data.outputQuantity ?? data.producedQuantity ?? 0;
     return {
       data: {
         isWorking: data.isActive,
         progress: data.progress ?? 0,
-        producedQuantity: data.outputQuantity ?? data.producedQuantity ?? 0,
-        totalQuantity: data.reservedQuantity ?? data.totalQuantity ?? 0,
+        producedQuantity: producedQty,
+        totalQuantity: reservedMat, // 재료 기준 (프론트에서 직접 사용하지 않음, fallback용)
         expectedEndTime: data.expectedEndTime,
         remainingMs: null as number | null,
-        // ✅ 백엔드 production 관련 추가 필드
-        minuteOutput: data.minuteOutput ?? null,      // 분당 생산량
-        workerLevel: data.workerLevel ?? null,        // 장착 캐릭터 레벨
-        speedMultiplier: data.speedMultiplier ?? null, // 속도 가중치
-        reservedQuantity: data.reservedQuantity ?? 0, // 예약 수량 (재료 기반)
+        minuteOutput: data.minuteOutput ?? null,
+        workerLevel: data.workerLevel ?? null,
+        speedMultiplier: data.speedMultiplier ?? null,
+        reservedQuantity: reservedMat,
       }
     };
   },
@@ -201,8 +210,10 @@ export const BankAPI = {
 };
 
 export const HRAPI = {
-  recruitWorker: (data: { companyId: number; type: 'NORMAL' | 'PREMIUM' }) => apiClient.post('/hr/recruit', data),
-  upgradeWorker: (data: { companyId: number; currentLevel: number }) => apiClient.post('/hr/upgrade', data),
+  upgradeWorker: async (currentLevel: number) => {
+    const res = await apiClient.post('/hr/upgrade', { currentLevel });
+    return { data: res.data.data as { result: string; newLevel: number } };
+  },
 };
 
 export const MinigameAPI = {
@@ -314,11 +325,6 @@ export const InventoryAPI = {
 
   moveSlot: async (data: { fromIdx: number; toIdx: number }) => {
     await apiClient.post('/inventory/swap', { fromSlot: data.fromIdx, toSlot: data.toIdx });
-    return { data: { success: true } };
-  },
-
-  addTestItem: async (data: { itemId: number, amount: number }) => {
-    await apiClient.post('/inventory/add', null, { params: { itemId: data.itemId, amount: data.amount } });
     return { data: { success: true } };
   },
 
