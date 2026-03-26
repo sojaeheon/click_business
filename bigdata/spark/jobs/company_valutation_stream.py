@@ -20,6 +20,24 @@ from pyspark.sql.types import StructType, StructField, StringType, IntegerType, 
 from pyspark.sql.window import Window
 
 # -----------------------------
+# 환경변수 헬퍼
+# -----------------------------
+def get_env(name: str, default: str | None = None) -> str:
+    value = os.getenv(name, default)
+    if value is None:
+        raise ValueError(f"Missing required env: {name}")
+    return value
+
+
+def get_int_env(name: str, default: str | None = None) -> int:
+    value = get_env(name, default)
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid integer env {name}: {value}") from exc
+
+
+# -----------------------------
 # Spark 세션
 # -----------------------------
 spark = (
@@ -32,26 +50,26 @@ spark.sparkContext.setLogLevel("WARN")
 # -----------------------------
 # Analytics DB 환경변수
 # -----------------------------
-AN_DB_HOST = os.getenv("ANALYTICS_DB_HOST", "analytics-postgres")
-AN_DB_PORT = int(os.getenv("ANALYTICS_DB_PORT", "5432"))
-AN_DB_NAME = os.getenv("ANALYTICS_DB_NAME", "ecosim_analytics")
-AN_DB_USER = os.getenv("ANALYTICS_DB_USER", "ecosim")
-AN_DB_PASSWORD = os.getenv("ANALYTICS_DB_PASSWORD", "ecosim")
+AN_DB_HOST = get_env("ANALYTICS_DB_HOST", "analytics-postgres")
+AN_DB_PORT = get_int_env("ANALYTICS_DB_PORT", "5432")
+AN_DB_NAME = get_env("ANALYTICS_DB_NAME", "ecosim_analytics")
+AN_DB_USER = get_env("ANALYTICS_DB_USER", "ecosim")
+AN_DB_PASSWORD = get_env("ANALYTICS_DB_PASSWORD", "ecosim")
 
 # -----------------------------
 # Operation DB 환경변수 (ranking_current 저장용)
 # -----------------------------
-OP_DB_HOST = os.getenv("OP_DB_HOST", "postgres-db")
-OP_DB_PORT = int(os.getenv("OP_DB_PORT", "5432"))
-OP_DB_NAME = os.getenv("OP_DB_NAME", "ecosim")
-OP_DB_USER = os.getenv("OP_DB_USER", "ecosim")
-OP_DB_PASSWORD = os.getenv("OP_DB_PASSWORD", "ecosim")
+OP_DB_HOST = get_env("OP_DB_HOST", "postgres-db")
+OP_DB_PORT = get_int_env("OP_DB_PORT", "5432")
+OP_DB_NAME = get_env("OP_DB_NAME", "ecosim")
+OP_DB_USER = get_env("OP_DB_USER", "ecosim")
+OP_DB_PASSWORD = get_env("OP_DB_PASSWORD", "ecosim")
 
 # -----------------------------
 # Kafka 환경변수
 # -----------------------------
-KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
-KAFKA_TOPICS_STREAM = os.getenv(
+KAFKA_BOOTSTRAP = get_env("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
+KAFKA_TOPICS_STREAM = get_env(
     "KAFKA_TOPICS_STREAM",
     "company.events,warehouse.events,market.trade.events"
 )

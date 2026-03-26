@@ -38,6 +38,8 @@ services:
     container_name: kafka-init
     depends_on:
       - kafka
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS_INTERNAL: ${KAFKA_BOOTSTRAP_SERVERS_INTERNAL:-kafka:29092}
     volumes:
       - ./bigdata/kafka/scripts/create_topics.sh:/usr/local/bin/create_topics.sh
     entrypoint: ["/bin/bash", "/usr/local/bin/create_topics.sh"]
@@ -48,7 +50,7 @@ services:
     image: danielqsj/kafka-exporter:v1.7.0
     container_name: kafka-exporter
     command:
-      - "--kafka.server=kafka:29092"
+      - "--kafka.server=${KAFKA_BOOTSTRAP_SERVERS_INTERNAL:-kafka:29092}"
     ports:
       - "9308:9308"
     depends_on:

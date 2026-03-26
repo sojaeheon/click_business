@@ -4,7 +4,7 @@
 set -e
 
 # 환경변수 설정
-BOOTSTRAP=kafka:29092
+BOOTSTRAP=${KAFKA_BOOTSTRAP_SERVERS_INTERNAL:-kafka:29092}
 
 # Kafka Broker 준비 대기
 echo "Waiting for Kafka to be ready..."

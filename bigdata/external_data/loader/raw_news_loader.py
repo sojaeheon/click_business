@@ -1,21 +1,36 @@
 import csv
+import os
 import psycopg2
 from pathlib import Path
 
-# PostgreSQL 연결 정보
+def get_env(name, default=None):
+    value = os.getenv(name, default)
+    if value is None:
+        raise ValueError(f"Missing required env: {name}")
+    return value
+
+
+def get_int_env(name, default=None):
+    value = get_env(name, default)
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid integer env {name}: {value}") from exc
+
+
 conn = psycopg2.connect(
-    host="localhost",
-    port=5432,
-    dbname="ecosim",
-    user="ecosim",
-    password="ecosim"
+    host=get_env("DB_HOST", "localhost"),
+    port=get_int_env("DB_PORT", "5432"),
+    dbname=get_env("DB_NAME", "ecosim"),
+    user=get_env("DB_USER", "ecosim"),
+    password=get_env("DB_PASSWORD", "ecosim")
 )
 cur = conn.cursor()
 
 # CSV 파일 경로와 키워드 매핑
 files = {
-    '../raw/kbs_news_gold_2020_2025.csv': 'gold',
-    '../raw/kbs_news_interest_2020_2025.csv': 'interest'
+    get_env("RAW_NEWS_GOLD_CSV_PATH", "../raw/kbs_news_gold_2020_2025.csv"): "gold",
+    get_env("RAW_NEWS_INTEREST_CSV_PATH", "../raw/kbs_news_interest_2020_2025.csv"): "interest",
 }
 
 # 시퀀스 생성

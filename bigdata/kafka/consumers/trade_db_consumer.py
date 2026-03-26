@@ -6,15 +6,30 @@ from datetime import datetime
 from kafka import KafkaConsumer
 from kafka.errors import NoBrokersAvailable
 
-DB_HOST = os.getenv("DB_HOST", "postgres-db")
-DB_PORT = int(os.getenv("DB_PORT", "5432"))
-DB_NAME = os.getenv("DB_NAME", "ecosim")
-DB_USER = os.getenv("DB_USER", "ecosim")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "ecosim")
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
-KAFKA_TRADE_TOPIC = os.getenv("KAFKA_TRADE_TOPIC", "market.trade.events")
-KAFKA_TRADE_GROUP_ID = os.getenv("KAFKA_TRADE_GROUP_ID", "trade-db-consumer")
-KAFKA_AUTO_OFFSET_RESET = os.getenv("KAFKA_AUTO_OFFSET_RESET", "latest")
+def get_env(name, default=None):
+    value = os.getenv(name, default)
+    if value is None:
+        raise ValueError(f"Missing required env: {name}")
+    return value
+
+
+def get_int_env(name, default=None):
+    value = get_env(name, default)
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid integer env {name}: {value}") from exc
+
+
+DB_HOST = get_env("DB_HOST", "postgres-db")
+DB_PORT = get_int_env("DB_PORT", "5432")
+DB_NAME = get_env("DB_NAME", "ecosim")
+DB_USER = get_env("DB_USER", "ecosim")
+DB_PASSWORD = get_env("DB_PASSWORD", "ecosim")
+KAFKA_BOOTSTRAP_SERVERS = get_env("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
+KAFKA_TRADE_TOPIC = get_env("KAFKA_TRADE_TOPIC", "market.trade.events")
+KAFKA_TRADE_GROUP_ID = get_env("KAFKA_TRADE_GROUP_ID", "trade-db-consumer")
+KAFKA_AUTO_OFFSET_RESET = get_env("KAFKA_AUTO_OFFSET_RESET", "latest")
 
 # -----------------------------
 # PostgreSQL 연결

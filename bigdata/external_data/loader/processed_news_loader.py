@@ -1,24 +1,44 @@
 import csv
+import os
 from pathlib import Path
 
 import psycopg2
 
+def get_env(name, default=None):
+    value = os.getenv(name, default)
+    if value is None:
+        raise ValueError(f"Missing required env: {name}")
+    return value
+
+
+def get_int_env(name, default=None):
+    value = get_env(name, default)
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid integer env {name}: {value}") from exc
+
 
 # PostgreSQL 연결 정보
 conn = psycopg2.connect(
-    host="localhost",
-    port=5432,
-    dbname="ecosim",
-    user="ecosim",
-    password="ecosim",
+    host=get_env("DB_HOST", "localhost"),
+    port=get_int_env("DB_PORT", "5432"),
+    dbname=get_env("DB_NAME", "ecosim"),
+    user=get_env("DB_USER", "ecosim"),
+    password=get_env("DB_PASSWORD", "ecosim"),
 )
 cur = conn.cursor()
 
-file_path = (
-    Path(__file__).resolve().parent.parent
-    / "storage"
-    / "processed"
-    / "Refined_news.csv"
+file_path = Path(
+    get_env(
+        "PROCESSED_NEWS_CSV_PATH",
+        str(
+            Path(__file__).resolve().parent.parent
+            / "storage"
+            / "processed"
+            / "Refined_news.csv"
+        ),
+    )
 )
 
 if not file_path.exists():

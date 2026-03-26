@@ -6,12 +6,27 @@ from datetime import datetime
 from kafka import KafkaConsumer
 from kafka.errors import NoBrokersAvailable
 
-REDIS_HOST = os.getenv("REDIS_HOST", "redis")
-REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
-KAFKA_ORDER_TOPIC = os.getenv("KAFKA_ORDER_TOPIC", "market.order.events")
-KAFKA_ORDER_GROUP_ID = os.getenv("KAFKA_ORDER_GROUP_ID", "order-redis-consumer")
-KAFKA_AUTO_OFFSET_RESET = os.getenv("KAFKA_AUTO_OFFSET_RESET", "earliest")
+def get_env(name, default=None):
+    value = os.getenv(name, default)
+    if value is None:
+        raise ValueError(f"Missing required env: {name}")
+    return value
+
+
+def get_int_env(name, default=None):
+    value = get_env(name, default)
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid integer env {name}: {value}") from exc
+
+
+REDIS_HOST = get_env("REDIS_HOST", "redis")
+REDIS_PORT = get_int_env("REDIS_PORT", "6379")
+KAFKA_BOOTSTRAP_SERVERS = get_env("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
+KAFKA_ORDER_TOPIC = get_env("KAFKA_ORDER_TOPIC", "market.order.events")
+KAFKA_ORDER_GROUP_ID = get_env("KAFKA_ORDER_GROUP_ID", "order-redis-consumer")
+KAFKA_AUTO_OFFSET_RESET = get_env("KAFKA_AUTO_OFFSET_RESET", "earliest")
 
 # -----------------------------
 # Redis 연결

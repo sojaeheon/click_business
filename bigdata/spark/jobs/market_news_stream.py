@@ -16,23 +16,59 @@ DEFAULT_ORDER_PATH = "hdfs://namenode:9000/raw/kafka/topic=market.order.events"
 DEFAULT_TRADE_PATH = "hdfs://namenode:9000/raw/kafka/topic=market.trade.events"
 DEFAULT_CHECKPOINT_PATH = "/tmp/checkpoints/market-news-stream"
 
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = int(os.getenv("DB_PORT", "5432"))
-DB_NAME = os.getenv("DB_NAME", "ecosim")
-DB_USER = os.getenv("DB_USER", "ecosim")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "ecosim")
+def get_env(name: str, default: str | None = None) -> str:
+    value = os.getenv(name, default)
+    if value is None:
+        raise ValueError(f"Missing required env: {name}")
+    return value
 
-NEWS_GLOBAL_COOLDOWN_MINUTES = int(os.getenv("NEWS_GLOBAL_COOLDOWN_MINUTES", "10"))
-NEWS_SIGNAL_COOLDOWN_MINUTES = int(os.getenv("NEWS_SIGNAL_COOLDOWN_MINUTES", "10"))
-NEWS_MIN_SEVERITY_SCORE = float(os.getenv("NEWS_MIN_SEVERITY_SCORE", "85.0"))
+
+def get_int_env(name: str, default: str | None = None) -> int:
+    value = get_env(name, default)
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid integer env {name}: {value}") from exc
+
+
+def get_float_env(name: str, default: str | None = None) -> float:
+    value = get_env(name, default)
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid float env {name}: {value}") from exc
+
+
+DEFAULT_ORDER_PATH = get_env(
+    "ORDER_EVENTS_HDFS_PATH",
+    "hdfs://namenode:9000/raw/kafka/topic=market.order.events",
+)
+DEFAULT_TRADE_PATH = get_env(
+    "TRADE_EVENTS_HDFS_PATH",
+    "hdfs://namenode:9000/raw/kafka/topic=market.trade.events",
+)
+DEFAULT_CHECKPOINT_PATH = get_env(
+    "MARKET_NEWS_CHECKPOINT_PATH",
+    "/tmp/checkpoints/market-news-stream",
+)
+
+DB_HOST = get_env("DB_HOST", "localhost")
+DB_PORT = get_int_env("DB_PORT", "5432")
+DB_NAME = get_env("DB_NAME", "ecosim")
+DB_USER = get_env("DB_USER", "ecosim")
+DB_PASSWORD = get_env("DB_PASSWORD", "ecosim")
+
+NEWS_GLOBAL_COOLDOWN_MINUTES = get_int_env("NEWS_GLOBAL_COOLDOWN_MINUTES", "10")
+NEWS_SIGNAL_COOLDOWN_MINUTES = get_int_env("NEWS_SIGNAL_COOLDOWN_MINUTES", "10")
+NEWS_MIN_SEVERITY_SCORE = get_float_env("NEWS_MIN_SEVERITY_SCORE", "85.0")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("GMS_KEY", "")
-OPENAI_BASE_URL = os.getenv(
+OPENAI_BASE_URL = get_env(
     "OPENAI_BASE_URL",
     "https://gms.ssafy.io/gmsapi/api.openai.com/v1/chat/completions",
 )
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-OPENAI_TIMEOUT_SECONDS = int(os.getenv("OPENAI_TIMEOUT_SECONDS", "20"))
+OPENAI_MODEL = get_env("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_TIMEOUT_SECONDS = get_int_env("OPENAI_TIMEOUT_SECONDS", "20")
 
 
 @dataclass
