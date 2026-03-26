@@ -121,17 +121,6 @@ export const STACK_LEVEL_MODELS = [
     "/models/props/Gold_Bars_Stack_Medium.gltf",// lv3: 많음
     "/models/props/Gold_Bars_Stack_Large.gltf", // lv4: 가득
 ];
-// 하위 호환성 별칭 (기존 코드에서 import하는 이름 유지)
-export const GOLD_STACK_MODELS = STACK_LEVEL_MODELS;
-
-// 더미 1스택으로 단일화. 기존 MAX_PILES/MAX_TOTAL은 주서에 남기도
-// 프론트가 참조하는 값만 남김
-export const MAX_PILES = 1;   // 더미 1개로 고정
+export const MAX_PILES = 1;
 export const MAX_TOTAL = STACK_LEVEL_MODELS.length; // = 4 (레벨만 사용)
-
-// 작업장 내 최대 적재량
-// ⚠️ 백엔드 API에서 제공해야하는 값. 현재 WorkstationAPI.getStatus()
-//        응답의 maxCapacity 값으로 대체해야함.
-// 활용: Workstation.tsx에서 maxCapacity state로 저장하고 isFull 판단에 사용
-export const DEFAULT_WORKSTATION_CAP = 100; // fallback 값 (백엔드가 내려주지 않을 때)
-export const MAX_GOLD_CAP = DEFAULT_WORKSTATION_CAP; // 하위 호환성
+export const DEFAULT_WORKSTATION_CAP = 100; // fallback (백엔드 미제공 시)

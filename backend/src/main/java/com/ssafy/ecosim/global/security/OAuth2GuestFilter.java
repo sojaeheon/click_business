@@ -15,6 +15,7 @@ import java.io.IOException;
 @RequiredArgsConstructor
 public class OAuth2GuestFilter extends OncePerRequestFilter {
 
+    public static final String GUEST_ID_COOKIE = "GUEST_ID";
     private final JwtTokenProvider tokenProvider;
 
     @Override
@@ -29,11 +30,13 @@ public class OAuth2GuestFilter extends OncePerRequestFilter {
                 Authentication auth = tokenProvider.getAuthentication(token);
                 if (auth != null) {
                     // JWT의 subject(userId)를 쿠키에 저장 (세션 대용)
-                    Cookie guestCookie = new Cookie("GUEST_ID", auth.getName());
+                    // SameSite=None + Secure 없이도 동일 도메인(localhost)이므로 Lax로 충분
+                    Cookie guestCookie = new Cookie(GUEST_ID_COOKIE, auth.getName());
                     guestCookie.setPath("/");
                     guestCookie.setHttpOnly(true);
                     guestCookie.setMaxAge(60 * 10); // 10분간 유효
                     response.addCookie(guestCookie);
+                    System.out.println("[OAuth2GuestFilter] GUEST_ID cookie set: " + auth.getName());
                 }
             }
         }

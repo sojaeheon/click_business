@@ -32,10 +32,11 @@ function SpinningModel({ url, scale = 1, yOffset = 0 }: { url: string, scale?: n
 interface MinuteCandle {
   time: string;      // "HH:MM" 형식
   price: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
+  timestamp?: number; // 게임 epoch millis (X축 역산용)
 }
 
 const CustomCandle = (props: any) => {
@@ -117,8 +118,8 @@ export function MarketPage() {
   const [showPopup, setShowPopup] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // 5분봉 차트 데이터
-  const [chartData, setChartData] = useState<{ time: string; price: number; open?: number; high?: number; low?: number; close?: number }[]>([]);
+  // 1분봉 차트 데이터
+  const [chartData, setChartData] = useState<{ time: string; price: number; open?: number; high?: number; low?: number; close?: number; timestamp?: number }[]>([]);
   const [chartType, setChartType] = useState<"candle" | "line">("candle"); // 차트 타입 상태
 
   const [orderBook, setOrderBook] = useState<{ asks: Array<{ price: number, quantity: number }>, bids: Array<{ price: number, quantity: number }> }>({ asks: [], bids: [] });
@@ -135,6 +136,7 @@ export function MarketPage() {
   const [hasDragged, setHasDragged] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const isAutoScrolling = useRef(false);
+  const [visibleRange, setVisibleRange] = useState<{ start: number; end: number } | null>(null);
 
   const snapToRight = useCallback(() => {
     if (scrollRef.current) {
@@ -152,43 +154,68 @@ export function MarketPage() {
   const handleDragStart = (e: React.MouseEvent) => {
     if (!scrollRef.current) return;
     isDragging.current = true;
-    startX.current = e.pageX - scrollRef.current.offsetLeft;
+    startX.current = e.pageX;
     scrollLeft.current = scrollRef.current.scrollLeft;
+
+    // document 레벨에서 이벤트 수신: 마우스가 차트 밖으로 나가도 드래그 유지
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isDragging.current || !scrollRef.current) return;
+      ev.preventDefault();
+      const walk = (ev.pageX - startX.current) * 1.5;
+      scrollRef.current.scrollLeft = scrollLeft.current - walk;
+      setHasDragged(true);
+    };
+    const onMouseUp = () => {
+      isDragging.current = false;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
   };
-  const handleDragLeave = () => { isDragging.current = false; };
+  // 하위 호환용 (JSX onMouse* 핸들러 유지)
+  const handleDragLeave = () => { };
   const handleDragEnd = () => { isDragging.current = false; };
-  const handleDragMove = (e: React.MouseEvent) => {
-    if (!isDragging.current || !scrollRef.current) return;
-    e.preventDefault();
-    const x = e.pageX - scrollRef.current.offsetLeft;
-    const walk = (x - startX.current) * 2;
-    scrollRef.current.scrollLeft = scrollLeft.current - walk;
-    setHasDragged(true);
-  };
+  const handleDragMove = (_e: React.MouseEvent) => { }; // document 레벨에서 처리
 
   // 🏷️ 아이템 ID 매핑 헬퍼
+  // gameStore의 industry는 한국어로 저장됨 ("금광업", "금 제련업", "제조업")
+  // 영어("GOLD_MINING" 등)와 한국어 모두 처리
   const getItemId = (m: MarketMode): number => {
-    if (industry === "GOLD_MINING") return m === "buy" ? 3 : 1;
-    if (industry === "GOLD_SMELTING") return m === "buy" ? 1 : 2;
-    if (industry === "MANUFACTURING") return m === "buy" ? 2 : 3;
+    if (industry === "GOLD_MINING" || industry === "금광업") return m === "buy" ? 3 : 1;
+    if (industry === "GOLD_SMELTING" || industry === "금 제련업" || industry === "제철업") return m === "buy" ? 1 : 2;
+    if (industry === "MANUFACTURING" || industry === "제조업") return m === "buy" ? 2 : 3;
     return 1;
   };
 
   const itemId = mode ? getItemId(mode) : 1;
 
-  // 모드/아이템 변경 시 차트 초기화
+  // 모드/아이템 변경 시 모든 상태 즉시 초기화
   useEffect(() => {
     setChartData([]);
+    setOrderBook({ asks: [], bids: [] });
+    setTradeHistory([]);
+    setPendingOrders([]);
+    setCurrentPrice(0);
+    setChangePrice(0);
+    setChangeRate(0);
   }, [itemId]);
 
   // ⏱️ 실시간 데이터 업데이트 (오더북, 체결내역, 미체결 주문)
   useEffect(() => {
     if (!mode) return;
 
+    const controller = new AbortController();
+    // 이 effect가 실행된 시점의 itemId를 캡처
+    const capturedItemId = itemId;
+
     const fetchData = async () => {
       try {
         // [1] 오더북/호가창 조회
-        const res = await MarketAPI.getOrderbook(itemId);
+        const res = await MarketAPI.getOrderbook(capturedItemId);
+        // ✅ 응답 도착 시점에 itemId가 바뀌었으면 무시 (race condition 방지)
+        if (controller.signal.aborted) return;
+
         const data = res.data as any;
 
         if (data && (data.sellOrders || data.buyOrders)) {
@@ -217,15 +244,15 @@ export function MarketPage() {
 
         // [2] 백엔드 1분봉 차트 조회
         try {
-          const chartRes = await MarketAPI.get1MinCandles(itemId, 100);
+          const chartRes = await MarketAPI.get1MinCandles(capturedItemId, 100);
+          if (controller.signal.aborted) return;
 
           const candles = chartRes.data?.data ?? chartRes.data;
 
           if (candles && Array.isArray(candles)) {
-            // 백엔드에서 이미 계산된 5분봉 데이터를 시간 순으로 정렬
             const formatted = candles
-              .filter((c: any) => !c.isLive)  // 확정된 분봉만 사용
-              .sort((a: any, b: any) => a.timestamp - b.timestamp)  // 시간 오름차순 정렬
+              .filter((c: any) => !c.isLive)
+              .sort((a: any, b: any) => a.timestamp - b.timestamp)
               .map((c: any) => {
                 const dt = new Date(c.timestamp);
                 const timeStr = `${dt.getHours().toString().padStart(2, '0')}:${dt.getMinutes().toString().padStart(2, '0')}`;
@@ -235,19 +262,22 @@ export function MarketPage() {
                   open: c.open,
                   high: c.high,
                   low: c.low,
-                  close: c.close
+                  close: c.close,
+                  timestamp: c.timestamp // ✅ 역산용
                 };
               });
 
             setChartData(formatted);
           }
         } catch (e) {
-          console.warn("차트 조회 실패:", e);
+          if (!controller.signal.aborted) console.warn("차트 조회 실패:", e);
         }
 
-        // [3] 체결 내역 조회 (항상)
+        // [3] 체결 내역 조회
         try {
-          const tradeRes = await MarketAPI.getTrades(itemId);
+          const tradeRes = await MarketAPI.getTrades(capturedItemId);
+          if (controller.signal.aborted) return;
+
           const tradeData = tradeRes.data;
           if (tradeData?.success && Array.isArray(tradeData.data)) {
             setTradeHistory(tradeData.data);
@@ -259,35 +289,41 @@ export function MarketPage() {
             setTradeHistory([]);
           }
         } catch {
-          setTradeHistory([]);
+          if (!controller.signal.aborted) setTradeHistory([]);
         }
 
-        // [3] 미체결(대기중) 주문 조회 (항상)
+        // [4] 미체결(대기중) 주문 조회
         try {
-          const pendingRes = await MarketAPI.getMyOrders(itemId);
+          const pendingRes = await MarketAPI.getMyOrders(capturedItemId);
+          if (controller.signal.aborted) return;
+
           const pendingData = pendingRes.data;
-          let orders = [];
+          let orders: any[] = [];
           if (Array.isArray(pendingData?.data)) {
             orders = pendingData.data;
           } else if (Array.isArray(pendingData)) {
             orders = pendingData;
           }
-          // COMPLETED나 CANCELED가 아닌, 잔량이 남아있는 주문만 대기중으로 표시
           setPendingOrders(orders.filter((o: any) =>
             o.status !== 'COMPLETED' && o.status !== 'CANCELED' && o.orderStatus !== 'COMPLETED' && o.orderStatus !== 'CANCELED' && (o.remainingQuantity ?? o.totalQuantity) > 0
           ));
         } catch {
-          setPendingOrders([]);
+          if (!controller.signal.aborted) setPendingOrders([]);
         }
 
       } catch (err) {
-        console.warn("마켓 데이터 조회 실패:", err);
+        if (!controller.signal.aborted) console.warn("마켓 데이터 조회 실패:", err);
       }
     };
 
     fetchData();
     const interval = setInterval(fetchData, 3000);
-    return () => clearInterval(interval);
+
+    return () => {
+      // itemId가 바뀌거나 컴포넌트가 언마운트될 때 진행 중인 요청 취소
+      controller.abort();
+      clearInterval(interval);
+    };
   }, [mode, itemId]);
 
   const totalAmount = price * quantity;
@@ -344,66 +380,90 @@ export function MarketPage() {
   const currentMarketPrice = currentPrice || (chartData.length > 0 ? chartData[chartData.length - 1].price : 0);
 
   const getDisplayChartData = () => {
-    const map = new Map<string, any>();
-    chartData.forEach(d => map.set(d.time, d));
+    const REAL_MIN_IN_GAME_MS = 8_640_000;
+    const MIN_SLOTS = 20;
 
-    const result = [];
-    const now = new Date();
-    let prevClose = currentPrice || (chartData.length > 0 ? chartData[0].close : 0);
+    // ── 1. 확정 캔들: timestamp를 UTC 기준으로 시간 레이블 생성
+    let prevClose: number = currentPrice || 0;
+    const confirmed = chartData.map((c, idx) => {
+      const dt = new Date(c.timestamp ?? 0);
+      // 게임 시간은 UTC 기준 (KST +9 보정 제거)
+      const hh = dt.getUTCHours().toString().padStart(2, '0');
+      const mm = dt.getUTCMinutes().toString().padStart(2, '0');
+      const label = `${hh}:${mm}`;
+      const gameDate = `${(dt.getUTCMonth() + 1).toString().padStart(2, '0')}/${dt.getUTCDate().toString().padStart(2, '0')}`;
+      const prev = idx === 0 ? (currentPrice || c.close || 0) : (chartData[idx - 1].close ?? prevClose);
+      prevClose = c.close ?? prevClose;
+      return {
+        time: label,
+        gameDate,
+        price: c.close ?? 0,
+        open: c.open ?? c.close ?? 0,
+        high: c.high ?? c.close ?? 0,
+        low: c.low ?? c.close ?? 0,
+        close: c.close ?? 0,
+        bounds: [c.low ?? c.close ?? 0, c.high ?? c.close ?? 0],
+        prevClose: prev,
+        isLive: false,
+        isEmpty: false,
+      };
+    });
 
-    for (let i = 59; i >= 0; i--) {
-      const d = new Date(now.getTime() - i * 60000); // 1분 단위
-      const tStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-
-      const backendCandle = map.get(tStr);
-
-      let candle;
-      if (backendCandle) {
-        // ✅ 백엔드에서 받은 OHLC를 그대로 사용
-        candle = {
-          time: tStr,
-          price: backendCandle.close,
-          open: backendCandle.open,     // ✅ 백엔드 시가 그대로 사용
-          high: backendCandle.high,
-          low: backendCandle.low,
-          close: backendCandle.close,
-          bounds: [backendCandle.low, backendCandle.high],
-          prevClose: prevClose  // 🌟 직전 분봉의 종가 (색상 판단용)
-        };
-        prevClose = backendCandle.close;
-      } else {
-        // 데이터 없으면 이전 종가로 평평하게 채움
-        candle = {
-          time: tStr,
-          price: prevClose,
-          open: prevClose,
-          high: prevClose,
-          low: prevClose,
-          close: prevClose,
-          bounds: [prevClose, prevClose],
-          prevClose: prevClose
-        };
-      }
-
-      // 현재 시간(i === 0)이면 실시간 가격 반영
-      if (i === 0 && currentPrice) {
-        candle.close = currentPrice;
-        candle.high = Math.max(candle.high, currentPrice);
-        candle.low = Math.min(candle.low, currentPrice);
-        candle.price = currentPrice;
-        candle.bounds = [candle.low, candle.high];
-      }
-
-      result.push(candle);
+    // ── 2. 실시간 캔들
+    let liveCandle = null;
+    if (currentPrice) {
+      const lastTs = chartData.length > 0 ? (chartData[chartData.length - 1].timestamp ?? 0) : 0;
+      const liveTs = lastTs > 0 ? lastTs + REAL_MIN_IN_GAME_MS : Date.now();
+      const dt = new Date(liveTs);
+      const hh = dt.getUTCHours().toString().padStart(2, '0');
+      const mm = dt.getUTCMinutes().toString().padStart(2, '0');
+      const label = `${hh}:${mm}`;
+      const gameDate = `${(dt.getUTCMonth() + 1).toString().padStart(2, '0')}/${dt.getUTCDate().toString().padStart(2, '0')}`;
+      const openPrice = prevClose || currentPrice;
+      liveCandle = {
+        time: label,
+        gameDate,
+        price: currentPrice,
+        open: openPrice,
+        high: Math.max(openPrice, currentPrice),
+        low: Math.min(openPrice, currentPrice),
+        close: currentPrice,
+        bounds: [Math.min(openPrice, currentPrice), Math.max(openPrice, currentPrice)],
+        prevClose: openPrice,
+        isLive: true,
+        isEmpty: false,
+      };
     }
 
-    return result;
+    const data = liveCandle ? [...confirmed, liveCandle] : confirmed;
+
+    // ── 3. 최소 20개 슬롯 보장: 부족하면 왼쪽에 빈 슬롯 추가
+    if (data.length < MIN_SLOTS) {
+      const emptySlots = [];
+      for (let i = 0; i < MIN_SLOTS - data.length; i++) {
+        emptySlots.push({
+          time: '',
+          gameDate: '',
+          price: 0,
+          open: 0, high: 0, low: 0, close: 0,
+          bounds: [0, 0],
+          prevClose: 0,
+          isLive: false,
+          isEmpty: true,
+        });
+      }
+      return [...emptySlots, ...data];
+    }
+
+    return data;
   };
+
 
   const displayChartData = getDisplayChartData();
   const visibleDataLen = displayChartData.length;
-  // 1분봉 60개가 100% 한 화면 분량. 60개 캔들이므로 200% 너비를 주어 어느 정도 드래그 가능하게 만듬
-  const chartWidthPct = Math.max(100, (visibleDataLen / 30) * 100); 
+  // 캔들 1개당 24px 고정. 차트는 항상 컨테이너 100% 이상 → 캔들 적으면 꼽 채우고, 많으면 스크롤
+  const CANDLE_WIDTH_PX = 24;
+  const chartMinWidthPx = visibleDataLen * CANDLE_WIDTH_PX;
 
   // 🌟 게임 시간(10분 사이클) 당일 시가 대비 현재가 비교
   const lastCandle = displayChartData.length > 0 ? displayChartData[displayChartData.length - 1] : null;
@@ -413,11 +473,51 @@ export function MarketPage() {
 
   const currentCandleOpen = lastCandle?.open ?? currentPrice;
 
-  // 📊 Y축 1,000 단위 틱 격자 계산
-  const minY = Math.floor((currentCandleOpen * 0.95) / 1000) * 1000;
-  const maxY = Math.ceil((currentCandleOpen * 1.05) / 1000) * 1000;
+  // 📊 보이는 캔들 범위에서 실제 high/low 계산 (동적 Y축)
+  const computeVisibleDomain = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const totalWidth = el.scrollWidth;
+    const viewWidth = el.clientWidth;
+    const scrollLeft = el.scrollLeft;
+    // displayChartData.length 를 직접 암소하지 않고 DOM 기반으로 계산 → 무한루프 방지
+    const itemWidth = totalWidth > 0 && el.children[0] ? el.children[0].scrollWidth / Math.max(1, el.children[0].children.length) : 1;
+    const total = totalWidth > 0 && itemWidth > 0 ? Math.round(totalWidth / itemWidth) : 60;
+    const startIdx = Math.max(0, Math.floor((scrollLeft / totalWidth) * total) - 1);
+    const endIdx = Math.min(total - 1, Math.ceil(((scrollLeft + viewWidth) / totalWidth) * total) + 1);
+    setVisibleRange({ start: startIdx, end: endIdx });
+  }, []); // ✅ 의존성 배열 비움: displayChartData 없이 DOM 기반으로
+
+  // 보이는 캔들 중 실제 데이터가 있는 것만
+  const realCandles = displayChartData.filter(c => !c.isEmpty && c.high > 0 && c.low > 0);
+
+  // Y축: 가장 오른쪽 캔들(현재가) 중심으로 범위 설정
+  const rightPrice = lastCandle?.close ?? currentPrice;
+  let minY: number;
+  let maxY: number;
+
+  if (realCandles.length > 0) {
+    const rawMin = Math.min(...realCandles.map(c => c.low ?? 0));
+    const rawMax = Math.max(...realCandles.map(c => c.high ?? 0));
+    // 현재가 기준 ±3% 범위와 실제 데이터 범위 중 더 넓은 것 사용
+    const centerRange = rightPrice * 0.03;
+    const dataMin = Math.min(rawMin, rightPrice - centerRange);
+    const dataMax = Math.max(rawMax, rightPrice + centerRange);
+    const padding = Math.max((dataMax - dataMin) * 0.1, 500);
+    minY = Math.floor((dataMin - padding) / 500) * 500;
+    maxY = Math.ceil((dataMax + padding) / 500) * 500;
+  } else {
+    // 데이터 없으면 현재가 기준 fallback
+    const base = rightPrice || 50000;
+    minY = Math.floor((base * 0.97) / 500) * 500;
+    maxY = Math.ceil((base * 1.03) / 500) * 500;
+  }
+
+  // 틱 간격을 범위에 맞게 자동 결정
+  const yRange = maxY - minY;
+  const tickStep = yRange <= 3000 ? 500 : yRange <= 8000 ? 1000 : yRange <= 20000 ? 2000 : 5000;
   const yTicks = [];
-  for (let t = minY; t <= maxY; t += 1000) {
+  for (let t = minY; t <= maxY; t += tickStep) {
     yTicks.push(t);
   }
 
@@ -437,7 +537,8 @@ export function MarketPage() {
   useEffect(() => {
     if (!scrollRef.current) return;
 
-    snapToRight();
+    // 드래그 중이 아닐 때만 우측 고정
+    if (!hasDragged) snapToRight();
 
     const interval = setInterval(() => {
       if (!hasDragged) snapToRight();
@@ -452,8 +553,12 @@ export function MarketPage() {
       if (!isAutoScrolling.current) {
         setHasDragged(true);
       }
+      computeVisibleDomain();
     };
     scrollRef.current.addEventListener('scroll', handleScroll);
+
+    // 초기 마운트 시 한 번 계산
+    computeVisibleDomain();
 
     return () => {
       clearInterval(interval);
@@ -462,7 +567,7 @@ export function MarketPage() {
         scrollRef.current.removeEventListener('scroll', handleScroll);
       }
     };
-  }, [hasDragged, chartData, mode, snapToRight]);
+  }, [hasDragged, mode, snapToRight, computeVisibleDomain]);
   const customDiffSign = customDiff > 0 ? "+" : customDiff < 0 ? (customDiff === 0 ? "" : "-") : "";
   const customPctStr = Math.abs(customPct).toFixed(1);
   const diffStr = `${customDiff > 0 ? "+" : ""}${customDiff.toLocaleString()}원 (${customDiff > 0 ? "+" : ""}${customPctStr}%)`;
@@ -608,7 +713,7 @@ export function MarketPage() {
                       if (e.key === 'ArrowRight') { scrollRef.current.scrollLeft += step; setHasDragged(true); e.preventDefault(); }
                     }}
                   >
-                    <div style={{ width: `${chartWidthPct}%`, height: '100%' }}>
+                    <div style={{ minWidth: `${chartMinWidthPx}px`, width: '100%', height: '100%' }}>
                       <ResponsiveContainer width="100%" height="100%">
                         <ComposedChart data={displayChartData} margin={{ top: 10, right: 10, left: 20, bottom: 5 }}>
                           <defs>
@@ -620,13 +725,27 @@ export function MarketPage() {
                           <XAxis
                             dataKey="time"
                             stroke="#cbd5e1"
-                            tick={{ fill: '#94a3b8', fontSize: 11 }}
                             interval={0}
-                            tickFormatter={(timeStr) => {
-                              const [, m] = timeStr.split(':').map(Number);
-                              return m % 5 === 0 ? timeStr : ''; // 5분 단위로 라벨 표시
+                            height={36}
+                            tick={(props: any) => {
+                              const { x, y, payload, index } = props;
+                              const item = displayChartData[index];
+                              if (!item || item.isEmpty) return <g />;
+                              const prevItem = index > 0 ? displayChartData[index - 1] : null;
+                              const showDate = item.gameDate && (!prevItem || prevItem.gameDate !== item.gameDate);
+                              return (
+                                <g transform={`translate(${x},${y})`}>
+                                  <text x={0} y={0} dy={12} textAnchor="middle" fill="#94a3b8" fontSize={9}>
+                                    {item.time}
+                                  </text>
+                                  {showDate && (
+                                    <text x={0} y={0} dy={24} textAnchor="middle" fill="#64748b" fontSize={8} fontWeight="bold">
+                                      {item.gameDate}
+                                    </text>
+                                  )}
+                                </g>
+                              );
                             }}
-                            height={24}
                           />
                           <YAxis
                             domain={[minY, maxY]}

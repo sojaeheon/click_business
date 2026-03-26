@@ -414,7 +414,9 @@ export const useGameStore = create<GameState>()(
             isWorking: wsStatusRes.data?.isWorking ?? false,
             producedCount: wsStatusRes.data?.producedQuantity ?? 0,
             storedCount: wsStatusRes.data?.producedQuantity ?? 0,
-            requestedQty: wsStatusRes.data?.totalQuantity ?? 0,
+            // ★ requestedQty는 프론트 onStart에서 설정한 값을 유지
+            // totalQuantity는 백엔드의 reservedQuantity(재료 수량)이므로 생산 목표량과 다름
+            requestedQty: get().workstationState.requestedQty || wsStatusRes.data?.totalQuantity || 0,
             endTime: wsStatusRes.data?.expectedEndTime ? new Date(wsStatusRes.data.expectedEndTime).getTime() : null,
             minuteOutput: wsStatusRes.data?.minuteOutput ?? null,
             workerLevel: wsStatusRes.data?.workerLevel ?? null,

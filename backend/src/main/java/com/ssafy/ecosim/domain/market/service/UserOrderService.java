@@ -11,6 +11,7 @@ import com.ssafy.ecosim.domain.market.entity.OrderType;
 import com.ssafy.ecosim.domain.market.kafka.OrderEventPublisher;
 import com.ssafy.ecosim.domain.market.repository.MarketOrderRepository;
 import com.ssafy.ecosim.global.kafka.publisher.CompanyCashEventPublisher;
+import com.ssafy.ecosim.global.util.GameTimeUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +27,7 @@ public class UserOrderService {
     private final MarketOrderRepository marketOrderRepository;
     private final CompanyCashEventPublisher companyCashEventPublisher;
     private final WarehouseService warehouseService;
+    private final GameTimeUtil gameTimeUtil;
 
     /**
      * 주문 생성:
@@ -63,7 +65,7 @@ public class UserOrderService {
                 .price(request.getPrice())
                 .totalQuantity(request.getTotalQuantity())
                 .isVirtual(false)
-                .timestamp(System.currentTimeMillis())
+                .timestamp(gameTimeUtil.getCurrentGameTimestamp()) // 게임시간 사용
                 .build();
 
         eventPublisher.publishOrderEvent(eventDto);
@@ -113,7 +115,7 @@ public class UserOrderService {
                 .price(order.getPrice().intValue())
                 .quantity(order.getRemainingQuantity().intValue())
                 .isVirtual(order.getIsVirtual())
-                .timestamp(System.currentTimeMillis())
+                .timestamp(gameTimeUtil.getCurrentGameTimestamp()) // 게임시간 사용
                 .build();
 
         eventPublisher.publishOrderCancelledEvent(eventDto);
