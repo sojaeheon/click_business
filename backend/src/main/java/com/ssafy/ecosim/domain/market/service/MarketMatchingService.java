@@ -30,6 +30,7 @@ public class MarketMatchingService {
     private final CompanyRepository companyRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final GameTimeUtil gameTimeUtil;
+    private final OrderBookPushScheduler orderBookPushScheduler;
 
     /**
      * 특정 아이템에 대해 매칭을 수행합니다.
@@ -143,6 +144,9 @@ public class MarketMatchingService {
 
         // 실시간 알림 발송
         sendTradeNotifications(buyOrder, sellOrder, matchedPrice, matchedQuantity);
+
+        // 호가창 WebSocket push 스케줄러에 더티 플래그 세우기
+        orderBookPushScheduler.markDirty(itemId);
     }
 
     private void sendTradeNotifications(MarketOrder buyOrder, MarketOrder sellOrder, long price, long quantity) {
