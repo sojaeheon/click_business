@@ -42,6 +42,12 @@ public class OAuth2GuestFilter extends OncePerRequestFilter {
     }
 
     private String resolveToken(HttpServletRequest request) {
+        // 프론트가 ?link_token={JWT} 쿼리 파라미터로 전달하는 경우 우선 처리
+        String linkToken = request.getParameter("link_token");
+        if (StringUtils.hasText(linkToken)) {
+            return linkToken;
+        }
+        // 기존 Authorization 헤더 방식도 유지
         String bearerToken = request.getHeader("Authorization");
         if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
             return bearerToken.substring(7);

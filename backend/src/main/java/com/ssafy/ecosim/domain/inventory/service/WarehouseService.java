@@ -9,8 +9,10 @@ import com.ssafy.ecosim.domain.inventory.repository.WarehouseSlotRepository;
 import com.ssafy.ecosim.domain.item.entity.Item;
 import com.ssafy.ecosim.domain.item.entity.ItemType;
 import com.ssafy.ecosim.domain.item.repository.ItemRepository;
-import com.ssafy.ecosim.global.kafka.publisher.WarehouseEventPublisher;
+import com.ssafy.ecosim.domain.inventory.event.WarehouseItemRemovedEvent;
+import com.ssafy.ecosim.domain.inventory.event.WarehouseItemStoredEvent;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,16 +39,16 @@ public class WarehouseService {
     @Value("${warehouse.max-expandable-limit:100}")
     private int maxExpandableLimit;
 
-    private final WarehouseEventPublisher warehouseEventPublisher;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     public WarehouseService(WarehouseRepository warehouseRepository,
             WarehouseSlotRepository warehouseSlotRepository,
             ItemRepository itemRepository,
-            WarehouseEventPublisher warehouseEventPublisher) {
+            ApplicationEventPublisher applicationEventPublisher) {
         this.warehouseRepository = warehouseRepository;
         this.warehouseSlotRepository = warehouseSlotRepository;
         this.itemRepository = itemRepository;
-        this.warehouseEventPublisher = warehouseEventPublisher;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     @Transactional
@@ -191,22 +193,22 @@ public class WarehouseService {
         }
     }
 
-    // Kafka 이벤트 발행 메서드 (아이템 획득)
+    // Spring 이벤트 버스에 등록 — DB 커밋 후 WarehouseEventListener가 Kafka로 전달
     private void publishStored(Warehouse warehouse, WarehouseSlot slot, Long companyId, Long itemId,
             long quantityDelta, Instant storedAt, String reason) {
-        warehouseEventPublisher.publishItemStored(
+        applicationEventPublisher.publishEvent(new WarehouseItemStoredEvent(
                 warehouse.getId(), slot.getId(), slot.getSlotIndex(),
                 companyId, itemId, quantityDelta, slot.getQuantity(),
-                reason, storedAt);
+                reason, storedAt));
     }
 
-    // Kafka 이벤트 발행 메서드 (아이템 차감)
+    // Spring 이벤트 버스에 등록 — DB 커밋 후 WarehouseEventListener가 Kafka로 전달
     private void publishRemoved(Warehouse warehouse, WarehouseSlot slot, Long companyId, Long itemId,
             long quantityDelta, long quantityAfter, Instant removedAt, String reason) {
-        warehouseEventPublisher.publishItemRemoved(
+        applicationEventPublisher.publishEvent(new WarehouseItemRemovedEvent(
                 warehouse.getId(), slot.getId(), slot.getSlotIndex(),
                 companyId, itemId, quantityDelta, quantityAfter,
-                reason, removedAt);
+                reason, removedAt));
     }
 
     public long getItemQuantity(Long companyId, Long itemId) {
