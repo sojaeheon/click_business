@@ -1,5 +1,7 @@
 package com.ssafy.ecosim.domain.market.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ssafy.ecosim.domain.market.dto.response.OrderBookEntryDto;
 import com.ssafy.ecosim.domain.market.dto.response.OrderBookResponseDto;
 import com.ssafy.ecosim.domain.market.dto.response.TradeHistoryDto;
@@ -8,12 +10,14 @@ import com.ssafy.ecosim.domain.market.repository.TradeHistoryRepository;
 import com.ssafy.ecosim.domain.market.repository.redis.OrderBookManager;
 import com.ssafy.ecosim.domain.market.repository.redis.OrderDetailsCacheManager;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class OrderBookService {
@@ -25,19 +29,36 @@ public class OrderBookService {
     private final OrderBookManager orderBookManager;
     private final OrderDetailsCacheManager orderDetailsCacheManager;
     private final TradeHistoryRepository tradeHistoryRepository;
+    private final ObjectMapper objectMapper;
 
     /**
-     * 특정 아이템의 호가창 스냅샷을 반환합니다.
-     * Redis ZSet에서 order ID를 가져온 뒤 Hash 캐시에서 price/remainingQuantity를 조합하여
-     * 가격 레벨별로 집계합니다.
+     * 특정 아이템의 호가창을 반환합니다 (REST API용).
+     * Redis 스냅샷이 있으면 재계산 없이 즉시 반환합니다 (HGETALL 0번).
+     * 스냅샷이 없으면 직접 집계합니다 (HGETALL 최대 500번).
      */
     public OrderBookResponseDto getOrderBook(Integer itemId) {
+        String snapshot = orderBookManager.getSnapshot(itemId);
+        if (snapshot != null) {
+            try {
+                return objectMapper.readValue(snapshot, OrderBookResponseDto.class);
+            } catch (JsonProcessingException e) {
+                log.warn("[OrderBookService] 스냅샷 역직렬화 실패, 직접 계산으로 fallback itemId={}", itemId, e);
+            }
+        }
+        return computeOrderBook(itemId);
+    }
+
+    /**
+     * 항상 Redis에서 새로 집계합니다 (스케줄러 전용).
+     * 스냅샷 우선 읽기 로직을 우회하여 항상 최신 데이터를 반환합니다.
+     */
+    public OrderBookResponseDto computeOrderBook(Integer itemId) {
         Long currentPrice = orderBookManager.getMarketPrice(itemId);
         Long openPrice = orderBookManager.getOpenPrice(itemId);
-        
+
         Long changePrice = null;
         Double changeRate = null;
-        
+
         if (currentPrice != null && openPrice != null && openPrice != 0) {
             changePrice = currentPrice - openPrice;
             changeRate = Math.round((double) changePrice / openPrice * 1000.0) / 10.0;
