@@ -379,10 +379,17 @@ export const useGameStore = create<GameState>()(
         const finalIndustry = toKoIndustry(realData?.industry_type ?? get().industry);
         const { material, product } = get().getIndustryItemNames(finalIndustry);
 
-        const fixedWarehouseItems = (warehouseRes.data as WarehouseItem[]).map(item => ({
-          ...item,
-          name: item.type === "material" ? material : item.type === "product" ? product : item.name
-        }));
+        const fixedWarehouseItems = (warehouseRes.data as any[]).map(item => {
+          const type = (item.itemType === "MATERIAL" || item.type === "material") ? "material" : "product";
+          const resolvedName = type === "material" ? material : product;
+          return {
+            id: String(item.itemId ?? item.id),
+            type: type as "material" | "product",
+            quantity: item.quantity,
+            name: resolvedName,
+            slotIndex: item.slotIndex
+          };
+        });
 
         // 백엔드가 maxSlots를 제공하면 가장 우선 적용 (과거 캐시 문제 해결)
         const warehouseMaxSlotsFromApi = (warehouseRes as any).maxSlots;
@@ -437,13 +444,24 @@ export const useGameStore = create<GameState>()(
         const newsData = await NewsAPI.getNews();
 
         const mappedNews: NewsItem[] = newsData.map((item: any) => {
-          let dateStr = "";
+          let pubDate: Date;
           if (typeof item.publishedAt === "string") {
-            dateStr = item.publishedAt.split('T')[0].replaceAll('-', '.');
+            pubDate = new Date(item.publishedAt.split('T')[0]);
           } else if (Array.isArray(item.publishedAt)) {
             const [year, month, day] = item.publishedAt;
-            dateStr = `${year}.${String(month).padStart(2, '0')}.${String(day).padStart(2, '0')}`;
+            pubDate = new Date(year, month - 1, day);
+          } else {
+            pubDate = new Date();
           }
+
+          // 유저 요구사항: 발행일을 이틀 앞당겨서 표시 (예: 1월 8일 뉴스 -> 1월 6일로 표시)
+          const displayDate = new Date(pubDate);
+          displayDate.setDate(displayDate.getDate() - 2);
+
+          const y = displayDate.getFullYear();
+          const m = String(displayDate.getMonth() + 1).padStart(2, '0');
+          const d = String(displayDate.getDate()).padStart(2, '0');
+          const dateStr = `${y}.${m}.${d}`;
 
           return {
             id: String(item.id ?? "anonymous"),
