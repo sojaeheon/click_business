@@ -10,6 +10,7 @@ import com.ssafy.ecosim.domain.market.repository.redis.OrderDetailsCacheManager;
 import com.ssafy.ecosim.domain.notification.dto.NotificationEvent;
 import com.ssafy.ecosim.domain.notification.entity.NotificationType;
 import com.ssafy.ecosim.domain.company.repository.CompanyRepository;
+import com.ssafy.ecosim.global.util.GameTimeUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -28,6 +29,7 @@ public class MarketMatchingService {
     private final TradeEventPublisher tradeEventPublisher;
     private final CompanyRepository companyRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final GameTimeUtil gameTimeUtil;
 
     /**
      * 특정 아이템에 대해 매칭을 수행합니다.
@@ -118,7 +120,7 @@ public class MarketMatchingService {
 
         // Redis 시장가 갱신 및 차트 데이터 갱신
         orderBookManager.setMarketPrice(itemId, matchedPrice);
-        orderBookManager.addChartData(itemId, matchedPrice, System.currentTimeMillis());
+        orderBookManager.addChartData(itemId, matchedPrice, gameTimeUtil.getCurrentGameTimestamp());
 
         // TradeEvent 발행
         TradeEventDto tradeEvent = TradeEventDto.builder()

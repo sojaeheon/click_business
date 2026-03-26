@@ -4,6 +4,7 @@ import com.ssafy.ecosim.domain.market.dto.CandleData;
 import com.ssafy.ecosim.domain.market.dto.response.CandleResponse;
 import com.ssafy.ecosim.domain.market.entity.MarketCandle;
 import com.ssafy.ecosim.domain.market.repository.redis.OrderBookManager;
+import com.ssafy.ecosim.global.util.GameTimeUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -18,6 +19,7 @@ public class CandleService {
 
     private final CandleManager candleManager;
     private final OrderBookManager orderBookManager;
+    private final GameTimeUtil gameTimeUtil;
 
     /**
      * 1분봉 데이터를 조회합니다.
@@ -83,8 +85,9 @@ public class CandleService {
      */
     private CandleData buildCurrentCandle(Integer itemId, MarketCandle.CandleType type) {
         try {
-            long now = System.currentTimeMillis();
-            long durationMillis = (type == MarketCandle.CandleType.MIN_1) ? 60_000 : 300_000;
+            long now = gameTimeUtil.getCurrentGameTimestamp();
+            // 현실 1분 = 게임 144분 = 8,640,000ms
+            long durationMillis = (type == MarketCandle.CandleType.MIN_1) ? 8_640_000L : 43_200_000L;
             long candleStart = roundToDuration(now, durationMillis);
             
             // Redis에서 최근 체결 데이터 조회
