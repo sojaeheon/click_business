@@ -28,16 +28,27 @@ public class OrderDetailsCacheManager {
      * MarketOrder 객체를 필드 단위의 문자열 Hash로 Redis에 저장합니다.
      */
     public void saveOrderCache(MarketOrder order) {
+        saveOrderCache(order, null);
+    }
+
+    /**
+     * 주문 상세 캐시를 저장하며, 필요 시 게임시간 기준 updatedAt(epoch millis)을 함께 기록합니다.
+     */
+    public void saveOrderCache(MarketOrder order, Long updatedAtMillis) {
         String key = getKey(order.getId());
-        Map<String, String> fields = Map.of(
-                "itemId", String.valueOf(order.getItemId()),
-                "orderType", order.getOrderType().name(),
-                "price", String.valueOf(order.getPrice()),
-                "remainingQuantity", String.valueOf(order.getRemainingQuantity()),
-                "totalQuantity", String.valueOf(order.getTotalQuantity()),
-                "status", order.getStatus().name(),
-                "companyId", String.valueOf(order.getCompanyId()),
-                "isVirtual", String.valueOf(order.getIsVirtual()));
+        java.util.Map<String, String> fields = new java.util.HashMap<>();
+        fields.put("itemId", String.valueOf(order.getItemId()));
+        fields.put("orderId", String.valueOf(order.getId()));
+        fields.put("orderType", order.getOrderType().name());
+        fields.put("price", String.valueOf(order.getPrice()));
+        fields.put("remainingQuantity", String.valueOf(order.getRemainingQuantity()));
+        fields.put("totalQuantity", String.valueOf(order.getTotalQuantity()));
+        fields.put("status", order.getStatus().name());
+        fields.put("companyId", String.valueOf(order.getCompanyId()));
+        fields.put("isVirtual", String.valueOf(order.getIsVirtual()));
+        if (updatedAtMillis != null) {
+            fields.put("updatedAt", String.valueOf(updatedAtMillis));
+        }
         redisTemplate.opsForHash().putAll(key, fields);
         redisTemplate.expire(key, CACHE_TTL_HOURS, TimeUnit.HOURS);
     }

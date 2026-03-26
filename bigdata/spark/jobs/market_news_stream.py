@@ -566,16 +566,25 @@ def get_db_connection():
     return conn
 
 
-def has_recent_news(cur) -> bool:
+def to_db_timestamp_literal(reference_time: str) -> str:
+    return parse_reference_time(reference_time).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def has_recent_news(cur, reference_time: str) -> bool:
     cur.execute(
         """
         SELECT EXISTS (
             SELECT 1
             FROM internal_news
-            WHERE published_at >= NOW() - (%s || ' minutes')::interval
+            WHERE published_at >= %s::timestamp - (%s || ' minutes')::interval
+              AND published_at <= %s::timestamp
         ) AS exists
         """,
-        (NEWS_GLOBAL_COOLDOWN_MINUTES,),
+        (
+            to_db_timestamp_literal(reference_time),
+            NEWS_GLOBAL_COOLDOWN_MINUTES,
+            to_db_timestamp_literal(reference_time),
+        ),
     )
     return bool(cur.fetchone()["exists"])
 
@@ -587,10 +596,16 @@ def is_duplicate_or_cooling_down(cur, candidate: Candidate) -> bool:
             SELECT 1
             FROM internal_news
             WHERE title = %s
-              AND published_at >= NOW() - (%s || ' minutes')::interval
+              AND published_at >= %s::timestamp - (%s || ' minutes')::interval
+              AND published_at <= %s::timestamp
         ) AS exists
         """,
-        (candidate.headline, NEWS_SIGNAL_COOLDOWN_MINUTES),
+        (
+            candidate.headline,
+            to_db_timestamp_literal(candidate.reference_time),
+            NEWS_SIGNAL_COOLDOWN_MINUTES,
+            to_db_timestamp_literal(candidate.reference_time),
+        ),
     )
     return bool(cur.fetchone()["exists"])
 
@@ -678,6 +693,8 @@ def insert_internal_news(cur, candidate: Candidate, article: Dict[str, str], ite
     if article.get("summary"):
         content = f"{article['summary']}\n\n{content}"
 
+    game_timestamp = to_db_timestamp_literal(candidate.reference_time)
+
     cur.execute(
         """
         INSERT INTO internal_news (
@@ -686,13 +703,14 @@ def insert_internal_news(cur, candidate: Candidate, article: Dict[str, str], ite
             published_at,
             created_at
         ) VALUES (
-            %s, %s, %s::timestamp, NOW()
+            %s, %s, %s::timestamp, %s::timestamp
         )
         """,
         (
             article["title"],
             content,
-            parse_reference_time(candidate.reference_time).strftime("%Y-%m-%d %H:%M:%S"),
+            game_timestamp,
+            game_timestamp,
         ),
     )
 
@@ -705,7 +723,7 @@ def publish_best_candidate(candidates: DataFrame) -> bool:
     conn = get_db_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            if has_recent_news(cur):
+            if has_recent_news(cur, rows[0]["reference_time"]):
                 print("[MARKET-NEWS-STREAM] global cooldown active")
                 conn.commit()
                 return False
