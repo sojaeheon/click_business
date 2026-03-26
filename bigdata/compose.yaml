@@ -82,6 +82,8 @@ services:
       - ./spark/jobs:/opt/spark-apps
     env_file:
       - ../data/.env
+    ports:
+      - "4040:4040"
     command: >
       /bin/bash -lc '
       until (echo > /dev/tcp/spark-master/7077) >/dev/null 2>&1; do sleep 2; done;
