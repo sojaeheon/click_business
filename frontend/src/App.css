@@ -287,3 +287,10 @@ body {
 .modal-confirm-btn:active {
   transform: translateY(0);
 }
+
+/* ── 전역 커스텀 스크롤바 (인벤토리 모달 스타일 통일) ── */
+.custom-scrollbar::-webkit-scrollbar { width: 8px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+.custom-scrollbar { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }

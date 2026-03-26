@@ -61,7 +61,7 @@ function OceanTile({ position, scale }: { position: [number, number, number], sc
 
 function OceanGrid() {
   const TILE_SIZE = 60;
-  const GRID_RADIUS = 1;
+  const GRID_RADIUS = 3;
   const tiles = [];
   for (let x = -GRID_RADIUS; x <= GRID_RADIUS; x++) {
     for (let z = -GRID_RADIUS; z <= GRID_RADIUS; z++) {

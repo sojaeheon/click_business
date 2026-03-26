@@ -25,13 +25,8 @@ export function AlertModal() {
       </div>
 
       <div
-        className="flex-1 overflow-y-auto space-y-2 pr-2 hide-scrollbar pb-4"
-        style={{
-          scrollbarWidth: 'none',
-          msOverflowStyle: 'none'
-        }}
+        className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar pb-4"
       >
-        <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
         {state.alerts.map((notification) => {
           const isNew = initialUnreadIds.has(notification.id) || !notification.read;
 

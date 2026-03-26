@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ClipboardList, Volume2, VolumeX, LogOut, UserX, Link2 } from "lucide-react";
+import { ClipboardList, Volume2, VolumeX, LogOut, Link2 } from "lucide-react";
 import { useAlertStore } from "../../../store/useAlertStore";
 import { UserAPI, AuthAPI } from "../../../api/gameApi";
 import { useGameStore } from "../../../store/gameStore";
@@ -9,7 +9,7 @@ export function SettingsModal() {
   const setVolume = useGameStore(state => state.setBgmVolume);
   const sfxVolume = useGameStore(state => state.sfxVolume);
   const setSfxVolume = useGameStore(state => state.setSfxVolume);
-  const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [userProfile, setUserProfile] = useState<{ email: string; loginMethod: string }>({
     email: "로딩 중...",
     loginMethod: sessionStorage.getItem('isGuest') === 'true' ? "게스트 모드" : "소셜 연동",
@@ -34,25 +34,14 @@ export function SettingsModal() {
     fetchUser();
   }, [userProfile.loginMethod]);
 
-  const handleLogout = async () => {
-    if (window.confirm("로그아웃 하시겠습니까?")) {
-      try {
-        await AuthAPI.logout();
-      } catch (err) {
-        console.warn("로그아웃 API 실패(무시)", err);
-      }
-      sessionStorage.removeItem("accessToken");
-      sessionStorage.removeItem("isGuest");
-      useAlertStore.getState().openAlert("로그아웃 되었습니다. (새로고침 시 메인화면으로 이동합니다)", "알림");
-      window.location.href = "/";
-    }
+  const doLogout = async () => {
+    try { await AuthAPI.logout(); } catch { /* ignore */ }
+    sessionStorage.removeItem("accessToken");
+    sessionStorage.removeItem("isGuest");
+    window.location.href = "/";
   };
 
-  const handleWithdraw = () => {
-    // 💡 [백엔드 연동] 회원 탈퇴 API 연동 필요
-    useAlertStore.getState().openAlert("회원 탈퇴가 완료되었습니다. 모든 데이터가 삭제됩니다.", "안내");
-    setShowWithdrawConfirm(false);
-  };
+
 
   return (
     <div className="relative">
@@ -156,49 +145,35 @@ export function SettingsModal() {
 
         <hr className="border-gray-200" />
 
-        {/* 하단 버튼들 */}
-        <div className="flex justify-end gap-3 pt-1">
-          {/* 로그아웃 (왼쪽) */}
+        {/* 하단 버튼 */}
+        <div className="flex justify-end pt-1">
           <button
-            onClick={handleLogout}
+            onClick={() => setShowLogoutConfirm(true)}
             className="flex items-center gap-2 px-5 py-2.5 bg-gray-800 hover:bg-gray-700 rounded-xl text-sm text-white font-semibold transition-colors cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
             로그아웃
           </button>
-
-          {/* 회원탈퇴 (오른쪽) */}
-          <button
-            onClick={() => setShowWithdrawConfirm(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 hover:bg-red-50 border border-gray-300 hover:border-red-300 rounded-xl text-sm text-gray-500 hover:text-red-500 transition-all cursor-pointer"
-          >
-            <UserX className="w-4 h-4" />
-            회원탈퇴
-          </button>
         </div>
       </div>
 
-      {/* 회원탈퇴 확인 팝업 */}
-      {showWithdrawConfirm && (
+      {/* 로그아웃 확인 팝업 */}
+      {showLogoutConfirm && (
         <div className="absolute inset-0 flex items-center justify-center z-10">
-          <div className="absolute inset-0 bg-black/30 rounded-2xl" onClick={() => setShowWithdrawConfirm(false)} />
-          <div className="relative bg-white rounded-2xl border-2 border-red-300 shadow-2xl p-6 w-80 text-center space-y-4">
-            <UserX className="w-10 h-10 text-red-400 mx-auto" />
-            <h3 className="text-lg font-bold text-gray-800">정말 탈퇴하시겠습니까?</h3>
-            <p className="text-sm text-gray-500 leading-relaxed">
-              회원 탈퇴 시 모든 데이터가 영구적으로<br />
-              <span className="text-red-500 font-semibold">삭제</span>되며 복구할 수 없습니다.
-            </p>
+          <div className="absolute inset-0 bg-black/30 rounded-2xl" onClick={() => setShowLogoutConfirm(false)} />
+          <div className="relative bg-white rounded-2xl border-2 border-gray-300 shadow-2xl p-6 w-80 text-center space-y-4">
+            <LogOut className="w-10 h-10 text-gray-500 mx-auto" />
+            <h3 className="text-lg font-bold text-gray-800">로그아웃 하시겠습니까?</h3>
             <div className="flex gap-3">
               <button
-                onClick={() => setShowWithdrawConfirm(false)}
+                onClick={() => setShowLogoutConfirm(false)}
                 className="flex-1 py-2.5 rounded-xl border-2 border-gray-200 text-gray-500 hover:bg-gray-50 text-sm font-semibold cursor-pointer transition-colors"
               >
                 취소
               </button>
               <button
-                onClick={handleWithdraw}
-                className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold cursor-pointer transition-colors"
+                onClick={doLogout}
+                className="flex-1 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-white text-sm font-semibold cursor-pointer transition-colors"
               >
                 확인
               </button>
@@ -206,6 +181,7 @@ export function SettingsModal() {
           </div>
         </div>
       )}
+
     </div>
   );
 }
