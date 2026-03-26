@@ -15,10 +15,11 @@ type PanelTab = "order" | "pending" | "history";
 interface MinuteCandle {
   time: string;      // "HH:MM" 형식
   price: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
+  timestamp?: number; // 게임 epoch millis (X축 역산용)
 }
 
 const CustomCandle = (props: any) => {
@@ -86,8 +87,8 @@ export function MarketPage() {
   const [showPopup, setShowPopup] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // 5분봉 차트 데이터
-  const [chartData, setChartData] = useState<{ time: string; price: number; open?: number; high?: number; low?: number; close?: number }[]>([]);
+  // 1분봉 차트 데이터
+  const [chartData, setChartData] = useState<{ time: string; price: number; open?: number; high?: number; low?: number; close?: number; timestamp?: number }[]>([]);
   const [chartType, setChartType] = useState<"candle" | "line">("candle"); // 차트 타입 상태
 
   const [orderBook, setOrderBook] = useState<{ asks: Array<{ price: number, quantity: number }>, bids: Array<{ price: number, quantity: number }> }>({ asks: [], bids: [] });
@@ -230,7 +231,8 @@ export function MarketPage() {
                   open: c.open,
                   high: c.high,
                   low: c.low,
-                  close: c.close
+                  close: c.close,
+                  timestamp: c.timestamp // ✅ 역산용
                 };
               });
 
@@ -343,103 +345,122 @@ export function MarketPage() {
         detail: "주문이 시장에 등록되었습니다. 체결 내역에서 수령해주세요!"
       });
 
-      setQuantity(0);
-      setPrice(0);
-      setPanelTab("pending"); // 주문 후 대기중 탭으로 이동
-      setShowPopup(true);
-      setTimeout(() => setShowPopup(false), 1500);
-
-      // ✅ 주문 즉시 내 목록 �  const getDisplayChartData = () => {
-    const map = new Map<string, any>();
-    chartData.forEach(d => map.set(d.time, d));
-
-    const result = [];
-    const now = new Date();
-    // 전체 60분 중 가장 앞쪽 데이터의 close를 초기 prevClose로 사용
-    let firstData = chartData.length > 0 ? chartData[0] : null;
-    let prevClose: number = firstData ? (firstData.close ?? 0) : (currentPrice || 0);
-
-    for (let i = 59; i >= 0; i--) {
-      const d = new Date(now.getTime() - i * 60000);
-      const tStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-
-      const backendCandle = map.get(tStr);
-
-      if (backendCandle) {
-        const candle = {
-          time: tStr,
-          price: backendCandle.close,
-          open: backendCandle.open,
-          high: backendCandle.high,
-          low: backendCandle.low,
-          close: backendCandle.close,
-          bounds: [backendCandle.low, backendCandle.high],
-          prevClose: prevClose
-        };
-        prevClose = backendCandle.close;
-        result.push(candle);
-      } else if (i === 0 && currentPrice) {
-        const liveCandle = {
-          time: tStr,
-          price: currentPrice,
-          open: prevClose,
-          high: Math.max(prevClose, currentPrice),
-          low: Math.min(prevClose, currentPrice),
-          close: currentPrice,
-          bounds: [Math.min(prevClose, currentPrice), Math.max(prevClose, currentPrice)],
-          prevClose: prevClose
-        };
-        result.push(liveCandle);
-      } else {
-        // 데이터 없는 빈 슬롯 (OHLC 모두 0으로 두어 필터링되게 함)
-        result.push({
-          time: tStr,
-          price: null,
-          open: 0, high: 0, low: 0, close: 0,
-          bounds: null,
-          prevClose: prevClose
-        });
-      }
+      setTimeout(() => {
+        setShowPopup(false);
+        setPrice(0);
+        setQuantity(0);
+        setPanelTab("pending"); // 주문 후 대기중 탭으로 이동
+      }, 1500);
+    } catch (e: any) {
+      console.error(e);
+      const errorDetail = e.response?.data?.message || e.message || "서버 통신 중 알 수 없는 오류가 발생했습니다.";
+      useAlertStore.getState().openAlert(`사유: ${errorDetail}`, "주문 오류");
+    } finally {
+      setIsProcessing(false);
     }
-    return result;
   };
 
-  const displayChartData = getDisplayChartData();
-  // 60분 고정 슬롯이므로 차트 너비를 약 300%로 고정 (캔들당 약 25px 확보)
-  const chartWidthPct = 300;ndle.high],
-          prevClose: prevClose  // 🌟 직전 분봉의 종가 (색상 판단용)
-        };
-        prevClose = backendCandle.close;
-        result.push(candle);
-      } else if (i === 0 && currentPrice) {
-        // 현재 진행 중인 분봉: 실시간 가격 반영 (확정 데이터 없을 때만)
-        const liveCandle = {
-          time: tStr,
-          price: currentPrice,
-          open: prevClose,   // 직전 종가가 현재 분봉의 시가
-          high: Math.max(prevClose, currentPrice),
-          low: Math.min(prevClose, currentPrice),
-          close: currentPrice,
-          bounds: [Math.min(prevClose, currentPrice), Math.max(prevClose, currentPrice)],
-          prevClose: prevClose
-        };
-        result.push(liveCandle);
-      }
-      // 데이터 없는 슬롯은 건너뜀 (flat 캔들 제거)
+  const handleCancelOrder = async (orderId: number) => {
+    setCancellingId(orderId);
+    try {
+      await MarketAPI.cancelOrder(orderId);
+      await useGameStore.getState().fetchCompanyData(1);
+      useGameStore.getState().addAlert({ message: "주문 취소 완료", detail: "주문이 취소되었습니다." });
+    } catch (e: any) {
+      const msg = e.response?.data?.message || e.message || "취소에 실패했습니다.";
+      useAlertStore.getState().openAlert(msg, "취소 오류");
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
+  const currentMarketPrice = currentPrice || (chartData.length > 0 ? chartData[chartData.length - 1].price : 0);
+
+  const getDisplayChartData = () => {
+    const REAL_MIN_IN_GAME_MS = 8_640_000;
+    const MIN_SLOTS = 20;
+
+    // ── 1. 확정 캔들: timestamp를 UTC 기준으로 시간 레이블 생성
+    let prevClose: number = currentPrice || 0;
+    const confirmed = chartData.map((c, idx) => {
+      const dt = new Date(c.timestamp ?? 0);
+      // 게임 시간은 UTC 기준 (KST +9 보정 제거)
+      const hh = dt.getUTCHours().toString().padStart(2, '0');
+      const mm = dt.getUTCMinutes().toString().padStart(2, '0');
+      const label = `${hh}:${mm}`;
+      const gameDate = `${(dt.getUTCMonth() + 1).toString().padStart(2, '0')}/${dt.getUTCDate().toString().padStart(2, '0')}`;
+      const prev = idx === 0 ? (currentPrice || c.close || 0) : (chartData[idx - 1].close ?? prevClose);
+      prevClose = c.close ?? prevClose;
+      return {
+        time: label,
+        gameDate,
+        price: c.close ?? 0,
+        open: c.open ?? c.close ?? 0,
+        high: c.high ?? c.close ?? 0,
+        low: c.low ?? c.close ?? 0,
+        close: c.close ?? 0,
+        bounds: [c.low ?? c.close ?? 0, c.high ?? c.close ?? 0],
+        prevClose: prev,
+        isLive: false,
+        isEmpty: false,
+      };
+    });
+
+    // ── 2. 실시간 캔들
+    let liveCandle = null;
+    if (currentPrice) {
+      const lastTs = chartData.length > 0 ? (chartData[chartData.length - 1].timestamp ?? 0) : 0;
+      const liveTs = lastTs > 0 ? lastTs + REAL_MIN_IN_GAME_MS : Date.now();
+      const dt = new Date(liveTs);
+      const hh = dt.getUTCHours().toString().padStart(2, '0');
+      const mm = dt.getUTCMinutes().toString().padStart(2, '0');
+      const label = `${hh}:${mm}`;
+      const gameDate = `${(dt.getUTCMonth() + 1).toString().padStart(2, '0')}/${dt.getUTCDate().toString().padStart(2, '0')}`;
+      const openPrice = prevClose || currentPrice;
+      liveCandle = {
+        time: label,
+        gameDate,
+        price: currentPrice,
+        open: openPrice,
+        high: Math.max(openPrice, currentPrice),
+        low: Math.min(openPrice, currentPrice),
+        close: currentPrice,
+        bounds: [Math.min(openPrice, currentPrice), Math.max(openPrice, currentPrice)],
+        prevClose: openPrice,
+        isLive: true,
+        isEmpty: false,
+      };
     }
 
-    return result;
+    const data = liveCandle ? [...confirmed, liveCandle] : confirmed;
+
+    // ── 3. 최소 20개 슬롯 보장: 부족하면 왼쪽에 빈 슬롯 추가
+    if (data.length < MIN_SLOTS) {
+      const emptySlots = [];
+      for (let i = 0; i < MIN_SLOTS - data.length; i++) {
+        emptySlots.push({
+          time: '',
+          gameDate: '',
+          price: 0,
+          open: 0, high: 0, low: 0, close: 0,
+          bounds: [0, 0],
+          prevClose: 0,
+          isLive: false,
+          isEmpty: true,
+        });
+      }
+      return [...emptySlots, ...data];
+    }
+
+    return data;
   };
 
 
   const displayChartData = getDisplayChartData();
   const visibleDataLen = displayChartData.length;
-  // 캔들 1개당 24px 고정 너비로 계산 (스크롤 컨테이너 기준 ~500px 가정)
-  // 캔들이 적으면 100%, 많으면 자동으로 늘어남
-  const CANDLE_PX = 24;
-  const CONTAINER_PX = 500;
-  const minPct = Math.max(100, Math.ceil((visibleDataLen * CANDLE_PX / CONTAINER_PX) * 100));
-  const chartWidthPct = visibleDataLen > 20 ? Math.max(200, minPct) : minPct;
+  // 캔들 1개당 24px 고정. 차트는 항상 컨테이너 100% 이상 → 캔들 적으면 꼽 채우고, 많으면 스크롤
+  const CANDLE_WIDTH_PX = 24;
+  const chartMinWidthPx = visibleDataLen * CANDLE_WIDTH_PX;
 
   // 🌟 게임 시간(10분 사이클) 당일 시가 대비 현재가 비교
   const lastCandle = displayChartData.length > 0 ? displayChartData[displayChartData.length - 1] : null;
@@ -452,35 +473,41 @@ export function MarketPage() {
   // 📊 보이는 캔들 범위에서 실제 high/low 계산 (동적 Y축)
   const computeVisibleDomain = useCallback(() => {
     const el = scrollRef.current;
-    if (!el || displayChartData.length === 0) return;
+    if (!el) return;
     const totalWidth = el.scrollWidth;
     const viewWidth = el.clientWidth;
     const scrollLeft = el.scrollLeft;
-    const total = displayChartData.length;
-    // 보이는 비율로 인덱스 계산
+    // displayChartData.length 를 직접 암소하지 않고 DOM 기반으로 계산 → 무한루프 방지
+    const itemWidth = totalWidth > 0 && el.children[0] ? el.children[0].scrollWidth / Math.max(1, el.children[0].children.length) : 1;
+    const total = totalWidth > 0 && itemWidth > 0 ? Math.round(totalWidth / itemWidth) : 60;
     const startIdx = Math.max(0, Math.floor((scrollLeft / totalWidth) * total) - 1);
     const endIdx = Math.min(total - 1, Math.ceil(((scrollLeft + viewWidth) / totalWidth) * total) + 1);
     setVisibleRange({ start: startIdx, end: endIdx });
-  }, [displayChartData]);
+  }, []); // ✅ 의존성 배열 비움: displayChartData 없이 DOM 기반으로
 
-  // 보이는 캔들의 실제 가격 범위 계산
-  const visibleCandles = visibleRange
-    ? displayChartData.slice(visibleRange.start, visibleRange.end + 1).filter(c => c.high > 0 && c.low > 0)
-    : displayChartData.filter(c => c.high > 0 && c.low > 0);
+  // 보이는 캔들 중 실제 데이터가 있는 것만
+  const realCandles = displayChartData.filter(c => !c.isEmpty && c.high > 0 && c.low > 0);
 
+  // Y축: 가장 오른쪽 캔들(현재가) 중심으로 범위 설정
+  const rightPrice = lastCandle?.close ?? currentPrice;
   let minY: number;
   let maxY: number;
 
-  if (visibleCandles.length > 0) {
-    const rawMin = Math.min(...visibleCandles.map(c => c.low ?? 0));
-    const rawMax = Math.max(...visibleCandles.map(c => c.high ?? 0));
-    const padding = Math.max((rawMax - rawMin) * 0.1, 500); // 최소 500원 패딩
-    minY = Math.floor((rawMin - padding) / 500) * 500;
-    maxY = Math.ceil((rawMax + padding) / 500) * 500;
+  if (realCandles.length > 0) {
+    const rawMin = Math.min(...realCandles.map(c => c.low ?? 0));
+    const rawMax = Math.max(...realCandles.map(c => c.high ?? 0));
+    // 현재가 기준 ±3% 범위와 실제 데이터 범위 중 더 넓은 것 사용
+    const centerRange = rightPrice * 0.03;
+    const dataMin = Math.min(rawMin, rightPrice - centerRange);
+    const dataMax = Math.max(rawMax, rightPrice + centerRange);
+    const padding = Math.max((dataMax - dataMin) * 0.1, 500);
+    minY = Math.floor((dataMin - padding) / 500) * 500;
+    maxY = Math.ceil((dataMax + padding) / 500) * 500;
   } else {
     // 데이터 없으면 현재가 기준 fallback
-    minY = Math.floor((currentCandleOpen * 0.97) / 500) * 500;
-    maxY = Math.ceil((currentCandleOpen * 1.03) / 500) * 500;
+    const base = rightPrice || 50000;
+    minY = Math.floor((base * 0.97) / 500) * 500;
+    maxY = Math.ceil((base * 1.03) / 500) * 500;
   }
 
   // 틱 간격을 범위에 맞게 자동 결정
@@ -587,7 +614,13 @@ export function MarketPage() {
                 <span className="text-5xl font-black text-slate-800 tracking-widest block">구 매</span>
                 <span className="text-xl font-bold text-rose-500 mt-2 block opacity-0 group-hover:opacity-100 transition-opacity drop-shadow">{material}</span>
               </div>
-
+              <div className="absolute -bottom-10 -right-10 w-64 h-64 opacity-20 pointer-events-none group-hover:opacity-40 group-hover:scale-110 transition-all">
+                <Canvas camera={{ position: [5, 5, 5], fov: 40 }}>
+                  <ambientLight intensity={1.5} />
+                  <directionalLight position={[10, 10, 10]} intensity={2} />
+                  <SpinningModel url={matUrl} scale={matScale} />
+                </Canvas>
+              </div>
             </button>
             <button onClick={() => setMode("sell")} className="flex-1 bg-white/90 backdrop-blur-xl border border-white/20 hover:bg-blue-50/90 rounded-[2rem] shadow-2xl flex flex-col items-center justify-center gap-6 group transition-all duration-300 active:scale-95 cursor-pointer relative overflow-hidden">
               <div className="w-24 h-24 rounded-full bg-blue-100 flex items-center justify-center group-hover:scale-110 transition-transform relative z-10">
@@ -597,7 +630,13 @@ export function MarketPage() {
                 <span className="text-5xl font-black text-slate-800 tracking-widest block">판 매</span>
                 <span className="text-xl font-bold text-blue-500 mt-2 block opacity-0 group-hover:opacity-100 transition-opacity drop-shadow">{product}</span>
               </div>
-
+              <div className="absolute -bottom-10 -right-10 w-64 h-64 opacity-20 pointer-events-none group-hover:opacity-40 group-hover:scale-110 transition-all filter grayscale-0 mix-blend-multiply">
+                <Canvas camera={{ position: [5, 5, 5], fov: 40 }}>
+                  <ambientLight intensity={1.5} />
+                  <directionalLight position={[10, 10, 10]} intensity={2} />
+                  <SpinningModel url={prodUrl} scale={prodScale} />
+                </Canvas>
+              </div>
             </button>
           </div>
         </div>
@@ -647,9 +686,9 @@ export function MarketPage() {
                   </div>
                 </div>
               </div>
-              <div className="flex-1 w-full flex flex-col pt-1 relative min-h-0">
+              <div className="flex-1 w-full flex flex-col pt-1 relative">
                 {/* 📊 차트 합성(Scrolling body + Fixed Y-axis) 영역 */}
-                <div className="flex-1 w-full relative box-border min-h-0">
+                <div className="flex-1 w-full relative box-border">
                   {/* 스크롤 가능한 차트 영역 */}
                   <div
                     ref={scrollRef}
@@ -671,7 +710,7 @@ export function MarketPage() {
                       if (e.key === 'ArrowRight') { scrollRef.current.scrollLeft += step; setHasDragged(true); e.preventDefault(); }
                     }}
                   >
-                    <div style={{ width: `${chartWidthPct}%`, height: '100%', minHeight: '200px' }}>
+                    <div style={{ minWidth: `${chartMinWidthPx}px`, width: '100%', height: '100%' }}>
                       <ResponsiveContainer width="100%" height="100%">
                         <ComposedChart data={displayChartData} margin={{ top: 10, right: 10, left: 20, bottom: 5 }}>
                           <defs>
@@ -683,13 +722,27 @@ export function MarketPage() {
                           <XAxis
                             dataKey="time"
                             stroke="#cbd5e1"
-                            tick={{ fill: '#94a3b8', fontSize: 11 }}
                             interval={0}
-                            tickFormatter={(timeStr) => {
-                              const [, m] = timeStr.split(':').map(Number);
-                              return m % 5 === 0 ? timeStr : ''; // 5분 단위로 라벨 표시
+                            height={36}
+                            tick={(props: any) => {
+                              const { x, y, payload, index } = props;
+                              const item = displayChartData[index];
+                              if (!item || item.isEmpty) return <g />;
+                              const prevItem = index > 0 ? displayChartData[index - 1] : null;
+                              const showDate = item.gameDate && (!prevItem || prevItem.gameDate !== item.gameDate);
+                              return (
+                                <g transform={`translate(${x},${y})`}>
+                                  <text x={0} y={0} dy={12} textAnchor="middle" fill="#94a3b8" fontSize={9}>
+                                    {item.time}
+                                  </text>
+                                  {showDate && (
+                                    <text x={0} y={0} dy={24} textAnchor="middle" fill="#64748b" fontSize={8} fontWeight="bold">
+                                      {item.gameDate}
+                                    </text>
+                                  )}
+                                </g>
+                              );
                             }}
-                            height={24}
                           />
                           <YAxis
                             domain={[minY, maxY]}
@@ -1079,23 +1132,14 @@ export function MarketPage() {
                                 <button
                                   onClick={async (e) => {
                                     e.stopPropagation();
-
-                                    // 🟢 즉각적 UI 반응 (Optimistic Update)
-                                    setTradeHistory(prev =>
-                                      prev.map(t => t.tradeHistoryId === trade.tradeHistoryId ? { ...t, isCollected: true } : t)
-                                    );
-
                                     try {
                                       await MarketAPI.collectTrade(trade.tradeHistoryId);
                                       await useGameStore.getState().fetchCompanyData(1);
-                                      triggerRefresh();
                                       useGameStore.getState().addAlert({
                                         message: "체결 결과 수령 완료",
                                         detail: `${trade.executionQuantity}개가 정산되었습니다.`
                                       });
                                     } catch (err: any) {
-                                      // 에러 시 원래 상태 복원
-                                      triggerRefresh();
                                       const msg = err.response?.data?.message || err.message || "수령에 실패했습니다.";
                                       useAlertStore.getState().openAlert(msg, "수령 오류");
                                     }
@@ -1103,7 +1147,7 @@ export function MarketPage() {
                                   className="px-2 py-0.5 bg-amber-500 text-white text-[11px] font-black rounded-lg hover:bg-amber-600 transition-colors"
                                 >
                                   수령
-                                </button>
+                                  ㅋ                               </button>
                               )}
                               {trade.isCollected && (
                                 <span className="text-[11px] text-slate-400 font-bold">수령 완료</span>

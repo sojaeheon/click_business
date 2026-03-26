@@ -69,12 +69,20 @@ public class BotOrderScheduler {
         }
 
         // 지표 데이터가 없는 경우 스킵
-        if (state.targetCloseFluct == null) return;
+        if (state.targetCloseFluct == null) {
+            if (itemId == 1L) log.warn("[BotDebug] Item 1 skipped: targetCloseFluct is null");
+            return;
+        }
 
         // 1. 현재 시장가(Redis Ticker) 실시간 조회
         Long currentMarketPriceObj = getCurrentMarketPrice(itemId);
         // 이전에 저장된 시가가 없으면 DB에서 가져온 시가(dayOpenPrice)를 기본값으로 사용
         long currentMarketPrice = currentMarketPriceObj != null ? currentMarketPriceObj : state.dayOpenPrice;
+
+        if (itemId == 1L && currentTick % 10 == 0) {
+            log.info("[BotDebug] Item 1 Tick: {}, MarketPrice: {}, OpenPrice: {}", 
+                currentTick, currentMarketPrice, state.dayOpenPrice);
+        }
 
         // 2. 이번 틱의 '목표 변동 증분(Delta)' 계산
         // 현재가 기준으로 이번 1초 동안 이동해야 할 순수 변화량(델타)만 추출하여 적용합니다.
@@ -112,43 +120,78 @@ public class BotOrderScheduler {
                 // A) 메이커 봇 (70%): 호가창 유동성 제공
                 type = ThreadLocalRandom.current().nextBoolean() ? OrderType.BUY : OrderType.SELL;
                 
-                // 목표가 기준 ±5~20 Tick에 분산 배치
-                long tickOffset = ThreadLocalRandom.current().nextLong(5, 21) * tickSize;
-                orderPrice = ThreadLocalRandom.current().nextBoolean()
-                             ? currentTargetPrice + tickOffset
-                             : currentTargetPrice - tickOffset;
+                // 매수는 목표가 아래, 매도는 목표가 위에만 배치 (1~15 Tick 오프셋)
+                long tickOffset = ThreadLocalRandom.current().nextLong(1, 16) * tickSize;
+                if (type == OrderType.BUY) {
+                    orderPrice = currentTargetPrice - tickOffset;
+                } else {
+                    orderPrice = currentTargetPrice + tickOffset;
+                }
                 
-                // 큰 물량 (50~200)
-                orderQty = ThreadLocalRandom.current().nextLong(50, 201);
+                // [계산적 메이커] 해당 호가의 현재 잔량 확인 후 딱 필요한 만큼(최대 150)만 공급
+                double minScore, maxScore;
+                if (type == OrderType.BUY) {
+                    minScore = -((double)orderPrice * 1_000_000.0 + 999_999.0);
+                    maxScore = -((double)orderPrice * 1_000_000.0);
+                } else {
+                    minScore = (double)orderPrice * 1_000_000.0;
+                    maxScore = (double)orderPrice * 1_000_000.0 + 999_999.0;
+                }
+                
+                long currentVolume = orderBookManager.getVolumeInScoreRange(itemId.intValue(), type.name(), minScore, maxScore);
+                long targetDepth = 3000L;
+                
+                if (currentVolume < targetDepth) {
+                    orderQty = Math.min(150, targetDepth - currentVolume);
+                    if (orderQty < 50) orderQty = 50; // 최소 활성량 보장
+                } else {
+                    // 이미 충분하면 유동성 공급 생략 (벽 생성 방지)
+                    continue; 
+                }
                 
             } else if (rand < 0.9) {
                 // B) 테이커 봇 (20%): 목표가로 시장가 이동
                 type = priceGoingUp ? OrderType.BUY : OrderType.SELL;
                 
-                // 목표가 ±1~3 Tick
+                // 목표가 ±1~3 Tick (타겟가 근처 물량 집중 체결)
                 long tickOffset = ThreadLocalRandom.current().nextLong(-1, 4) * tickSize;
                 orderPrice = currentTargetPrice + tickOffset;
                 
-                // 반대편 호가창 물량의 100%를 균등 분배
+                // 반대편 호가창 물량의 100%를 균등 분배 (잔량 없는 정밀 체결)
                 String oppositeType = priceGoingUp ? "SELL" : "BUY";
-                double minScore = Math.min(currentMarketPrice, currentTargetPrice);
-                double maxScore = Math.max(currentMarketPrice, currentTargetPrice);
-                long totalVolume = orderBookManager.getVolumeInScoreRange(itemId.intValue(), oppositeType, minScore, maxScore);
+                double minRangeScore = (double)Math.min(currentMarketPrice, currentTargetPrice) * 1_000_000.0;
+                double maxRangeScore = (double)Math.max(currentMarketPrice, currentTargetPrice) * 1_000_000.0 + 999_999.0;
                 
+                // BUY 테이커는 SELL 호가(양수 스코어)를, SELL 테이커는 BUY 호가(음수 스코어)를 조회
+                if (type == OrderType.SELL) {
+                   // SELL 봇은 BUY 호가(음수)를 확인해서 시장가 하향 유도
+                   double tmp = minRangeScore;
+                   minRangeScore = -(maxRangeScore);
+                   maxRangeScore = -(tmp);
+                }
+                
+                long totalVolume = orderBookManager.getVolumeInScoreRange(itemId.intValue(), oppositeType, minRangeScore, maxRangeScore);
                 int takerCount = Math.max(1, (int)(botCount * 0.2)); // 20% 봇
-                orderQty = totalVolume <= 0
-                           ? ThreadLocalRandom.current().nextLong(50, 101)
-                           : Math.max(50, (totalVolume * 10) / (takerCount * 10));
+                
+                if (totalVolume <= 0) {
+                    // 치울 물량이 없으면 주문 내지 않음 (가격은 메이커가 채우면서 자연스럽게 형성됨)
+                    continue;
+                }
+                
+                // 가용 물량의 100%를 정확히 나누어 가져감 (사전 계산된 시장 충격)
+                orderQty = Math.max(1, totalVolume / takerCount);
                 
             } else {
                 // C) 노이즈 봇 (10%): 시장 자연스러움
                 type = ThreadLocalRandom.current().nextBoolean() ? OrderType.BUY : OrderType.SELL;
                 
-                // 현재가 기준 무작위 ±10~30 Tick
+                // 매수는 현재가 아래, 매도는 현재가 위에만 배치 (10~30 Tick 오프셋)
                 long tickOffset = ThreadLocalRandom.current().nextLong(10, 31) * tickSize;
-                orderPrice = ThreadLocalRandom.current().nextBoolean()
-                             ? currentMarketPrice + tickOffset
-                             : currentMarketPrice - tickOffset;
+                if (type == OrderType.BUY) {
+                    orderPrice = currentMarketPrice - tickOffset;
+                } else {
+                    orderPrice = currentMarketPrice + tickOffset;
+                }
                 
                 // 소량 (1~10)
                 orderQty = ThreadLocalRandom.current().nextLong(1, 11);
