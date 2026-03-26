@@ -182,7 +182,7 @@ export const MarketAPI = {
     });
   },
 
-  cancelOrder: (orderId: number) => apiClient.delete(`/market/orders/${orderId}`),
+  cancelOrder: (orderId: string) => apiClient.delete(`/market/orders/${orderId}`),
 
   getMyOrders: async (itemId: number) => {
     return apiClient.get('/market/orders/me', { params: { item_id: itemId } });
@@ -192,7 +192,7 @@ export const MarketAPI = {
     return apiClient.get('/market/trades', { params: { item_id: itemId } });
   },
 
-  collectTrade: async (tradeHistoryId: number) => {
+  collectTrade: async (tradeHistoryId: string) => {
     return apiClient.post(`/market/orders/${tradeHistoryId}`);
   },
 
