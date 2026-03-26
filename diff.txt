@@ -1,0 +1,77 @@
+diff --git a/frontend/src/pages/buildings/MarketPage.tsx b/frontend/src/pages/buildings/MarketPage.tsx
+index 87eb4ec..cd86c6f 100644
+--- a/frontend/src/pages/buildings/MarketPage.tsx
++++ b/frontend/src/pages/buildings/MarketPage.tsx
+@@ -153,19 +153,29 @@ export function MarketPage() {
+   const handleDragStart = (e: React.MouseEvent) => {
+     if (!scrollRef.current) return;
+     isDragging.current = true;
+-    startX.current = e.pageX - scrollRef.current.offsetLeft;
++    startX.current = e.pageX;
+     scrollLeft.current = scrollRef.current.scrollLeft;
++
++    // document 레벨에서 이벤트 수신: 마우스가 차트 밖으로 나가도 드래그 유지
++    const onMouseMove = (ev: MouseEvent) => {
++      if (!isDragging.current || !scrollRef.current) return;
++      ev.preventDefault();
++      const walk = (ev.pageX - startX.current) * 1.5;
++      scrollRef.current.scrollLeft = scrollLeft.current - walk;
++      setHasDragged(true);
++    };
++    const onMouseUp = () => {
++      isDragging.current = false;
++      document.removeEventListener('mousemove', onMouseMove);
++      document.removeEventListener('mouseup', onMouseUp);
++    };
++    document.addEventListener('mousemove', onMouseMove);
++    document.addEventListener('mouseup', onMouseUp);
+   };
+-  const handleDragLeave = () => { isDragging.current = false; };
++  // 하위 호환용 (JSX onMouse* 핸들러 유지)
++  const handleDragLeave = () => {};
+   const handleDragEnd = () => { isDragging.current = false; };
+-  const handleDragMove = (e: React.MouseEvent) => {
+-    if (!isDragging.current || !scrollRef.current) return;
+-    e.preventDefault();
+-    const x = e.pageX - scrollRef.current.offsetLeft;
+-    const walk = (x - startX.current) * 2;
+-    scrollRef.current.scrollLeft = scrollLeft.current - walk;
+-    setHasDragged(true);
+-  };
++  const handleDragMove = (_e: React.MouseEvent) => {}; // document 레벨에서 처리
+ 
+   // 🏷️ 아이템 ID 매핑 헬퍼
+   // gameStore의 industry는 한국어로 저장됨 ("금광업", "금 제련업", "제조업")
+@@ -418,8 +428,11 @@ export function MarketPage() {
+ 
+   const displayChartData = getDisplayChartData();
+   const visibleDataLen = displayChartData.length;
+-  // 1분봉 60개가 100% 한 화면 분량. 60개 캔들이므로 200% 너비를 주어 어느 정도 드래그 가능하게 만듬
+-  const chartWidthPct = Math.max(100, (visibleDataLen / 30) * 100); 
++  // 캔들 1개당 목표 너비: 차트 영역을 ~500px 기준으로 잡으면
++  // 20~30개가 화면에 보이도록 캔들당 약 20px. 최소 200% 너비를 보장해 항상 스크롤 가능.
++  // chartWidthPct는 ResponsiveContainer 부모(scrollable div) 대비 %
++  const TARGET_CANDLES_PER_SCREEN = 20;
++  const chartWidthPct = Math.max(200, Math.ceil(visibleDataLen / TARGET_CANDLES_PER_SCREEN) * 100);
+ 
+   // 🌟 게임 시간(10분 사이클) 당일 시가 대비 현재가 비교
+   const lastCandle = displayChartData.length > 0 ? displayChartData[displayChartData.length - 1] : null;
+@@ -487,7 +500,8 @@ export function MarketPage() {
+   useEffect(() => {
+     if (!scrollRef.current) return;
+ 
+-    snapToRight();
++    // 드래그 중이 아닐 때만 우측 고정
++    if (!hasDragged) snapToRight();
+ 
+     const interval = setInterval(() => {
+       if (!hasDragged) snapToRight();
+@@ -516,7 +530,7 @@ export function MarketPage() {
+         scrollRef.current.removeEventListener('scroll', handleScroll);
+       }
+     };
+-  }, [hasDragged, chartData, mode, snapToRight, computeVisibleDomain]);
++  }, [hasDragged, mode, snapToRight, computeVisibleDomain]);
+   const customDiffSign = customDiff > 0 ? "+" : customDiff < 0 ? (customDiff === 0 ? "" : "-") : "";
+   const customPctStr = Math.abs(customPct).toFixed(1);
+   const diffStr = `${customDiff > 0 ? "+" : ""}${customDiff.toLocaleString()}원 (${customDiff > 0 ? "+" : ""}${customPctStr}%)`;

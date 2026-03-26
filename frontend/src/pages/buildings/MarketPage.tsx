@@ -2,31 +2,14 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { ShoppingCart, TrendingUp, TrendingDown, Activity, ListOrdered, Clock, XCircle, BarChart2 } from "lucide-react";
 import { useGameStore } from "../../store/gameStore";
 import { MarketAPI } from "../../api/gameApi";
-import { ComposedChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { ComposedChart, Bar, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { BackButton } from "../../app/components/ui/backbutton";
 import { useAlertStore } from "../../store/useAlertStore";
-import { Canvas, useFrame } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
-import * as THREE from "three";
 
 type MarketMode = "buy" | "sell" | null;
 type PanelTab = "order" | "pending" | "history";
 
-function SpinningModel({ url, scale = 1, yOffset = 0 }: { url: string, scale?: number, yOffset?: number }) {
-  const { scene } = useGLTF(url);
-  const clonedScene = React.useMemo(() => scene.clone(), [scene]);
-  const ref = React.useRef<THREE.Group>(null);
 
-  useFrame((_, delta) => {
-    if (ref.current) ref.current.rotation.y += delta * 2;
-  });
-
-  return (
-    <group ref={ref} position={[0, yOffset, 0]}>
-      <primitive object={clonedScene} scale={scale} />
-    </group>
-  );
-}
 
 // 1분봉 캔들 데이터 구조
 interface MinuteCandle {
@@ -94,21 +77,7 @@ export function MarketPage() {
   const product = useGameStore(state => state.getIndustryItemNames().product);
   const warehouseItems = useGameStore(state => state.warehouseItems);
 
-  let matUrl = "/models/props/drill.glb";
-  let prodUrl = "/models/props/rocks_B.gltf";
-  let matScale = 2;
-  let prodScale = 2;
 
-  if (industry === "GOLD_MINING") {
-    matUrl = "/models/props/drill.glb"; matScale = 2.5;
-    prodUrl = "/models/props/Gold_Nuggets.gltf"; prodScale = 4;
-  } else if (industry === "GOLD_SMELTING") {
-    matUrl = "/models/props/Gold_Nuggets.gltf"; matScale = 4;
-    prodUrl = "/models/props/Gold_Bar.gltf"; prodScale = 3;
-  } else if (industry === "MANUFACTURING") {
-    matUrl = "/models/props/Gold_Bar.gltf"; matScale = 3;
-    prodUrl = "/models/props/drill.glb"; prodScale = 2.5;
-  }
 
   const [mode, setMode] = useState<MarketMode>(null);
   const [panelTab, setPanelTab] = useState<PanelTab>("order");
@@ -173,9 +142,9 @@ export function MarketPage() {
     document.addEventListener('mouseup', onMouseUp);
   };
   // 하위 호환용 (JSX onMouse* 핸들러 유지)
-  const handleDragLeave = () => {};
+  const handleDragLeave = () => { };
   const handleDragEnd = () => { isDragging.current = false; };
-  const handleDragMove = (_e: React.MouseEvent) => {}; // document 레벨에서 처리
+  const handleDragMove = (_e: React.MouseEvent) => { }; // document 레벨에서 처리
 
   // 🏷️ 아이템 ID 매핑 헬퍼
   // gameStore의 industry는 한국어로 저장됨 ("금광업", "금 제련업", "제조업")
@@ -205,35 +174,73 @@ export function MarketPage() {
     if (!mode) return;
 
     const controller = new AbortController();
+    // 이 effect가 실행된 시점의 itemId를 캡처
     const capturedItemId = itemId;
+
     const fetchData = async () => {
       try {
+        // [1] 오더북/호가창 조회
         const res = await MarketAPI.getOrderbook(capturedItemId);
+        // ✅ 응답 도착 시점에 itemId가 바뀌었으면 무시 (race condition 방지)
         if (controller.signal.aborted) return;
+
         const data = res.data as any;
+
         if (data && (data.sellOrders || data.buyOrders)) {
           const asks = (data.sellOrders || []).map((o: any) => ({ ...o, quantity: o.remainingQuantity || o.totalQuantity || 0 }));
           const bids = (data.buyOrders || []).map((o: any) => ({ ...o, quantity: o.remainingQuantity || o.totalQuantity || 0 }));
           setOrderBook({ asks, bids });
-          if (data.currentPrice) {
-            setCurrentPrice(data.currentPrice);
+
+          const latestPrice = data.currentPrice;
+          if (latestPrice) {
+            setCurrentPrice(latestPrice);
             setChangePrice(data.changePrice ?? 0);
             setChangeRate(data.changeRate ?? 0);
+
+            setChartData(prev => {
+              const lastPrice = prev.length > 0 ? prev[prev.length - 1].price : latestPrice;
+              if (latestPrice > lastPrice) setMarketTrend("up");
+              else if (latestPrice < lastPrice) setMarketTrend("down");
+              else setMarketTrend("neutral");
+              setTimeout(() => setMarketTrend("neutral"), 800);
+              return prev;
+            });
           }
+        } else {
+          setOrderBook({ asks: [], bids: [] });
         }
 
-        const chartRes = await MarketAPI.get1MinCandles(capturedItemId, 100);
-        if (!controller.signal.aborted && chartRes.data) {
+        // [2] 백엔드 1분봉 차트 조회
+        try {
+          const chartRes = await MarketAPI.get1MinCandles(capturedItemId, 100);
+          if (controller.signal.aborted) return;
+
           const candles = chartRes.data?.data ?? chartRes.data;
-          if (Array.isArray(candles)) {
-            const formatted = candles.filter((c: any) => !c.isLive).sort((a: any, b: any) => a.timestamp - b.timestamp).map((c: any) => ({
-              time: `${new Date(c.timestamp).getHours().toString().padStart(2, '0')}:${new Date(c.timestamp).getMinutes().toString().padStart(2, '0')}`,
-              price: c.close, open: c.open, high: c.high, low: c.low, close: c.close
-            }));
+
+          if (candles && Array.isArray(candles)) {
+            const formatted = candles
+              .filter((c: any) => !c.isLive)
+              .sort((a: any, b: any) => a.timestamp - b.timestamp)
+              .map((c: any) => {
+                const dt = new Date(c.timestamp);
+                const timeStr = `${dt.getHours().toString().padStart(2, '0')}:${dt.getMinutes().toString().padStart(2, '0')}`;
+                return {
+                  time: timeStr,
+                  price: c.close,
+                  open: c.open,
+                  high: c.high,
+                  low: c.low,
+                  close: c.close
+                };
+              });
+
             setChartData(formatted);
           }
+        } catch (e) {
+          if (!controller.signal.aborted) console.warn("차트 조회 실패:", e);
         }
 
+        // [3] 체결 + 미체결 병렬 조회 + 교차검증
         const [tradeRes, pendingRes] = await Promise.all([
           MarketAPI.getTrades(capturedItemId),
           MarketAPI.getMyOrders(capturedItemId)
@@ -258,7 +265,7 @@ export function MarketPage() {
           if (status === 'COMPLETED' || status === 'CANCELED') return false;
           if ((o.remainingQuantity ?? o.totalQuantity ?? 0) <= 0) return false;
 
-          // ✅ 핵심: 이미 체결 내역에 있고, 체결 수량 >= 총 주문 수량이면 대기 목록에서 제거
+          // ✅ 핵심: 체결 내역에 있고 체결수량 >= 주문수량이면 대기목록에서 제거
           // (DB가 Kafka로 비동기 업데이트되는 타이밍 갭 해소)
           if (o.orderId) {
             const matchedQty = matchedQtyById.get(o.orderId) ?? 0;
@@ -268,6 +275,7 @@ export function MarketPage() {
           return true;
         });
         setPendingOrders(activeOrders);
+
       } catch (err) {
         if (!controller.signal.aborted) console.warn("마켓 데이터 조회 실패:", err);
       }
@@ -292,7 +300,6 @@ export function MarketPage() {
       const tradeList: any[] = Array.isArray(trades) ? trades : [];
       setTradeHistory(tradeList);
 
-      // orderId별 체결 수량 합산
       const matchedQtyById = new Map<number, number>();
       tradeList.forEach((t: any) => {
         if (t.orderId) matchedQtyById.set(t.orderId, (matchedQtyById.get(t.orderId) ?? 0) + (t.executionQuantity ?? 0));
@@ -303,7 +310,6 @@ export function MarketPage() {
         const status = (o.status || o.orderStatus || "").toUpperCase();
         if (status === 'COMPLETED' || status === 'CANCELED') return false;
         if ((o.remainingQuantity ?? o.totalQuantity ?? 0) <= 0) return false;
-        // 이미 완전 체결된 주문 (DB 비동기 업데이트 타이밍 갭 해소)
         if (o.orderId) {
           const matchedQty = matchedQtyById.get(o.orderId) ?? 0;
           if (matchedQty >= (o.totalQuantity ?? 0) && (o.totalQuantity ?? 0) > 0) return false;
@@ -315,7 +321,6 @@ export function MarketPage() {
       console.warn("수동 갱신 실패:", e);
     }
   };
-
 
   const totalAmount = price * quantity;
 
@@ -343,52 +348,24 @@ export function MarketPage() {
       setPanelTab("pending"); // 주문 후 대기중 탭으로 이동
       setShowPopup(true);
       setTimeout(() => setShowPopup(false), 1500);
-      
-      // ✅ 주문 즉시 내 목록 갱신 트리거
-      triggerRefresh();
-    } catch (err: any) {
-      console.error(err);
-      const errorDetail = err.response?.data?.message || err.message || "서버 통신 중 알 수 없는 오류가 발생했습니다.";
-      useAlertStore.getState().openAlert(`사유: ${errorDetail}`, "주문 오류");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
 
-  const handleCancelOrder = async (orderId: number) => {
-    setCancellingId(orderId);
-    try {
-      await MarketAPI.cancelOrder(orderId);
-      await useGameStore.getState().fetchCompanyData(1);
-      useGameStore.getState().addAlert({ message: "주문 취소 완료", detail: "주문이 취소되었습니다." });
-    } catch (e: any) {
-      const msg = e.response?.data?.message || e.message || "취소에 실패했습니다.";
-      useAlertStore.getState().openAlert(msg, "취소 오류");
-    } finally {
-      setCancellingId(null);
-      // ✅ 취소 즉시 내 목록 갱신 트리거
-      triggerRefresh();
-    }
-  };
-
-  const currentMarketPrice = currentPrice || (chartData.length > 0 ? chartData[chartData.length - 1].price : 0);
-
-  const getDisplayChartData = () => {
+      // ✅ 주문 즉시 내 목록 �  const getDisplayChartData = () => {
     const map = new Map<string, any>();
     chartData.forEach(d => map.set(d.time, d));
 
     const result = [];
     const now = new Date();
-    let prevClose: number = chartData.length > 0 ? (chartData[0].close ?? 0) : (currentPrice || 0);
+    // 전체 60분 중 가장 앞쪽 데이터의 close를 초기 prevClose로 사용
+    let firstData = chartData.length > 0 ? chartData[0] : null;
+    let prevClose: number = firstData ? (firstData.close ?? 0) : (currentPrice || 0);
 
     for (let i = 59; i >= 0; i--) {
-      const d = new Date(now.getTime() - i * 60000); // 1분 단위
+      const d = new Date(now.getTime() - i * 60000);
       const tStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 
       const backendCandle = map.get(tStr);
 
       if (backendCandle) {
-        // ✅ 백엔드에서 받은 OHLC를 그대로 사용
         const candle = {
           time: tStr,
           price: backendCandle.close,
@@ -397,6 +374,39 @@ export function MarketPage() {
           low: backendCandle.low,
           close: backendCandle.close,
           bounds: [backendCandle.low, backendCandle.high],
+          prevClose: prevClose
+        };
+        prevClose = backendCandle.close;
+        result.push(candle);
+      } else if (i === 0 && currentPrice) {
+        const liveCandle = {
+          time: tStr,
+          price: currentPrice,
+          open: prevClose,
+          high: Math.max(prevClose, currentPrice),
+          low: Math.min(prevClose, currentPrice),
+          close: currentPrice,
+          bounds: [Math.min(prevClose, currentPrice), Math.max(prevClose, currentPrice)],
+          prevClose: prevClose
+        };
+        result.push(liveCandle);
+      } else {
+        // 데이터 없는 빈 슬롯 (OHLC 모두 0으로 두어 필터링되게 함)
+        result.push({
+          time: tStr,
+          price: null,
+          open: 0, high: 0, low: 0, close: 0,
+          bounds: null,
+          prevClose: prevClose
+        });
+      }
+    }
+    return result;
+  };
+
+  const displayChartData = getDisplayChartData();
+  // 60분 고정 슬롯이므로 차트 너비를 약 300%로 고정 (캔들당 약 25px 확보)
+  const chartWidthPct = 300;ndle.high],
           prevClose: prevClose  // 🌟 직전 분봉의 종가 (색상 판단용)
         };
         prevClose = backendCandle.close;
@@ -424,11 +434,12 @@ export function MarketPage() {
 
   const displayChartData = getDisplayChartData();
   const visibleDataLen = displayChartData.length;
-  // 캔들 1개당 목표 너비: 차트 영역을 ~500px 기준으로 잡으면
-  // 20~30개가 화면에 보이도록 캔들당 약 20px. 최소 200% 너비를 보장해 항상 스크롤 가능.
-  // chartWidthPct는 ResponsiveContainer 부모(scrollable div) 대비 %
-  const TARGET_CANDLES_PER_SCREEN = 20;
-  const chartWidthPct = Math.max(200, Math.ceil(visibleDataLen / TARGET_CANDLES_PER_SCREEN) * 100);
+  // 캔들 1개당 24px 고정 너비로 계산 (스크롤 컨테이너 기준 ~500px 가정)
+  // 캔들이 적으면 100%, 많으면 자동으로 늘어남
+  const CANDLE_PX = 24;
+  const CONTAINER_PX = 500;
+  const minPct = Math.max(100, Math.ceil((visibleDataLen * CANDLE_PX / CONTAINER_PX) * 100));
+  const chartWidthPct = visibleDataLen > 20 ? Math.max(200, minPct) : minPct;
 
   // 🌟 게임 시간(10분 사이클) 당일 시가 대비 현재가 비교
   const lastCandle = displayChartData.length > 0 ? displayChartData[displayChartData.length - 1] : null;
@@ -576,13 +587,7 @@ export function MarketPage() {
                 <span className="text-5xl font-black text-slate-800 tracking-widest block">구 매</span>
                 <span className="text-xl font-bold text-rose-500 mt-2 block opacity-0 group-hover:opacity-100 transition-opacity drop-shadow">{material}</span>
               </div>
-              <div className="absolute -bottom-10 -right-10 w-64 h-64 opacity-20 pointer-events-none group-hover:opacity-40 group-hover:scale-110 transition-all">
-                <Canvas camera={{ position: [5, 5, 5], fov: 40 }}>
-                  <ambientLight intensity={1.5} />
-                  <directionalLight position={[10, 10, 10]} intensity={2} />
-                  <SpinningModel url={matUrl} scale={matScale} />
-                </Canvas>
-              </div>
+
             </button>
             <button onClick={() => setMode("sell")} className="flex-1 bg-white/90 backdrop-blur-xl border border-white/20 hover:bg-blue-50/90 rounded-[2rem] shadow-2xl flex flex-col items-center justify-center gap-6 group transition-all duration-300 active:scale-95 cursor-pointer relative overflow-hidden">
               <div className="w-24 h-24 rounded-full bg-blue-100 flex items-center justify-center group-hover:scale-110 transition-transform relative z-10">
@@ -592,13 +597,7 @@ export function MarketPage() {
                 <span className="text-5xl font-black text-slate-800 tracking-widest block">판 매</span>
                 <span className="text-xl font-bold text-blue-500 mt-2 block opacity-0 group-hover:opacity-100 transition-opacity drop-shadow">{product}</span>
               </div>
-              <div className="absolute -bottom-10 -right-10 w-64 h-64 opacity-20 pointer-events-none group-hover:opacity-40 group-hover:scale-110 transition-all filter grayscale-0 mix-blend-multiply">
-                <Canvas camera={{ position: [5, 5, 5], fov: 40 }}>
-                  <ambientLight intensity={1.5} />
-                  <directionalLight position={[10, 10, 10]} intensity={2} />
-                  <SpinningModel url={prodUrl} scale={prodScale} />
-                </Canvas>
-              </div>
+
             </button>
           </div>
         </div>
@@ -648,9 +647,9 @@ export function MarketPage() {
                   </div>
                 </div>
               </div>
-              <div className="flex-1 w-full flex flex-col pt-1 relative">
+              <div className="flex-1 w-full flex flex-col pt-1 relative min-h-0">
                 {/* 📊 차트 합성(Scrolling body + Fixed Y-axis) 영역 */}
-                <div className="flex-1 w-full relative box-border">
+                <div className="flex-1 w-full relative box-border min-h-0">
                   {/* 스크롤 가능한 차트 영역 */}
                   <div
                     ref={scrollRef}
@@ -672,7 +671,7 @@ export function MarketPage() {
                       if (e.key === 'ArrowRight') { scrollRef.current.scrollLeft += step; setHasDragged(true); e.preventDefault(); }
                     }}
                   >
-                    <div style={{ width: `${chartWidthPct}%`, height: '100%' }}>
+                    <div style={{ width: `${chartWidthPct}%`, height: '100%', minHeight: '200px' }}>
                       <ResponsiveContainer width="100%" height="100%">
                         <ComposedChart data={displayChartData} margin={{ top: 10, right: 10, left: 20, bottom: 5 }}>
                           <defs>
@@ -1080,23 +1079,22 @@ export function MarketPage() {
                                 <button
                                   onClick={async (e) => {
                                     e.stopPropagation();
-                                    
+
                                     // 🟢 즉각적 UI 반응 (Optimistic Update)
-                                    setTradeHistory(prev => 
+                                    setTradeHistory(prev =>
                                       prev.map(t => t.tradeHistoryId === trade.tradeHistoryId ? { ...t, isCollected: true } : t)
                                     );
 
                                     try {
                                       await MarketAPI.collectTrade(trade.tradeHistoryId);
                                       await useGameStore.getState().fetchCompanyData(1);
-                                      // 수동 새로고침도 하되, 서버 DB 반영 시차로 인해 버튼이 다시 생기지 않도록 관리
                                       triggerRefresh();
                                       useGameStore.getState().addAlert({
                                         message: "체결 결과 수령 완료",
                                         detail: `${trade.executionQuantity}개가 정산되었습니다.`
                                       });
                                     } catch (err: any) {
-                                      // 에러 발생 시 원래 상태로 복원
+                                      // 에러 시 원래 상태 복원
                                       triggerRefresh();
                                       const msg = err.response?.data?.message || err.message || "수령에 실패했습니다.";
                                       useAlertStore.getState().openAlert(msg, "수령 오류");
