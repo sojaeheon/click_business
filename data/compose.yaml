@@ -358,20 +358,6 @@ services:
     networks:
       - ecosim-network
 
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
-    container_name: cadvisor
-    restart: unless-stopped
-    ports:
-      - "8089:8080"
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker:/var/lib/docker:ro
-    networks:
-      - ecosim-network
-
   # -----------------------------
   # Analytics용 PostgreSQL
   # -----------------------------
