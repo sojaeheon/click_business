@@ -13,7 +13,7 @@ import { EnvModel } from "./BaseComponents";
 import { AreaLabel } from "./BuildingComponents";
 import { HelpCircle, AlertTriangle } from "lucide-react";
 import {
-    GOLD_STACK_MODELS, MAX_TOTAL, MAX_GOLD_CAP, DEFAULT_WORKSTATION_CAP,
+    STACK_LEVEL_MODELS, MAX_TOTAL, DEFAULT_WORKSTATION_CAP,
     BW, BELT_S, TW, TILE_S,
 } from "./constants";
 
@@ -58,8 +58,8 @@ function ProductStack({ stackLevel, industry, count = 0 }: { stackLevel: number;
         );
     }
 
-    const idx = Math.max(0, Math.min(stackLevel - 1, GOLD_STACK_MODELS.length - 1));
-    return (<React.Suspense fallback={null}><EnvModel url={GOLD_STACK_MODELS[idx]} scale={TILE_S * 0.5} /></React.Suspense>);
+    const idx = Math.max(0, Math.min(stackLevel - 1, STACK_LEVEL_MODELS.length - 1));
+    return (<React.Suspense fallback={null}><EnvModel url={STACK_LEVEL_MODELS[idx]} scale={TILE_S * 0.5} /></React.Suspense>);
 }
 
 import { Machine1 } from "../models/Machine1";

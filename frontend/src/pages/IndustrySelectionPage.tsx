@@ -181,14 +181,14 @@ export const IndustrySelectionPage = () => {
         <>
           <div className="fixed left-6 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-1 pointer-events-none animate-pulse">
             <span className="text-white/70 text-6xl leading-none">←</span>
-            <span className="text-white/50 text-lg font-bold tracking-widest mt-1">이전</span>
+            <span className="text-white/50 text-lg font-bold tracking-widest mt-1">방향키</span>
           </div>
           <div className="fixed right-6 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-1 pointer-events-none animate-pulse">
             <span className="text-white/70 text-6xl leading-none">→</span>
-            <span className="text-white/50 text-lg font-bold tracking-widest mt-1">다음</span>
+            <span className="text-white/50 text-lg font-bold tracking-widest mt-1">방향키</span>
           </div>
           <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-20 pointer-events-none animate-pulse">
-            <span className="text-white/55 text-lg font-bold tracking-wider">⏎ 선택 확정</span>
+            <span className="text-white/55 text-lg font-bold tracking-wider">⏎ 엔터</span>
           </div>
         </>
       )}
