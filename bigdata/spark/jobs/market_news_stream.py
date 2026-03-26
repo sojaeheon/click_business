@@ -22,8 +22,8 @@ DB_NAME = os.getenv("DB_NAME", "ecosim")
 DB_USER = os.getenv("DB_USER", "ecosim")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "ecosim")
 
-NEWS_GLOBAL_COOLDOWN_MINUTES = int(os.getenv("NEWS_GLOBAL_COOLDOWN_MINUTES", "30"))
-NEWS_SIGNAL_COOLDOWN_MINUTES = int(os.getenv("NEWS_SIGNAL_COOLDOWN_MINUTES", "30"))
+NEWS_GLOBAL_COOLDOWN_MINUTES = int(os.getenv("NEWS_GLOBAL_COOLDOWN_MINUTES", "10"))
+NEWS_SIGNAL_COOLDOWN_MINUTES = int(os.getenv("NEWS_SIGNAL_COOLDOWN_MINUTES", "10"))
 NEWS_MIN_SEVERITY_SCORE = float(os.getenv("NEWS_MIN_SEVERITY_SCORE", "85.0"))
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("GMS_KEY", "")
@@ -57,13 +57,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--reference-time", default=None)
     parser.add_argument("--min-trade-qty", type=float, default=200.0)
     parser.add_argument("--min-order-qty", type=float, default=300.0)
-    parser.add_argument("--price-change-threshold", type=float, default=0.25)
-    parser.add_argument("--volume-spike-threshold", type=float, default=2.5)
-    parser.add_argument("--volume-drop-threshold", type=float, default=-0.9)
+    parser.add_argument("--price-change-threshold", type=float, default=0.005)
+    parser.add_argument("--volume-spike-threshold", type=float, default=1.0)
+    parser.add_argument("--volume-drop-threshold", type=float, default=-0.5)
     parser.add_argument("--volume-drop-min-previous-qty", type=float, default=3000.0)
     parser.add_argument("--min-market-activity-qty", type=float, default=200.0)
-    parser.add_argument("--pressure-ratio-threshold", type=float, default=3.0)
-    parser.add_argument("--cancel-rate-threshold", type=float, default=0.8)
+    parser.add_argument("--pressure-ratio-threshold", type=float, default=1.8)
+    parser.add_argument("--cancel-rate-threshold", type=float, default=0.5)
     parser.add_argument("--trigger-interval", default="10 minutes")
     parser.add_argument("--checkpoint-path", default=DEFAULT_CHECKPOINT_PATH)
     parser.add_argument("--rows-per-second", type=int, default=1)
@@ -90,6 +90,11 @@ def parse_reference_time(reference_time: Optional[str]) -> datetime:
 
     normalized = reference_time.replace("Z", "+00:00")
     return datetime.fromisoformat(normalized)
+
+
+def apply_reference_lag(reference_time: datetime, lag_minutes: int = 1) -> datetime:
+    aligned = reference_time.replace(second=0, microsecond=0)
+    return aligned - timedelta(minutes=lag_minutes)
 
 
 def resolve_reference_time(batch_df, override_reference_time: Optional[str]) -> datetime:
@@ -561,16 +566,25 @@ def get_db_connection():
     return conn
 
 
-def has_recent_news(cur) -> bool:
+def to_db_timestamp_literal(reference_time: str) -> str:
+    return parse_reference_time(reference_time).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def has_recent_news(cur, reference_time: str) -> bool:
     cur.execute(
         """
         SELECT EXISTS (
             SELECT 1
             FROM internal_news
-            WHERE published_at >= NOW() - (%s || ' minutes')::interval
+            WHERE published_at >= %s::timestamp - (%s || ' minutes')::interval
+              AND published_at <= %s::timestamp
         ) AS exists
         """,
-        (NEWS_GLOBAL_COOLDOWN_MINUTES,),
+        (
+            to_db_timestamp_literal(reference_time),
+            NEWS_GLOBAL_COOLDOWN_MINUTES,
+            to_db_timestamp_literal(reference_time),
+        ),
     )
     return bool(cur.fetchone()["exists"])
 
@@ -582,23 +596,16 @@ def is_duplicate_or_cooling_down(cur, candidate: Candidate) -> bool:
             SELECT 1
             FROM internal_news
             WHERE title = %s
+              AND published_at >= %s::timestamp - (%s || ' minutes')::interval
+              AND published_at <= %s::timestamp
         ) AS exists
         """,
-        (candidate.headline,),
-    )
-    if cur.fetchone()["exists"]:
-        return True
-
-    cur.execute(
-        """
-        SELECT EXISTS (
-            SELECT 1
-            FROM internal_news
-            WHERE title = %s
-              AND published_at >= NOW() - (%s || ' minutes')::interval
-        ) AS exists
-        """,
-        (candidate.headline, NEWS_SIGNAL_COOLDOWN_MINUTES),
+        (
+            candidate.headline,
+            to_db_timestamp_literal(candidate.reference_time),
+            NEWS_SIGNAL_COOLDOWN_MINUTES,
+            to_db_timestamp_literal(candidate.reference_time),
+        ),
     )
     return bool(cur.fetchone()["exists"])
 
@@ -686,6 +693,8 @@ def insert_internal_news(cur, candidate: Candidate, article: Dict[str, str], ite
     if article.get("summary"):
         content = f"{article['summary']}\n\n{content}"
 
+    game_timestamp = to_db_timestamp_literal(candidate.reference_time)
+
     cur.execute(
         """
         INSERT INTO internal_news (
@@ -694,13 +703,14 @@ def insert_internal_news(cur, candidate: Candidate, article: Dict[str, str], ite
             published_at,
             created_at
         ) VALUES (
-            %s, %s, %s::timestamp, NOW()
+            %s, %s, %s::timestamp, %s::timestamp
         )
         """,
         (
             article["title"],
             content,
-            parse_reference_time(candidate.reference_time).strftime("%Y-%m-%d %H:%M:%S"),
+            game_timestamp,
+            game_timestamp,
         ),
     )
 
@@ -713,7 +723,7 @@ def publish_best_candidate(candidates: DataFrame) -> bool:
     conn = get_db_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            if has_recent_news(cur):
+            if has_recent_news(cur, rows[0]["reference_time"]):
                 print("[MARKET-NEWS-STREAM] global cooldown active")
                 conn.commit()
                 return False
@@ -811,7 +821,8 @@ def main() -> None:
     )
 
     def process_batch(batch_df, batch_id: int) -> None:
-        reference_time = resolve_reference_time(batch_df, args.reference_time)
+        resolved_reference_time = resolve_reference_time(batch_df, args.reference_time)
+        reference_time = apply_reference_lag(resolved_reference_time, lag_minutes=1)
         print(
             f"[MARKET-NEWS-STREAM] batch_id={batch_id} "
             f"reference_time={reference_time.isoformat()}"

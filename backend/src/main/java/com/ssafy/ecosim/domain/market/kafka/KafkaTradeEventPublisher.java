@@ -44,7 +44,7 @@ public class KafkaTradeEventPublisher implements TradeEventPublisher {
                 .occurredAt(ZonedDateTime.now(KST))
                 .producer("matching-engine")
                 .companyId(null)                        // 체결은 양사 관여 → null
-                .aggregateId("trade_buy_" + event.getBuyOrderId())
+                .aggregateId("trade_" + event.getTradeId())
                 .payload(payload)
                 .build();
 
