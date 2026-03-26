@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useOrderBookSocket } from "../../hooks/useOrderBookSocket";
 import { ShoppingCart, TrendingUp, TrendingDown, Activity, ListOrdered, Clock, XCircle, BarChart2 } from "lucide-react";
 import { useGameStore } from "../../store/gameStore";
 import { MarketAPI } from "../../api/gameApi";
@@ -203,7 +204,34 @@ export function MarketPage() {
     setChangeRate(0);
   }, [itemId]);
 
-  // ⏱️ 실시간 데이터 업데이트 (오더북, 체결내역, 미체결 주문)
+  // 🔌 호가창 WebSocket 실시간 수신
+  useOrderBookSocket(itemId, (data) => {
+    if (data.sellOrders || data.buyOrders) {
+      const asks = (data.sellOrders || []).map((o) => ({ ...o, quantity: o.totalQuantity }));
+      const bids = (data.buyOrders || []).map((o) => ({ ...o, quantity: o.totalQuantity }));
+      setOrderBook({ asks, bids });
+    } else {
+      setOrderBook({ asks: [], bids: [] });
+    }
+
+    const latestPrice = data.currentPrice;
+    if (latestPrice) {
+      setCurrentPrice(latestPrice);
+      setChangePrice(data.changePrice ?? 0);
+      setChangeRate(data.changeRate ?? 0);
+
+      setChartData(prev => {
+        const lastPrice = prev.length > 0 ? prev[prev.length - 1].price : latestPrice;
+        if (latestPrice > lastPrice) setMarketTrend("up");
+        else if (latestPrice < lastPrice) setMarketTrend("down");
+        else setMarketTrend("neutral");
+        setTimeout(() => setMarketTrend("neutral"), 800);
+        return prev;
+      });
+    }
+  });
+
+  // ⏱️ 실시간 데이터 업데이트 (체결내역, 미체결 주문, 캔들) — 호가창은 WebSocket으로 분리
   useEffect(() => {
     if (!mode) return;
 
