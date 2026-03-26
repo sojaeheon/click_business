@@ -8,6 +8,7 @@ import * as THREE from "three";
 import { useGameStore } from "../../../store/gameStore";
 import { useAlertStore } from "../../../store/useAlertStore";
 import { WorkstationAPI } from "../../../api/gameApi";
+import { toast } from 'sonner';
 import { EnvModel } from "./BaseComponents";
 import { AreaLabel } from "./BuildingComponents";
 import { HelpCircle, AlertTriangle } from "lucide-react";
@@ -169,19 +170,51 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
     const isWarehouseFull = usedSlots >= warehouseMaxSlots;
     const cannotProduce = isFull;
 
+    // ★ 생산 중 pile이 가득 차면 일시정지 (남은 시간 저장)
+    useEffect(() => {
+        if (isWorking && isFull) {
+            const ws = useGameStore.getState().workstationState;
+            const remainingMs = Math.max(0, effectiveEndTime - Date.now());
+            const originalQty = ws.requestedQty;
+
+            useGameStore.getState().setWorkstationState({
+                isWorking: false,
+                totalMs: 0,
+                endTime: null,
+                uncollectedPile: maxCapacity,
+                // 일시정지 정보 저장
+                pausedRemainingMs: remainingMs,
+                pausedRequestedQty: originalQty,
+                pausedProducedSoFar: localProducedCount,
+            });
+
+            const industryName = useGameStore.getState().industry;
+            const msg = `[${industryName}] 보관함이 가득 차서 생산이 일시정지되었습니다! 수령 후 자동 재개됩니다.`;
+            useGameStore.getState().addAlert({ message: msg, detail: 'PRODUCTION' });
+            toast(msg, {
+                description: '⏸️ 일시정지 — 수령 시 재개',
+                duration: 5000,
+                style: {
+                    background: '#111827', border: '2px solid #374151',
+                    borderRadius: '1rem', color: '#f3f4f6',
+                    fontWeight: 700, padding: '16px 20px',
+                    boxShadow: '0 20px 40px rgba(0,0,0,0.4)', fontSize: '14px',
+                },
+                action: {
+                    label: '확인',
+                    onClick: () => useGameStore.getState().openModal('alert'),
+                },
+            });
+        }
+    }, [isWorking, isFull, localProducedCount, maxCapacity, effectiveEndTime]);
+
     const beltEndPos: [number, number, number] =
         (industry === "MANUFACTURING" || industry === "제조업") ? [0.75 + 1.2 * BELT_S, TW * 0.12 + 1.5, 1 - (-0.5) * BELT_S]
             : (industry === "GOLD_MINING" || industry === "금광업") ? [0.75 - 3.5 * BELT_S, TW * 0.12 + 1.2, 1 - (-0.3) * BELT_S]
                 : [0.75 - 0.5 * BELT_S, TW * 0.12 + 0.8, 1 - 1.0 * BELT_S];
 
-    // 폴링
-    useEffect(() => {
-        let interval: ReturnType<typeof setInterval>;
-        if (isWorking) {
-            interval = setInterval(() => { useGameStore.getState().fetchCompanyData(1); }, 5000);
-        }
-        return () => { if (interval) clearInterval(interval); };
-    }, [isWorking]);
+    // ★ 생산 중에는 폴링하지 않음 (status API가 processProduction을 호출하여 1랩씩 끊기는 문제 방지)
+    // 타이머 만료 → stop → fetchCompanyData 한 번만 호출하는 구조로 전체 랩이 한꺼번에 처리됨
 
     useEffect(() => { if (!isWorking) setRemainingSec(null); }, [isWorking]);
 
@@ -202,12 +235,42 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
                 // startTime을 유지하여 fetchCompanyData의 locallyCompleted 가드가 작동하도록 함
                 // (startTime > 0 && isWorking === false → 백엔드 폴링이 덮어쓰지 않음)
                 const ws = useGameStore.getState().workstationState;
+                const completedQty = ws.requestedQty || 0;
+                // ★ 알림에는 최초 주문 수량 사용 (일시정지 후 재개된 경우에도 원래 수량 표시)
+                const totalOrderedQty = ws.originalRequestedQty || completedQty;
+                const industryName = useGameStore.getState().industry;
+
+                // ★ 기존 pile + 이번 생산량 = 누적 pile
+                const existingPile = ws.uncollectedPile ?? 0;
+                const newlyProduced = completedQty - (ws.collectedTotal ?? 0);
                 useGameStore.getState().setWorkstationState({
                     isWorking: false,
                     totalMs: 0,
                     endTime: null,
-                    uncollectedPile: Math.max(ws.uncollectedPile ?? 0, ws.storedCount ?? 0),
+                    uncollectedPile: existingPile + Math.max(0, newlyProduced),
+                    originalRequestedQty: 0,
                 });
+
+                // 프론트 자체 완료 알림 (백엔드 PRODUCTION 알림은 무시됨)
+                if (completedQty > 0) {
+                    const msg = `[${industryName}] 생산이 ${totalOrderedQty}개 완료되었습니다!`;
+                    useGameStore.getState().addAlert({ message: msg, detail: 'PRODUCTION' });
+                    toast(msg, {
+                        description: '🏭 생산 완료',
+                        duration: 5000,
+                        style: {
+                            background: '#111827', border: '2px solid #374151',
+                            borderRadius: '1rem', color: '#f3f4f6',
+                            fontWeight: 700, padding: '16px 20px',
+                            boxShadow: '0 20px 40px rgba(0,0,0,0.4)', fontSize: '14px',
+                        },
+                        action: {
+                            label: '확인',
+                            onClick: () => useGameStore.getState().openModal('alert'),
+                        },
+                    });
+                }
+
                 // 백엔드에도 가동 중지 요청 후 상태 동기화 (비동기, 논블로킹)
                 WorkstationAPI.stop()
                     .then(() => useGameStore.getState().fetchCompanyData(1))
@@ -290,7 +353,7 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
             )}
 
             {/* 상태 아이콘 */}
-            <group position={[toolHudPos[0], toolHudPos[1] + 1.2, toolHudPos[2]]}>
+            <group position={[toolHudPos[0], toolHudPos[1], toolHudPos[0]]}>
                 <Html center zIndexRange={[30, 0]}>
                     <div className="flex flex-col items-center justify-center select-none">
                         <style>{`
@@ -304,8 +367,13 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
                                 onClick={(e) => { e.stopPropagation(); useAlertStore.getState().openAlert(`임시 보관함이 가득 찼습니다.(${localStoredCount}/${maxCapacity}개)\n더미를 클릭하여 창고에 이동하세요.`, '⚠️ 적재 꽉 참'); }}
                             >!</span>
                         )}
-                        {!isWorking && !isFull && !wsState.isStarting && localStoredCount <= 0 && (
+                        {!isWorking && !isFull && !wsState.isStarting && localStoredCount <= 0 && !wsState.pausedRemainingMs && (
                             <span className="icon-stroke" style={{ fontSize: '64px', color: '#ef4444' }}>?</span>
+                        )}
+                        {!isWorking && !isFull && wsState.pausedRemainingMs && wsState.pausedRemainingMs > 0 && (
+                            <span className="icon-stroke-clickable" style={{ fontSize: '48px', color: '#f59e0b' }}
+                                onClick={(e) => { e.stopPropagation(); useAlertStore.getState().openAlert('더미를 수령하면 남은 생산이 자동으로 재개됩니다.', '⏸️ 일시정지 중'); }}
+                            >⏸️</span>
                         )}
                         {wsState.isStarting && (
                             <div className="flex flex-col items-center justify-center p-3 rounded-2xl bg-slate-900/80 border border-slate-700 backdrop-blur-md shadow-2xl mt-4">
@@ -324,33 +392,62 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
                 onClick={async (e) => {
                     e.stopPropagation();
                     if (localStoredCount > 0) {
-                        // ★ 백엔드 실제 생산량 확인 (보간값이 아닌 확정값)
-                        const backendCount = useGameStore.getState().workstationState.storedCount ?? 0;
-                        if (backendCount <= 0) {
-                            useAlertStore.getState().openAlert("아직 완성된 제품이 없습니다. 잠시 후 다시 시도하세요.", "수령 불가");
-                            return;
-                        }
                         try {
+                            // ★ 1랩 단위(resProd)로 수령량 계산 — 백엔드는 전량 harvest하므로 프론트에서 제어
+                            const { resProd } = useGameStore.getState().getIndustryItemNames();
+                            const collectCount = Math.floor(localStoredCount / resProd) * resProd;
+                            if (collectCount <= 0) {
+                                useAlertStore.getState().openAlert(`최소 ${resProd}개(1랩) 이상 쌓여야 수령할 수 있습니다.`, "수령 불가");
+                                return;
+                            }
+                            const leftover = localStoredCount - collectCount;
+
                             await WorkstationAPI.collect();
                             const currentWs = useGameStore.getState().workstationState;
+
                             if (currentWs.isWorking) {
                                 // 생산 중 부분 수령: 타이머/진행 상태 유지, 수령량만 추적
                                 useGameStore.getState().setWorkstationState({
-                                    collectedTotal: (currentWs.collectedTotal ?? 0) + backendCount,
-                                    uncollectedPile: 0,
+                                    collectedTotal: (currentWs.collectedTotal ?? 0) + collectCount,
+                                    uncollectedPile: leftover,
                                     storedCount: 0,
                                 });
                             } else {
-                                // 생산 완료 후 수령: 전체 상태 초기화
-                                useGameStore.getState().setWorkstationState({
-                                    startTime: 0, totalMs: 0, endTime: null,
-                                    producedCount: 0, storedCount: 0, requestedQty: 0,
-                                    collectedTotal: 0,
-                                    uncollectedPile: 0,
-                                });
+                                const paused = useGameStore.getState().workstationState;
+                                const hasPaused = paused.pausedRemainingMs && paused.pausedRemainingMs > 0;
+
+                                if (hasPaused) {
+                                    // ★ 일시정지 → 수령 후 자동 재개
+                                    const remainMs = paused.pausedRemainingMs!;
+                                    const origQty = paused.pausedRequestedQty ?? 0;
+                                    const producedSoFar = paused.pausedProducedSoFar ?? 0;
+                                    const remainingQty = origQty - producedSoFar;
+
+                                    useGameStore.getState().setWorkstationState({
+                                        isWorking: true,
+                                        startTime: Date.now(),
+                                        totalMs: remainMs,
+                                        requestedQty: remainingQty > 0 ? remainingQty : origQty,
+                                        producedCount: 0,
+                                        storedCount: 0,
+                                        collectedTotal: 0,
+                                        uncollectedPile: leftover,
+                                        pausedRemainingMs: null,
+                                        pausedRequestedQty: null,
+                                        pausedProducedSoFar: null,
+                                    });
+                                } else {
+                                    // 생산 완료 후 수령: 전체 상태 초기화 (나머지는 유지)
+                                    useGameStore.getState().setWorkstationState({
+                                        startTime: 0, totalMs: 0, endTime: null,
+                                        producedCount: 0, storedCount: 0, requestedQty: 0,
+                                        collectedTotal: 0,
+                                        uncollectedPile: leftover,
+                                    });
+                                }
                             }
                             await useGameStore.getState().fetchCompanyData(1);
-                            useAlertStore.getState().openAlert(`${backendCount}개를 창고에 저장했습니다.`, "✅ 수령 완료");
+                            useAlertStore.getState().openAlert(`${collectCount}개를 창고에 저장했습니다.`, "✅ 수령 완료");
                         } catch (err: any) {
                             const msg = err?.response?.data?.message || "수령할 수 없습니다.";
                             useAlertStore.getState().openAlert(msg, "수령 실패");
@@ -373,11 +470,13 @@ export function Workstation({ position, inWorkstation, onOpenModal }: Workstatio
                     <Html center zIndexRange={[10, 0]}>
                         <div className="pointer-events-none select-none" style={{ whiteSpace: 'nowrap' }}>
                             <div className={`inline-flex items-center gap-1 border-2 text-xs font-black rounded-full px-2.5 py-0.5 shadow-lg tabular-nums font-mono whitespace-nowrap
-                                ${isFull
-                                    ? 'bg-rose-950/90 border-rose-400 text-rose-200'
-                                    : isWorking
-                                        ? 'bg-gray-950/90 border-yellow-400 text-yellow-300'
-                                        : 'bg-gray-950/90 border-emerald-400 text-emerald-300 animate-pulse'
+                                ${(() => {
+                                    const { resProd } = useGameStore.getState().getIndustryItemNames();
+                                    const canCollect = Math.floor(localStoredCount / resProd) * resProd > 0;
+                                    if (isFull) return 'bg-rose-950/90 border-rose-400 text-rose-200';
+                                    if (canCollect) return 'bg-gray-950/90 border-emerald-400 text-emerald-300 animate-pulse';
+                                    return 'bg-gray-950/90 border-yellow-400 text-yellow-300';
+                                })()
                                 }`}>
                                 {localStoredCount}/{maxCapacity}
                             </div>

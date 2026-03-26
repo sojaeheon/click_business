@@ -48,13 +48,14 @@ body {
 }
 
 .hit-shake-anim {
-  animation: hitShake 0.1s ease-in-out;
+  animation: hitShake 0.15s ease-in-out;
 }
 
 @keyframes hitShake {
   0% { transform: translate(0, 0) rotate(0); }
-  25% { transform: translate(8px, -8px) rotate(1deg); }
-  50% { transform: translate(-8px, 8px) rotate(-1deg); }
-  75% { transform: translate(8px, 8px) rotate(1deg); }
+  20% { transform: translate(14px, -10px) rotate(2.5deg); }
+  40% { transform: translate(-12px, 8px) rotate(-2.5deg); }
+  60% { transform: translate(10px, -6px) rotate(1.5deg); }
+  80% { transform: translate(-6px, 4px) rotate(-1deg); }
   100% { transform: translate(0, 0) rotate(0); }
 }

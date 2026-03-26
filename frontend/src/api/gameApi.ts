@@ -9,6 +9,13 @@ export const AuthAPI = {
   refresh: () => apiClient.post('/auth/refresh'),
   logout: () => apiClient.post('/auth/logout'),
   createGuest: () => apiClient.post('/users/guest'),
+  // ★ 게스트 → 소셜 연동 (백엔드 구현 필요: POST /api/v1/auth/link-social)
+  linkSocial: () => {
+    const baseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+    const token = sessionStorage.getItem('accessToken') ?? '';
+    // 현재 게스트 토큰을 쿼리로 전달하여 백엔드가 기존 계정에 OAuth 정보를 연결
+    window.location.href = baseUrl.replace('/api/v1', '') + `/oauth2/authorization/google?link_token=${token}`;
+  },
 };
 
 export const UserAPI = {
@@ -201,8 +208,10 @@ export const BankAPI = {
 };
 
 export const HRAPI = {
-  recruitWorker: (data: { companyId: number; type: 'NORMAL' | 'PREMIUM' }) => apiClient.post('/hr/recruit', data),
-  upgradeWorker: (data: { companyId: number; currentLevel: number }) => apiClient.post('/hr/upgrade', data),
+  upgradeWorker: async (currentLevel: number) => {
+    const res = await apiClient.post('/hr/upgrade', { currentLevel });
+    return { data: res.data.data as { result: string; newLevel: number } };
+  },
 };
 
 export const MinigameAPI = {
