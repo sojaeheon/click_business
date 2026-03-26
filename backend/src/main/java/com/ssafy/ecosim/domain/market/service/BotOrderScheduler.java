@@ -6,6 +6,7 @@ import com.ssafy.ecosim.domain.market.entity.OrderType;
 import com.ssafy.ecosim.domain.market.kafka.OrderEventPublisher;
 import com.ssafy.ecosim.domain.market.repository.ExternalIndexRepository;
 import com.ssafy.ecosim.domain.market.repository.redis.OrderBookManager;
+import com.ssafy.ecosim.global.util.GameTimeUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -33,6 +34,8 @@ public class BotOrderScheduler {
     private final OrderBookManager orderBookManager;
     // 외부 지표(DB) 조회용 리포지토리
     private final ExternalIndexRepository externalIndexRepository;
+    // 게임시간 관리 유틸
+    private final GameTimeUtil gameTimeUtil;
 
     // 아이템별 시뮬레이션 상태 관리 (1: 금석, 2: 금괴석, 3: 금 드릴)
     private final Map<Long, ItemSimulationState> itemStates = new HashMap<>();
@@ -56,8 +59,13 @@ public class BotOrderScheduler {
 
     // 개별 아이템의 1초당 시뮬레이션 로직 처리
     private void simulateTickForItem(Long itemId, ItemSimulationState state) {
-        if (state.currentTick == 0) {
-            initNewDayCycle(itemId, state);
+        // GameTimeUtil에서 현재 틱 및 날짜 조회
+        int currentTick = gameTimeUtil.getCurrentTick();
+        LocalDate currentDate = gameTimeUtil.getCurrentGameDate();
+        
+        // 날짜가 바뀌었으면 새 외부지표 로드
+        if (state.lastSimulatedDate == null || !currentDate.equals(state.lastSimulatedDate)) {
+            initNewDayCycle(itemId, state, currentDate);
         }
 
         // 지표 데이터가 없는 경우 스킵
@@ -70,8 +78,8 @@ public class BotOrderScheduler {
 
         // 2. 이번 틱의 '목표 변동 증분(Delta)' 계산
         // 현재가 기준으로 이번 1초 동안 이동해야 할 순수 변화량(델타)만 추출하여 적용합니다.
-        double currentTotalFluct = state.tickTargetFluctuations[state.currentTick];
-        double previousTotalFluct = (state.currentTick == 0) ? 0.0 : state.tickTargetFluctuations[state.currentTick - 1];
+        double currentTotalFluct = state.tickTargetFluctuations[currentTick];
+        double previousTotalFluct = (currentTick == 0) ? 0.0 : state.tickTargetFluctuations[currentTick - 1];
         
         // 순수 델타 (이번 틱의 변화량)
         double deltaFluct = currentTotalFluct - previousTotalFluct;
@@ -85,7 +93,7 @@ public class BotOrderScheduler {
         int botCount = ThreadLocalRandom.current().nextInt(MIN_TPS, MAX_TPS + 1);
 
         // 최초 시작 시드(Seed) 주문: 유동성 형성을 위해 엄청난 주문 쏟아내기
-        if (state.isFirstDay && state.currentTick == 0) {
+        if (state.isFirstDay && currentTick == 0) {
             botCount = 1000; // 최초 1회만 거물급 매물대 형성 (초기화)
             state.isFirstDay = false;
         }
@@ -159,29 +167,17 @@ public class BotOrderScheduler {
                     .price(orderPrice)
                     .totalQuantity(orderQty)
                     .isVirtual(true) // 봇이 생성한 가짜 데이터임을 명시!
-                    .timestamp(System.currentTimeMillis())
+                    .timestamp(gameTimeUtil.getCurrentGameTimestamp()) // 게임시간 사용
                     .build();
 
             eventPublisher.publishOrderEvent(botEvent);
         }
-
-        // 전역 시계 동기화 (ID 1번 아이템 기준으로 Redis에 현재 틱 저장) - 증가 전에 먼저 저장
-        if (itemId == 1L) {
-            redisTemplate.opsForValue().set("game:simulation:tick", String.valueOf(state.currentTick));
-        }
-        
-        // 사이클 증가
-        state.currentTick++;
-
-        if (state.currentTick >= CYCLE_SECONDS) {
-            state.currentTick = 0;
-        }
     }
 
     /**
-     * 새로운 10분이 시작될 때(1일차), 새로운 목표 가격들을 DB에서 과거부터 순차적으로 세팅합니다.
+     * 새로운 날짜가 시작될 때 외부 지표에서 데이터를 로드합니다.
      */
-    private void initNewDayCycle(Long itemId, ItemSimulationState state) {
+    private void initNewDayCycle(Long itemId, ItemSimulationState state, LocalDate currentDate) {
         // 외부 지표 테이블(external_index)에서 시간 순서에 맞는 실제 데이터를 꺼내옴
         Optional<ExternalIndex> nextIndex;
         if (state.lastSimulatedDate == null) {
@@ -203,7 +199,7 @@ public class BotOrderScheduler {
         }
 
         ExternalIndex index = nextIndex.get();
-        state.lastSimulatedDate = index.getPriceDate();
+        state.lastSimulatedDate = currentDate;
 
         // 초기 시장가 세팅 (서버 기동 후 거래 내역이 없을 때 DB 시가 적용)
         Long marketPriceObj = getCurrentMarketPrice(itemId);
@@ -233,12 +229,7 @@ public class BotOrderScheduler {
         state.isHighFirst = ThreadLocalRandom.current().nextBoolean();
 
         log.info("[Virtual Index Cycle] Item: {} | Date: {} | Base Price: {} | Fluct (H/L/C): {} / {} / {}",
-                itemId, state.lastSimulatedDate, currentMarketPrice, state.targetHighFluct, state.targetLowFluct, state.targetCloseFluct);
-
-        // 전역 시계 동기화 (ID 1번 아이템 기준으로 Redis에 현재 날짜 저장)
-        if (itemId == 1L) {
-            redisTemplate.opsForValue().set("game:simulation:date", state.lastSimulatedDate.toString());
-        }
+                itemId, currentDate, currentMarketPrice, state.targetHighFluct, state.targetLowFluct, state.targetCloseFluct);
 
         // 장 시작 시점에, 하루치 600틱에 대한 '타겟 변동률'을 미리 계산하여 배열에 저장
         for (int i = 0; i < CYCLE_SECONDS; i++) {
@@ -293,7 +284,6 @@ public class BotOrderScheduler {
      * 아이템별 시뮬레이션 상태를 별도로 보관하는 내부 클래스입니다.
      */
     private static class ItemSimulationState {
-        int currentTick = 0;             // 현재 0~599초 중 몇 번째 틱인지
         boolean isFirstDay = true;       // 서버 시작 후 첫 사이클 여부
         LocalDate lastSimulatedDate = null; // 마지막으로 처리한 DB 지표 날짜
 
