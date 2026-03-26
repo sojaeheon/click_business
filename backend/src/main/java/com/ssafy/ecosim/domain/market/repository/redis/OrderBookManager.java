@@ -21,6 +21,7 @@ public class OrderBookManager {
     private static final String BUY_KEY_PREFIX = "market:orderbook:%d:buy";
     private static final String SELL_KEY_PREFIX = "market:orderbook:%d:sell";
     private static final String TICKER_KEY_PREFIX = "market:price:%d";
+    private static final String SNAPSHOT_KEY_PREFIX = "market:orderbook:snapshot:%d";
 
     private String getBuyKey(Integer itemId) {
         return String.format(BUY_KEY_PREFIX, itemId);
@@ -160,5 +161,20 @@ public class OrderBookManager {
 
     public void clearChartData(Integer itemId) {
         stringRedisTemplate.delete("market:chart:" + itemId);
+    }
+
+    /**
+     * 호가창 스냅샷(JSON 문자열)을 Redis에 저장합니다.
+     * 스케줄러가 300ms마다 계산한 결과를 캐싱하여 REST API가 재계산 없이 반환할 수 있게 합니다.
+     */
+    public void saveSnapshot(Integer itemId, String json) {
+        stringRedisTemplate.opsForValue().set(String.format(SNAPSHOT_KEY_PREFIX, itemId), json);
+    }
+
+    /**
+     * 캐싱된 호가창 스냅샷 JSON을 반환합니다. 없으면 null.
+     */
+    public String getSnapshot(Integer itemId) {
+        return stringRedisTemplate.opsForValue().get(String.format(SNAPSHOT_KEY_PREFIX, itemId));
     }
 }
