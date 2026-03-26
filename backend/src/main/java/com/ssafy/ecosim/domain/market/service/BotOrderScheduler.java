@@ -30,6 +30,7 @@ public class BotOrderScheduler {
     private final OrderEventPublisher eventPublisher;
     // 현재 시장가(Redis Ticker) 조회용
     private final RedisTemplate<String, Object> redisTemplate;
+    private final RedisTemplate<String, String> stringRedisTemplate;
     // Market Sweep 시 반대편 호가창의 총 잔량 조회용
     private final OrderBookManager orderBookManager;
     // 외부 지표(DB) 조회용 리포지토리
@@ -84,17 +85,9 @@ public class BotOrderScheduler {
                 currentTick, currentMarketPrice, state.dayOpenPrice);
         }
 
-        // 2. 이번 틱의 '목표 변동 증분(Delta)' 계산
-        // 현재가 기준으로 이번 1초 동안 이동해야 할 순수 변화량(델타)만 추출하여 적용합니다.
+        // 2. 이번 틱의 '타겟 가격' 계산 (시가 베이스로 계산하여 0원 데드락 방지)
         double currentTotalFluct = state.tickTargetFluctuations[currentTick];
-        double previousTotalFluct = (currentTick == 0) ? 0.0 : state.tickTargetFluctuations[currentTick - 1];
-        
-        // 순수 델타 (이번 틱의 변화량)
-        double deltaFluct = currentTotalFluct - previousTotalFluct;
-        
-        // 현재가에 델타 적용 (현재가 × (1 + 델타))
-        double theoreticalTarget = currentMarketPrice * (1.0 + deltaFluct);
-
+        double theoreticalTarget = state.dayOpenPrice * (1.0 + currentTotalFluct);
         long currentTargetPrice = applyTickSize(theoreticalTarget);
 
         // 3. 초당 생성할 가상 봇 갯수 랜덤 설정 (TPS)
@@ -249,7 +242,7 @@ public class BotOrderScheduler {
         long currentMarketPrice;
         if (marketPriceObj == null && index.getOpenPrice() != null) {
             currentMarketPrice = index.getOpenPrice().longValue();
-            redisTemplate.opsForValue().set("market:price:" + itemId, String.valueOf(currentMarketPrice));
+            stringRedisTemplate.opsForValue().set("market:price:" + itemId, String.valueOf(currentMarketPrice));
         } else {
             currentMarketPrice = marketPriceObj != null ? marketPriceObj : (index.getOpenPrice() != null ? index.getOpenPrice().longValue() : 10000L);
         }
@@ -258,15 +251,15 @@ public class BotOrderScheduler {
         state.dayOpenPrice = currentMarketPrice;
         
         // 시가를 Redis에 저장하여 OrderBookService에서 변동률 계산 시 사용
-        redisTemplate.opsForValue().set("market:price:open:" + itemId, String.valueOf(currentMarketPrice));
+        stringRedisTemplate.opsForValue().set("market:price:open:" + itemId, String.valueOf(currentMarketPrice));
         // 새 사이클 시작 시 이전 차트 데이터 초기화
         orderBookManager.clearChartData(itemId.intValue());
 
-        // DB 등락률(Decimal 5,2)을 변동률 값(0.01 = 1%)으로 변환 (게임적 재미를 위해 외부 지표의 10배 변동성 부여)
+        // DB 등락률(Decimal 5,2)을 변동률 값(0.01 = 1%)으로 변환 (외부 지표와 1:1 대응)
         state.targetOpenFluct = 0.0; // 시가는 전일 종가와 이어진다고 가정
-        state.targetHighFluct = (index.getOpenHighFluctRate() != null ? index.getOpenHighFluctRate().doubleValue() / 100.0 : 0.02) * 10.0;
-        state.targetLowFluct = (index.getOpenLowFluctRate() != null ? index.getOpenLowFluctRate().doubleValue() / 100.0 : -0.02) * 10.0;
-        state.targetCloseFluct = (index.getFluctRate() != null ? index.getFluctRate().doubleValue() / 100.0 : 0.01) * 10.0;
+        state.targetHighFluct = (index.getOpenHighFluctRate() != null ? index.getOpenHighFluctRate().doubleValue() / 100.0 : 0.02);
+        state.targetLowFluct = (index.getOpenLowFluctRate() != null ? index.getOpenLowFluctRate().doubleValue() / 100.0 : -0.02);
+        state.targetCloseFluct = (index.getFluctRate() != null ? index.getFluctRate().doubleValue() / 100.0 : 0.01);
 
         // 패턴 결정 (50% 확률로 하루 동안 고가를 먼저 찍음)
         state.isHighFirst = ThreadLocalRandom.current().nextBoolean();

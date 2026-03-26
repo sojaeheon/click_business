@@ -174,9 +174,9 @@ export function MarketPage() {
     document.addEventListener('mouseup', onMouseUp);
   };
   // 하위 호환용 (JSX onMouse* 핸들러 유지)
-  const handleDragLeave = () => {};
+  const handleDragLeave = () => { };
   const handleDragEnd = () => { isDragging.current = false; };
-  const handleDragMove = (_e: React.MouseEvent) => {}; // document 레벨에서 처리
+  const handleDragMove = (_e: React.MouseEvent) => { }; // document 레벨에서 처리
 
   // 🏷️ 아이템 ID 매핑 헬퍼
   // gameStore의 industry는 한국어로 저장됨 ("금광업", "금 제련업", "제조업")

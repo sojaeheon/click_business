@@ -130,7 +130,7 @@ public class MarketMatchingService {
                 .quantity(matchedQuantity)
                 .buyRemainingQuantity(buyOrder.getRemainingQuantity())
                 .sellRemainingQuantity(sellOrder.getRemainingQuantity())
-                .executedAt(System.currentTimeMillis())
+                .executedAt(gameTimeUtil.getCurrentGameTimestamp())
                 .build();
 
         try {

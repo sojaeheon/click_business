@@ -357,3 +357,28 @@ export const NewsAPI = {
     return res.data?.data ?? [];
   }
 };
+
+// ==================== Game Time ====================
+export interface GameTimeResponse {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+  formattedDate: string;      // "2020-01-15"
+  formattedTime: string;      // "14:30:24"
+  fullDateTime: string;       // "2020-01-15 14:30:24"
+  currentTick: number;
+  accumulatedSeconds: number;
+}
+
+export const GameTimeAPI = {
+  /**
+   * 현재 게임 시뮬레이션 시간 조회
+   */
+  getCurrentTime: async (): Promise<GameTimeResponse> => {
+    const res = await apiClient.get('/api/game/time/current');
+    return res.data;
+  }
+};
