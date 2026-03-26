@@ -1,16 +1,24 @@
 import time
 import json
+import os
 import redis
 from datetime import datetime
 from kafka import KafkaConsumer
 from kafka.errors import NoBrokersAvailable
 
+REDIS_HOST = os.getenv("REDIS_HOST", "redis")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
+KAFKA_ORDER_TOPIC = os.getenv("KAFKA_ORDER_TOPIC", "market.order.events")
+KAFKA_ORDER_GROUP_ID = os.getenv("KAFKA_ORDER_GROUP_ID", "order-redis-consumer")
+KAFKA_AUTO_OFFSET_RESET = os.getenv("KAFKA_AUTO_OFFSET_RESET", "earliest")
+
 # -----------------------------
 # Redis 연결
 # -----------------------------
 r = redis.Redis(
-    host='redis',
-    port=6379,
+    host=REDIS_HOST,
+    port=REDIS_PORT,
     db=0,
     decode_responses=True
 )
@@ -21,11 +29,11 @@ r = redis.Redis(
 while True:
     try:
         consumer = KafkaConsumer(
-            'market.order.events',
-            bootstrap_servers='kafka:29092', 
-            auto_offset_reset='earliest', # latest
+            KAFKA_ORDER_TOPIC,
+            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+            auto_offset_reset=KAFKA_AUTO_OFFSET_RESET, # latest
             enable_auto_commit=False, # True
-            group_id='order-redis-consumer',
+            group_id=KAFKA_ORDER_GROUP_ID,
             value_deserializer=lambda x: json.loads(x.decode('utf-8'))
         )
         print("Kafka Order Redis Consumer 연결 성공")

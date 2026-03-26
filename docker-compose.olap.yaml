@@ -1,0 +1,216 @@
+services:
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    ports:
+      - "9870:9870"
+      - "9000:9000"
+    environment:
+      CLUSTER_NAME: ecosim-hdfs
+    env_file:
+      - ./data/hdfs/configs/hadoop.env
+    volumes:
+      - ./data/hdfs/storage/namenode:/hadoop/dfs/name
+      - ./data/hdfs/init:/init
+      - ./data/hdfs/sample-data:/sample-data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9870/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - ecosim-network
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    depends_on:
+      - namenode
+    ports:
+      - "9864:9864"
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    env_file:
+      - ./data/hdfs/configs/hadoop.env
+    volumes:
+      - ./data/hdfs/storage/datanode:/hadoop/dfs/data
+    networks:
+      - ecosim-network
+
+  external-loader:
+    image: python:3.11-slim
+    container_name: external-loader
+    working_dir: /app
+    volumes:
+      - ./bigdata:/app
+    env_file:
+      - ./env/olap.env
+    command: >
+      sh -c "pip install --no-cache-dir psycopg2-binary &&
+            python external_data/loader/external_data_loader.py"
+    networks:
+      - ecosim-network
+
+  order-hdfs-consumer:
+    build:
+      context: ./bigdata
+      dockerfile: kafka/Dockerfile.kafka
+    container_name: order-hdfs-consumer
+    restart: always
+    env_file:
+      - ./env/olap.env
+    environment:
+      CONSUMER_TYPE: order_hdfs
+      KAFKA_TOPIC: market.order.events
+      KAFKA_GROUP_ID: order-hdfs-consumer
+      HDFS_BASE_PATH: /raw/kafka
+      HDFS_FLUSH_INTERVAL_SEC: 1
+    networks:
+      - ecosim-network
+
+  trade-hdfs-consumer:
+    build:
+      context: ./bigdata
+      dockerfile: kafka/Dockerfile.kafka
+    container_name: trade-hdfs-consumer
+    restart: always
+    env_file:
+      - ./env/olap.env
+    environment:
+      CONSUMER_TYPE: trade_hdfs
+      KAFKA_TOPIC: market.trade.events
+      KAFKA_GROUP_ID: trade-hdfs-consumer
+      HDFS_BASE_PATH: /raw/kafka
+      HDFS_FLUSH_INTERVAL_SEC: 1
+    networks:
+      - ecosim-network
+
+  hdfs-raw-sink-consumer:
+    build:
+      context: ./bigdata
+      dockerfile: kafka/Dockerfile.kafka
+    container_name: hdfs-raw-sink-consumer
+    restart: always
+    env_file:
+      - ./env/olap.env
+    environment:
+      CONSUMER_TYPE: hdfs_raw_sink
+    networks:
+      - ecosim-network
+
+  analytics-postgres:
+    image: postgres:17
+    container_name: analytics-postgres
+    restart: always
+    env_file:
+      - ./env/olap.env
+    ports:
+      - "${ANALYTICS_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - ./data/analytics_postgres_data:/var/lib/postgresql/data
+      - ./bigdata/sql/analytics_schema.sql:/docker-entrypoint-initdb.d/01_analytics_schema.sql:ro
+    networks:
+      - ecosim-network
+
+  spark-master:
+    build:
+      context: ./bigdata
+      dockerfile: ./spark/Dockerfile.spark
+    container_name: spark-master
+    volumes:
+      - ./bigdata/spark/jobs:/opt/spark-apps
+    command: >
+      /opt/spark/bin/spark-class
+      org.apache.spark.deploy.master.Master
+    env_file:
+      - ./env/olap.env
+    ports:
+      - "7077:7077"
+      - "8082:8080"
+    networks:
+      - ecosim-network
+
+  spark-worker:
+    build:
+      context: ./bigdata
+      dockerfile: ./spark/Dockerfile.spark
+    container_name: spark-worker
+    depends_on:
+      - spark-master
+    volumes:
+      - ./bigdata/spark/jobs:/opt/spark-apps
+    command: >
+      /opt/spark/bin/spark-class
+      org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077
+    env_file:
+      - ./env/olap.env
+    environment:
+      - SPARK_WORKER_CORES=2
+    ports:
+      - "8081:8081"
+    networks:
+      - ecosim-network
+
+  spark-market-news:
+    build:
+      context: ./bigdata
+      dockerfile: ./spark/Dockerfile.spark
+    container_name: spark-market-news
+    depends_on:
+      - spark-master
+      - spark-worker
+    restart: unless-stopped
+    volumes:
+      - ./bigdata/spark/jobs:/opt/spark-apps
+    env_file:
+      - ./env/olap.env
+    command: >
+      /bin/bash -lc '
+      until (echo > /dev/tcp/spark-master/7077) >/dev/null 2>&1; do sleep 2; done;
+      until (echo > /dev/tcp/${OLAP_HDFS_WAIT_HOST:-namenode}/${OLAP_HDFS_WAIT_PORT:-9000}) >/dev/null 2>&1; do sleep 2; done;
+      until (echo > /dev/tcp/${OLAP_OP_DB_WAIT_HOST:-postgres-db}/${OLAP_OP_DB_WAIT_PORT:-5432}) >/dev/null 2>&1; do sleep 2; done;
+      /opt/spark/bin/spark-submit
+      --master spark://spark-master:7077
+      --total-executor-cores 1
+      --executor-cores 1
+      /opt/spark-apps/market_news_stream.py
+      --trigger-interval "10 minute"
+      --window-minutes 10
+      --checkpoint-path /tmp/checkpoints/market-news-stream
+      '
+    networks:
+      - ecosim-network
+
+  spark-submit-valuation:
+    build:
+      context: ./bigdata
+      dockerfile: ./spark/Dockerfile.spark
+    container_name: spark-submit-valuation
+    depends_on:
+      - spark-master
+      - spark-worker
+      - analytics-postgres
+    volumes:
+      - ./bigdata/spark/jobs:/opt/spark-apps
+    env_file:
+      - ./env/olap.env
+    command: >
+      /bin/bash -lc '
+      until (echo > /dev/tcp/spark-master/7077) >/dev/null 2>&1; do sleep 2; done;
+      until (echo > /dev/tcp/${OLAP_KAFKA_WAIT_HOST:-kafka}/${OLAP_KAFKA_WAIT_PORT:-29092}) >/dev/null 2>&1; do sleep 2; done;
+      until (echo > /dev/tcp/${OLAP_OP_DB_WAIT_HOST:-postgres-db}/${OLAP_OP_DB_WAIT_PORT:-5432}) >/dev/null 2>&1; do sleep 2; done;
+      until (echo > /dev/tcp/analytics-postgres/5432) >/dev/null 2>&1; do sleep 2; done;
+      /opt/spark/bin/spark-submit
+      --master spark://spark-master:7077
+      --total-executor-cores 1
+      --executor-cores 1
+      /opt/spark-apps/company_valutation_stream.py
+      '
+    networks:
+      - ecosim-network
+
+networks:
+  ecosim-network:
+    name: ecosim-network
+    external: true

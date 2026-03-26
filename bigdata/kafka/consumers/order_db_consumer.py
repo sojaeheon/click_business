@@ -1,20 +1,31 @@
 import time
 import json
+import os
 import psycopg2
 from datetime import datetime
 from kafka import KafkaConsumer
 from kafka.errors import NoBrokersAvailable
+
+DB_HOST = os.getenv("DB_HOST", "postgres-db")
+DB_PORT = int(os.getenv("DB_PORT", "5432"))
+DB_NAME = os.getenv("DB_NAME", "ecosim")
+DB_USER = os.getenv("DB_USER", "ecosim")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "ecosim")
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
+KAFKA_ORDER_TOPIC = os.getenv("KAFKA_ORDER_TOPIC", "market.order.events")
+KAFKA_ORDER_GROUP_ID = os.getenv("KAFKA_ORDER_GROUP_ID", "order-db-consumer")
+KAFKA_AUTO_OFFSET_RESET = os.getenv("KAFKA_AUTO_OFFSET_RESET", "earliest")
 
 # -----------------------------
 # PostgreSQL 연결
 # -----------------------------
 def get_connection():
     return psycopg2.connect(
-        host="postgres-db",
-        port=5432,
-        database="ecosim",
-        user="ecosim",
-        password="ecosim"
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
     )
 
 # -----------------------------
@@ -23,11 +34,11 @@ def get_connection():
 while True:
     try:
         consumer = KafkaConsumer(
-            'market.order.events',
-            bootstrap_servers='kafka:29092',
-            auto_offset_reset='earliest',
+            KAFKA_ORDER_TOPIC,
+            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+            auto_offset_reset=KAFKA_AUTO_OFFSET_RESET,
             enable_auto_commit=False,
-            group_id='order-db-consumer',
+            group_id=KAFKA_ORDER_GROUP_ID,
             value_deserializer=lambda x: json.loads(x.decode('utf-8'))
         )
         print("Kafka Order DB Consumer 연결 성공")
