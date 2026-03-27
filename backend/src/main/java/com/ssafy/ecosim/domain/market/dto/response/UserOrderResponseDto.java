@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 public class UserOrderResponseDto {
 
     @Schema(description = "주문 ID", example = "42")
-    private Long orderId;
+    private String orderId;
 
     @Schema(description = "아이템 ID", example = "1")
     private Integer itemId;
@@ -37,7 +37,7 @@ public class UserOrderResponseDto {
     private LocalDateTime createdAt;
 
     public UserOrderResponseDto(MarketOrder order) {
-        this.orderId = order.getId();
+        this.orderId = order.getId().toString();
         this.itemId = order.getItemId();
         this.orderType = order.getOrderType();
         this.price = order.getPrice();

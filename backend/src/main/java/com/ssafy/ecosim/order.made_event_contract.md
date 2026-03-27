@@ -107,7 +107,7 @@ DB / HDFS
 | occurred_at | timestamp(ISO) | Y | 이벤트 발생 시각 (Asia/Seoul) |
 | producer | string | Y | 이벤트 발행 주체 (`matching-engine`) |
 | company_id | string | N | 체결은 양방향이므로 `null` |
-| aggregate_id | string | Y | 집합체 ID (예: `trade_maker_123`) |
+| aggregate_id | string | Y | 집합체 ID (예: `trade_987654321`) |
 | payload | object | Y | 개별 데이터 |
 
 #### Payload: `market.trade.executed`
@@ -119,7 +119,7 @@ DB / HDFS
   "occurred_at": "2026-03-16T10:02:00+09:00",
   "producer": "matching-engine",
   "company_id": null,
-  "aggregate_id": "trade_maker_123",
+  "aggregate_id": "trade_987654321",
   "payload": {
     "trade_id": null,
     "item_id": 1,

@@ -78,7 +78,21 @@ export function MarketPage() {
   const product = useGameStore(state => state.getIndustryItemNames().product);
   const warehouseItems = useGameStore(state => state.warehouseItems);
 
+  let matUrl = "/models/props/drill.glb";
+  let prodUrl = "/models/props/rocks_B.gltf";
+  let matScale = 2;
+  let prodScale = 2;
 
+  if (industry === "GOLD_MINING" || industry === "금광업") {
+    matUrl = "/models/props/drill.glb"; matScale = 2.5;
+    prodUrl = "/models/props/Gold_Nuggets.gltf"; prodScale = 4;
+  } else if (industry === "GOLD_SMELTING" || industry === "금 제련업") {
+    matUrl = "/models/props/Gold_Nuggets.gltf"; matScale = 4;
+    prodUrl = "/models/props/Gold_Bar.gltf"; prodScale = 3;
+  } else if (industry === "MANUFACTURING" || industry === "제조업") {
+    matUrl = "/models/props/Gold_Bar.gltf"; matScale = 3;
+    prodUrl = "/models/props/drill.glb"; prodScale = 2.5;
+  }
 
   const [mode, setMode] = useState<MarketMode>(null);
   const [panelTab, setPanelTab] = useState<PanelTab>("order");
@@ -95,7 +109,7 @@ export function MarketPage() {
   const [tradeHistory, setTradeHistory] = useState<any[]>([]);
   const [pendingOrders, setPendingOrders] = useState<any[]>([]);
   const [marketTrend, setMarketTrend] = useState<"up" | "down" | "neutral">("neutral");
-  const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const currentPriceRef = useRef<HTMLDivElement>(null);
 
   const [currentPrice, setCurrentPrice] = useState<number>(0);
@@ -350,7 +364,7 @@ export function MarketPage() {
       setPanelTab("pending"); // 주문 후 대기중 탭으로 이동
       setShowPopup(true);
       setTimeout(() => setShowPopup(false), 1500);
-      
+
       // ✅ 주문 즉시 내 목록 갱신 트리거
       triggerRefresh();
     } catch (e: any) {
@@ -362,7 +376,7 @@ export function MarketPage() {
     }
   };
 
-  const handleCancelOrder = async (orderId: number) => {
+  const handleCancelOrder = async (orderId: string) => {
     setCancellingId(orderId);
     try {
       await MarketAPI.cancelOrder(orderId);
@@ -1136,9 +1150,9 @@ export function MarketPage() {
                                 <button
                                   onClick={async (e) => {
                                     e.stopPropagation();
-                                    
+
                                     // 🟢 즉각적 UI 반응 (Optimistic Update)
-                                    setTradeHistory(prev => 
+                                    setTradeHistory(prev =>
                                       prev.map(t => t.tradeHistoryId === trade.tradeHistoryId ? { ...t, isCollected: true } : t)
                                     );
 

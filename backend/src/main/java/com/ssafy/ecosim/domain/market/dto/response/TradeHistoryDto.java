@@ -13,10 +13,9 @@ import java.time.LocalDateTime;
 public class TradeHistoryDto {
 
     @Schema(description = "체결 내역 ID", example = "7")
-    private long tradeHistoryId;
+    private String tradeHistoryId;
 
-    @Schema(description = "원 주문 ID", example = "42")
-    private long orderId;
+    private String orderId;
 
     @Schema(description = "아이템 ID", example = "1")
     private int itemId;
@@ -38,8 +37,8 @@ public class TradeHistoryDto {
     private LocalDateTime createdAt;
 
     public TradeHistoryDto(TradeHistory tradeHistory) {
-        this.tradeHistoryId = tradeHistory.getId();
-        this.orderId = tradeHistory.getMarketOrderId();
+        this.tradeHistoryId = tradeHistory.getId().toString();
+        this.orderId = tradeHistory.getMarketOrderId().toString();
         this.itemId = tradeHistory.getItemId() != null ? tradeHistory.getItemId() : 0;
         this.price = tradeHistory.getPrice();
         this.executionQuantity = tradeHistory.getExecutionQuantity();

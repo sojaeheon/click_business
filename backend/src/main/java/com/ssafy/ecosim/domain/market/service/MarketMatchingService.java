@@ -102,8 +102,9 @@ public class MarketMatchingService {
         // log.debug("Updated Sell Order Remaining Qty: {}", sellOrder.getRemainingQuantity()); //
 
         // Redis 상세 캐시 업데이트 또는 삭제
-        updateOrRemoveCache(buyOrder);
-        updateOrRemoveCache(sellOrder);
+        long executedAt = gameTimeUtil.getCurrentGameTimestamp();
+        updateOrRemoveCache(buyOrder, executedAt);
+        updateOrRemoveCache(sellOrder, executedAt);
 
         // Redis 호가창 업데이트 (잔량이 0이면 제거)
         if (buyOrder.getStatus() == OrderStatus.COMPLETED) {
@@ -117,7 +118,7 @@ public class MarketMatchingService {
 
         // Redis 시장가 갱신 및 차트 데이터 갱신
         orderBookManager.setMarketPrice(itemId, matchedPrice);
-        orderBookManager.addChartData(itemId, matchedPrice, gameTimeUtil.getCurrentGameTimestamp());
+        orderBookManager.addChartData(itemId, matchedPrice, executedAt);
 
         // TradeEvent 발행
         TradeEventDto tradeEvent = TradeEventDto.builder()
@@ -130,7 +131,7 @@ public class MarketMatchingService {
                 .quantity(matchedQuantity)
                 .buyRemainingQuantity(buyOrder.getRemainingQuantity())
                 .sellRemainingQuantity(sellOrder.getRemainingQuantity())
-                .executedAt(System.currentTimeMillis())
+                .executedAt(executedAt)
                 .build();
 
         try {
@@ -166,12 +167,12 @@ public class MarketMatchingService {
 
     }
 
-    private void updateOrRemoveCache(MarketOrder order) {
+    private void updateOrRemoveCache(MarketOrder order, long updatedAt) {
         if (order.getStatus() == OrderStatus.COMPLETED) {
             orderDetailsCacheManager.removeOrderCache(order.getId());
             // log.debug("Removed order {} from cache", order.getId()); //
         } else {
-            orderDetailsCacheManager.saveOrderCache(order);
+            orderDetailsCacheManager.saveOrderCache(order, updatedAt);
             // log.debug("Updated order {} in cache", order.getId()); //
         }
     }

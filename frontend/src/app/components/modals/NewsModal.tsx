@@ -129,8 +129,7 @@ function NewsList({ onSelect }: { onSelect: (news: NewsItem) => void }) {
 
       {/* 오른쪽: 이전 뉴스 리스트 */}
       <div className="flex flex-col bg-slate-50 rounded-3xl border-2 border-slate-200 p-5 min-h-[400px] h-full" style={{ flex: 4.5 }}>
-        <div className="flex flex-col gap-3 flex-1 overflow-y-auto pr-1 hide-scrollbar" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
-          <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
+        <div className="flex flex-col gap-3 flex-1 overflow-y-auto pr-1 custom-scrollbar">
           {otherNews.length > 0 ? otherNews.map((news) => (
             <button
               key={news.id}
