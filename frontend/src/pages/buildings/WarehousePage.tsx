@@ -394,15 +394,6 @@ export function WarehousePage() {
           </div>
         </div>
 
-        {/* 🧪 테스트 지급 버튼 */}
-        <button
-          onClick={handleTestAdd}
-          className="flex items-center gap-2 px-4 py-3 rounded-2xl border-2 border-yellow-300 bg-yellow-50 text-yellow-700 font-black text-sm transition-all shadow-lg hover:bg-yellow-100 hover:border-yellow-400 cursor-pointer"
-          title="테스트 아이템 지급"
-        >
-          <Package className="w-4 h-4" />
-          테스트 지급
-        </button>
 
         {/* 🗑️ 폐기 버튼 (아이템이 있을 때만 활성화) */}
         <button
