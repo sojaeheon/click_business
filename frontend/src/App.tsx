@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { LoginPage } from './pages/LoginPage';
 import { LoginSuccessPage } from './pages/LoginSuccessPage';
+import { OnboardingPage } from './pages/OnboardingPage';
 import { IndustrySelectionPage } from './pages/IndustrySelectionPage';
 import { MainPage } from './pages/MainPage';
 import { GlobalAlert } from './app/components/ui/GlobalAlert';
@@ -52,6 +53,7 @@ function App() {
         <Routes>
           <Route path="/" element={<LoginPage />} />
           <Route path="/login/success" element={<LoginSuccessPage />} />
+          <Route path="/onboarding" element={<OnboardingPage />} />
           <Route path="/industry-selection" element={<IndustrySelectionPage />} />
           <Route path="/main" element={<MainPage />} />
         </Routes>

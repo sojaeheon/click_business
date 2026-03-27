@@ -147,6 +147,10 @@ export const IndustrySelectionPage = () => {
       }
       
       setCompanyInfo(companyName.trim(), selectedIndustry);
+      // 튜토리얼 시작 (처음 기업 생성 시)
+      if (!sessionStorage.getItem("tutorialDone")) {
+        useGameStore.getState().startTutorial();
+      }
       navigate('/main');
     } catch (e: any) {
       console.warn("회사 또는 작업장 생성 API 실패:", e);

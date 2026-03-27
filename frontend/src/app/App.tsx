@@ -6,7 +6,6 @@ import { ControlGuideModal } from "./components/modals/ControlGuideModal";
 import { Toaster } from 'sonner';
 import { useNotificationSocket } from "../hooks/useNotificationSocket";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-
 // 건물 페이지들 (Lazy Loading 적용)
 const BankPage = lazy(() => import("../pages/buildings/BankPage").then(module => ({ default: module.BankPage })));
 const WarehousePage = lazy(() => import("../pages/buildings/WarehousePage").then(module => ({ default: module.WarehousePage })));
