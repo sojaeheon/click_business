@@ -98,7 +98,7 @@ export function GameHUD({ onOpenGuide }: { onOpenGuide?: () => void }) {
           <div className="flex flex-col items-end gap-2">
             {/* 연도 */}
             <span className="text-white/60 text-lg mb-2 font-bold tracking-[0.2em] drop-shadow-[0_2px_3px_rgba(0,0,0,0.8)]">
-              {year ?? '20XX'}년
+              20XX년
             </span>
             {/* 월일 — 큰 텍스트 */}
             <span className="text-white font-black text-4xl tracking-wider leading-none drop-shadow-[0_3px_6px_rgba(0,0,0,0.7)]">

@@ -167,6 +167,13 @@ export interface GameState {
   fetchCompanyData: (companyId: number) => Promise<void>;
   fetchNews: () => Promise<void>;
   fetchGameTime: () => Promise<void>;
+
+  // 튜토리얼
+  isTutorial: boolean;
+  tutorialStep: number;
+  setTutorialStep: (step: number) => void;
+  startTutorial: () => void;
+  endTutorial: () => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -203,6 +210,13 @@ export const useGameStore = create<GameState>()(
     setBgmVolume: (v) => { localStorage.setItem("bgmVolume", String(v)); set({ bgmVolume: v }); },
     sfxVolume: Number(localStorage.getItem("sfxVolume") ?? 50),
     setSfxVolume: (v) => { localStorage.setItem("sfxVolume", String(v)); set({ sfxVolume: v }); },
+
+    // 튜토리얼
+    isTutorial: false,
+    tutorialStep: 0,
+    setTutorialStep: (step) => set({ tutorialStep: step }),
+    startTutorial: () => set({ isTutorial: true, tutorialStep: 0 }),
+    endTutorial: () => { set({ isTutorial: false, tutorialStep: 0 }); sessionStorage.setItem("tutorialDone", "true"); },
 
     equippedWorkerId: null,
     hasNewWorker: false,
