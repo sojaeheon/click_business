@@ -358,6 +358,7 @@ export function WarehousePage() {
           </div>
         </div>
 
+
         {/* 🗑️ 폐기 버튼 (아이템이 있을 때만 활성화) */}
         <button
           onClick={() => {

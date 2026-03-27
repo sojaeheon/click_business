@@ -64,7 +64,7 @@ services:
       - ./hdfs/sample-data:/sample-data
 
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9870/ || exit 1"]
+      test: [ "CMD-SHELL", "curl -f http://localhost:9870/ || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -124,10 +124,10 @@ services:
   zookeeper:
     # Confluent에서 제공하는 ZooKeeper 이미지
     image: confluentinc/cp-zookeeper:7.6.0
-    
+
     # 컨테이너 이름 지정 (docker ps에서 보기 쉽게)
     container_name: zookeeper
-    
+
     ports:
       # 호스트:컨테이너
       # ZooKeeper 기본 클라이언트 포트
@@ -136,7 +136,7 @@ services:
     environment:
       # ZooKeeper 클라이언트 접속 포트
       ZOOKEEPER_CLIENT_PORT: 2181
-      
+
       # ZooKeeper 내부 heartbeat tick 시간 (ms)
       # 클러스터에서 node 상태 체크 주기
       ZOOKEEPER_TICK_TIME: 2000
@@ -145,17 +145,16 @@ services:
       # Kafka와 통신하기 위한 Docker 네트워크
       - ecosim-network
 
-
   # -----------------------------
   # Kafka Broker 서비스
   # -----------------------------
   kafka:
     # Confluent Kafka 이미지
     image: confluentinc/cp-kafka:7.6.0
-    
+
     # 컨테이너 이름
     container_name: kafka
-    
+
     # zookeeper가 먼저 실행되도록 의존성 설정
     depends_on:
       - zookeeper
@@ -188,13 +187,13 @@ services:
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
-      
+
       # consumer offset topic replication 설정
       # single broker이므로 1로 설정
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-    
+
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 29092"]
+      test: [ "CMD-SHELL", "nc -z localhost 29092" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -213,7 +212,7 @@ services:
       - kafka
     volumes:
       - ../bigdata/kafka/scripts/create_topics.sh:/usr/local/bin/create_topics.sh
-    entrypoint: ["/bin/bash", "/usr/local/bin/create_topics.sh"]
+    entrypoint: [ "/bin/bash", "/usr/local/bin/create_topics.sh" ]
     networks:
       - ecosim-network
 
@@ -233,7 +232,7 @@ services:
       CONSUMER_TYPE: order_redis
     networks:
       - ecosim-network
-    
+
   order-db-consumer:
     build:
       context: ../bigdata
@@ -247,7 +246,7 @@ services:
       CONSUMER_TYPE: order_db
     networks:
       - ecosim-network
-    
+
   order-hdfs-consumer:
     build:
       context: ../bigdata
@@ -301,7 +300,7 @@ services:
       HDFS_FLUSH_INTERVAL_SEC: 1
     networks:
       - ecosim-network
-  
+
   # -----------------------------
   # Kafka Consumer (HDFS 적재용)
   # -----------------------------
@@ -322,7 +321,7 @@ services:
       CONSUMER_TYPE: hdfs_raw_sink
     networks:
       - ecosim-network
-      
+
   # -----------------------------
   # Kafka Exporter + Prometheus + Grafana (모니터링 스택)
   # -----------------------------
@@ -378,7 +377,6 @@ services:
       - ../bigdata/sql/analytics_schema.sql:/docker-entrypoint-initdb.d/01_analytics_schema.sql:ro
     networks:
       - ecosim-network
-
 
 networks:
   ecosim-network:

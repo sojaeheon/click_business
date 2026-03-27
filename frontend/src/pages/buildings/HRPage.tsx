@@ -138,8 +138,12 @@ export function HRPage() {
         @keyframes confetti { 0% { transform: translateY(0) rotate(0); opacity:1 } 100% { transform: translateY(60vh) rotate(720deg); opacity:0 } }
         @keyframes slideIn { from { transform: translateX(100%); opacity:0 } to { transform: translateX(0); opacity:1 } }
         @keyframes ember { 0% { transform: translateY(0) scale(1); opacity:.8 } 100% { transform: translateY(-60px) scale(0); opacity:0 } }
+        @keyframes pulse-border { 0%, 100% { border-color: rgba(52, 211, 153, 0.4); opacity: 0.6; } 50% { border-color: rgba(52, 211, 153, 1); opacity: 1; } }
+        .animate-pulse-border { animation: pulse-border 2s ease-in-out infinite; }
         .animate-shake { animation: shake .5s ease-in-out; }
         .ember { position:absolute; width:4px; height:4px; border-radius:50%; background:#f59e0b; animation: ember 1.5s ease-out forwards; }
+        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+        .animate-shimmer { background: linear-gradient(90deg, transparent 25%, rgba(255,255,255,0.1) 50%, transparent 75%); background-size: 200% 100%; animation: shimmer 2s infinite linear; }
       `}</style>
 
       {/* ── 배경 파티클 (불씨) ── */}
@@ -233,16 +237,19 @@ export function HRPage() {
             /* 미선택 상태 */
             <div className="flex flex-col items-center gap-6">
               <div
-                className="w-44 h-44 rounded-3xl border-2 border-dashed border-white/15 flex items-center justify-center cursor-pointer hover:border-amber-500/40 hover:bg-amber-500/5 transition-all group"
+                className="w-44 h-44 rounded-3xl border-2 border-dashed border-emerald-500/60 flex items-center justify-center cursor-pointer hover:border-emerald-400 hover:bg-emerald-500/10 hover:shadow-[0_0_35px_rgba(16,185,129,0.3)] transition-all group scale-110 mb-2 animate-pulse-border"
                 onClick={() => setPanelOpen(true)}
               >
-                <span className="text-6xl opacity-20 group-hover:opacity-40 transition-opacity">⚒️</span>
+                <div className="relative">
+                  <Sparkles className="w-16 h-16 text-emerald-400 opacity-100 group-hover:scale-125 transition-all duration-500 drop-shadow-[0_0_10px_rgba(52,211,153,0.8)]" />
+                  <div className="absolute inset-0 bg-emerald-500 blur-2xl opacity-20 group-hover:opacity-40 transition-opacity" />
+                </div>
               </div>
               <button
                 onClick={() => setPanelOpen(true)}
-                className="text-amber-400/80 hover:text-amber-400 font-black text-lg cursor-pointer transition-colors flex items-center gap-2"
+                className="text-white/90 hover:text-white font-black text-xl cursor-pointer transition-colors flex items-center gap-2 drop-shadow-lg"
               >
-                강화할 캐릭터 선택 <ChevronRight className="w-5 h-5" />
+                강화할 캐릭터 선택 <ChevronRight className="w-6 h-6 text-emerald-400" />
               </button>
             </div>
           )}
@@ -324,14 +331,18 @@ export function HRPage() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
-              {/* 강화 가능한 캐릭터 목록 */}
-              {allWorkerGroups.length === 0 ? (
-                <div className="flex flex-col items-center mt-10 gap-5">
-                  <span className="text-6xl opacity-15">🔒</span>
-                  <p className="text-white/30 font-bold text-sm text-center">강화 가능한 캐릭터가 없습니다</p>
-                  <p className="text-white/15 text-xs text-center leading-relaxed">미니게임에서 캐릭터를 획득하세요</p>
-                </div>
+              <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-2 custom-scrollbar">
+                {/* 강화 가능한 캐릭터 목록 */}
+                {allWorkerGroups.length === 0 ? (
+                  <div className="flex flex-col items-center mt-12 gap-5 px-6">
+                    <div className="w-20 h-20 rounded-2xl bg-white/10 flex items-center justify-center border border-white/20 shadow-inner">
+                      <span className="text-5xl drop-shadow-lg">🔒</span>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-white font-black text-lg text-center">강화 가능한 캐릭터가 없습니다</p>
+                      <p className="text-white/70 text-sm text-center leading-relaxed mt-1">미니게임에서 캐릭터를 획득하세요</p>
+                    </div>
+                  </div>
               ) : allWorkerGroups.map(({ item, total }) => {
                 const d = getWorkerDefByLevel(item.level ?? 1);
                 const itemLv = item.level ?? 1;
@@ -350,7 +361,10 @@ export function HRPage() {
                         setPanelOpen(false);
                       }}
                       disabled={!canUpgrade}
-                      className={`w-full flex items-center gap-4 p-4 rounded-xl text-left transition-all ${canUpgrade ? "cursor-pointer" : "cursor-not-allowed"
+                      className={`w-full flex items-center gap-4 p-4 rounded-xl text-left transition-all border-2
+                        ${canUpgrade 
+                          ? "cursor-pointer border-transparent hover:border-orange-500 hover:bg-orange-500/10 hover:shadow-[0_0_15px_rgba(249,115,22,0.3)]" 
+                          : "cursor-not-allowed border-transparent opacity-60"
                         }`}
                       style={{
                         background: sel ? `${c}15` : "rgba(255,255,255,.03)",
@@ -365,8 +379,8 @@ export function HRPage() {
                         />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className={`font-black truncate ${canUpgrade ? "text-white/90" : "text-white/30"}`}>{d.displayName}</p>
-                        <p className="text-xs font-bold" style={{ color: canUpgrade ? `${c}99` : "rgba(255,255,255,0.15)" }}>Lv.{itemLv} — {WORKER_LEVEL_NAMES[itemLv]}</p>
+                        <p className={`font-black truncate ${canUpgrade ? "text-white/95" : "text-white/60"}`}>{d.displayName}</p>
+                        <p className="text-xs font-bold" style={{ color: canUpgrade ? `${c}` : "rgba(255,255,255,0.4)" }}>Lv.{itemLv} — {WORKER_LEVEL_NAMES[itemLv]}</p>
                       </div>
                       <div className="flex flex-col items-end gap-1">
                         <span className={`text-sm font-black ${canUpgrade ? "text-emerald-400" : "text-white/25"}`}>x{total}</span>
@@ -378,9 +392,9 @@ export function HRPage() {
 
                     {/* 2개 미만 마스킹 오버레이 */}
                     {!canUpgrade && (
-                      <div className="absolute inset-0 rounded-xl pointer-events-none" style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(1px)" }}>
+                      <div className="absolute inset-0 rounded-xl pointer-events-none" style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(0.5px)" }}>
                         <div className="absolute inset-0 flex items-center justify-center">
-                          <span className="text-xs font-black text-white/40 bg-black/50 px-3 py-1 rounded-full">🔒 {2 - total}개 부족</span>
+                          <span className="text-xs font-black text-white bg-black/60 border border-white/20 px-3 py-1 rounded-full shadow-lg">🔒 {2 - total}개 부족</span>
                         </div>
                       </div>
                     )}
@@ -389,34 +403,42 @@ export function HRPage() {
               })}
 
               {/* ── 장착중인 일꾼 섹션 ── */}
-              {equippedWorkerItem && (
-                <>
-                  <div className="mt-4 mb-2 px-1">
-                    <p className="text-[11px] font-black text-white/30 uppercase tracking-widest">장착중인 일꾼</p>
-                  </div>
-                  <div className="relative">
-                    <div
-                      className="w-full flex items-center gap-4 p-4 rounded-xl"
-                      style={{
-                        background: "rgba(255,255,255,.03)",
-                        border: `1px solid rgba(255,255,255,.05)`,
-                        opacity: 0.55,
-                      }}
-                    >
-                      <div className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl" style={{ background: `${LEVEL_COLORS[equippedWorkerItem.level ?? 1] ?? '#6b7280'}15`, border: `2px solid ${LEVEL_COLORS[equippedWorkerItem.level ?? 1] ?? '#6b7280'}30` }}>
-                        {getWorkerDefByLevel(equippedWorkerItem.level ?? 1).icon}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-black truncate text-white/50">{equippedWorkerItem.name}</p>
-                        <p className="text-xs font-bold text-white/25 flex items-center gap-2">
-                          Lv.{equippedWorkerItem.level ?? 1}
-                          <span className="text-[10px] font-black text-white/30 bg-white/5 px-1.5 py-0.5 rounded-full">⛔ 강화 불가</span>
-                        </p>
-                      </div>
-                      <span className="text-xs font-black text-amber-400/60 bg-amber-500/10 px-2 py-0.5 rounded-full">장착중</span>
+              <div className="mt-6 mb-3 px-1">
+                <p className="text-xs font-black text-white/70 uppercase tracking-widest">장착중인 일꾼</p>
+              </div>
+
+              {equippedWorkerItem ? (
+                <div className="relative group/equipped p-1">
+                  <div
+                    className="w-full flex items-center gap-4 p-5 rounded-2xl relative overflow-hidden transition-all hover:scale-[1.02]"
+                    style={{
+                      background: "linear-gradient(135deg, rgba(234, 179, 8, 0.15) 0%, rgba(234, 179, 8, 0.05) 100%)",
+                      border: "2px solid rgba(234, 179, 8, 0.5)",
+                      boxShadow: "0 4px 15px rgba(0, 0, 0, 0.3)",
+                    }}
+                  >
+                    <div className="w-14 h-14 rounded-xl flex items-center justify-center text-3xl relative z-10" style={{ background: "rgba(234, 179, 8, 0.2)", border: "2px solid rgba(234, 179, 8, 0.4)" }}>
+                      {getWorkerDefByLevel(equippedWorkerItem.level ?? 1).icon}
+                    </div>
+                    <div className="flex-1 min-w-0 relative z-10">
+                      <p className="font-black text-lg truncate text-white">{equippedWorkerItem.name}</p>
+                      <p className="text-sm font-bold text-white/90 flex items-center gap-2 mt-0.5">
+                        Lv.{equippedWorkerItem.level ?? 1}
+                        <span className="text-[11px] font-black text-white/70 bg-black/60 px-2 py-0.5 rounded-full border border-white/10">강화 불가</span>
+                      </p>
+                    </div>
+                    <div className="relative z-10">
+                      <span className="text-xs font-black text-amber-950 bg-amber-400 px-4 py-1.5 rounded-full border-2 border-white/20 whitespace-nowrap">장착중</span>
                     </div>
                   </div>
-                </>
+                </div>
+              ) : (
+                <div className="w-full flex flex-col items-center justify-center py-8 px-6 rounded-2xl bg-white/10 border-2 border-dashed border-white/20 gap-4">
+                  <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center">
+                    <span className="text-3xl opacity-80">🔒</span>
+                  </div>
+                  <p className="text-white/90 font-black text-sm text-center">아직 장착된 일꾼이 없습니다</p>
+                </div>
               )}
             </div>
 

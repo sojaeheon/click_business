@@ -70,16 +70,18 @@ const CustomCandle = (props: any) => {
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
-    const isUp = (data.close ?? data.price) >= (data.open ?? data.price);
-    const color = isUp ? "text-rose-500" : "text-blue-500";
+    const gameDateLabel = data.gameDate ? `20XX년 ${data.gameDate.replace('/', '월 ')}일` : "날짜 미상";
     return (
-      <div className="bg-white/95 backdrop-blur p-3 rounded-xl border-2 border-slate-200 shadow-xl font-bold text-slate-700 text-xs">
-        <div className="border-b border-slate-100 pb-1 mb-1 text-[13px] text-slate-500">시간: {label}</div>
-        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
-          <span>시가:</span> <span className="text-black font-black">₩{(data.open ?? data.price)?.toLocaleString()}</span>
-          <span>종가:</span> <span className="text-black font-black">₩{(data.close ?? data.price)?.toLocaleString()}</span>
-          <span>최고가:</span> <span className="text-rose-500 font-black">₩{(data.high ?? data.price)?.toLocaleString()}</span>
-          <span>최저가:</span> <span className="text-blue-500 font-black">₩{(data.low ?? data.price)?.toLocaleString()}</span>
+      <div className="bg-[#0f172a]/95 backdrop-blur-xl p-4 rounded-2xl border border-white/10 shadow-2xl font-bold text-white text-xs min-w-[160px]">
+        <div className="border-b border-white/10 pb-2 mb-2">
+          <div className="text-[14px] text-amber-400 mb-1">{gameDateLabel}</div>
+          <div className="text-[13px] text-slate-400">시간: {data.fullTime || label}</div>
+        </div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 pt-1">
+          <span className="text-slate-400">시가:</span> <span className="text-right font-black">₩{(data.open ?? data.price)?.toLocaleString()}</span>
+          <span className="text-slate-400">종가:</span> <span className="text-right font-black">₩{(data.close ?? data.price)?.toLocaleString()}</span>
+          <span className="text-rose-400">최고가:</span> <span className="text-right font-black">₩{(data.high ?? data.price)?.toLocaleString()}</span>
+          <span className="text-blue-400">최저가:</span> <span className="text-right font-black">₩{(data.low ?? data.price)?.toLocaleString()}</span>
         </div>
       </div>
     );
@@ -387,15 +389,18 @@ export function MarketPage() {
     let prevClose: number = currentPrice || 0;
     const confirmed = chartData.map((c, idx) => {
       const dt = new Date(c.timestamp ?? 0);
-      // 게임 시간은 UTC 기준 (KST +9 보정 제거)
       const hh = dt.getUTCHours().toString().padStart(2, '0');
       const mm = dt.getUTCMinutes().toString().padStart(2, '0');
-      const label = `${hh}:${mm}`;
+      // X축 표시용 레이블 (00시)
+      const label = `${hh}시`;
+      // 툴팁용 정교한 시간
+      const fullTime = `${hh}:${mm}`;
       const gameDate = `${(dt.getUTCMonth() + 1).toString().padStart(2, '0')}/${dt.getUTCDate().toString().padStart(2, '0')}`;
       const prev = idx === 0 ? (currentPrice || c.close || 0) : (chartData[idx - 1].close ?? prevClose);
       prevClose = c.close ?? prevClose;
       return {
         time: label,
+        fullTime,
         gameDate,
         price: c.close ?? 0,
         open: c.open ?? c.close ?? 0,
@@ -417,11 +422,13 @@ export function MarketPage() {
       const dt = new Date(liveTs);
       const hh = dt.getUTCHours().toString().padStart(2, '0');
       const mm = dt.getUTCMinutes().toString().padStart(2, '0');
-      const label = `${hh}:${mm}`;
+      const label = `${hh}시`;
+      const fullTime = `${hh}:${mm}`;
       const gameDate = `${(dt.getUTCMonth() + 1).toString().padStart(2, '0')}/${dt.getUTCDate().toString().padStart(2, '0')}`;
       const openPrice = prevClose || currentPrice;
       liveCandle = {
         time: label,
+        fullTime,
         gameDate,
         price: currentPrice,
         open: openPrice,
@@ -718,28 +725,29 @@ export function MarketPage() {
                         <ComposedChart data={displayChartData} margin={{ top: 10, right: 10, left: 20, bottom: 5 }}>
                           <defs>
                             <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor={isUpTrend ? "#f43f5e" : "#3b82f6"} stopOpacity={0.4} />
-                              <stop offset="95%" stopColor={isUpTrend ? "#f43f5e" : "#3b82f6"} stopOpacity={0.0} />
+                              <stop offset="5%" stopColor={isUpTrend ? "#f43f5e" : (customDiff < 0 ? "#3b82f6" : "#cbd5e1")} stopOpacity={0.4} />
+                              <stop offset="95%" stopColor={isUpTrend ? "#f43f5e" : (customDiff < 0 ? "#3b82f6" : "#cbd5e1")} stopOpacity={0.0} />
                             </linearGradient>
                           </defs>
                           <XAxis
                             dataKey="time"
-                            stroke="#cbd5e1"
                             interval={0}
-                            height={36}
+                            axisLine={false}
+                            tickLine={false}
+                            height={40}
                             tick={(props: any) => {
-                              const { x, y, payload, index } = props;
+                              const { x, y, index } = props;
                               const item = displayChartData[index];
                               if (!item || item.isEmpty) return <g />;
                               const prevItem = index > 0 ? displayChartData[index - 1] : null;
                               const showDate = item.gameDate && (!prevItem || prevItem.gameDate !== item.gameDate);
                               return (
-                                <g transform={`translate(${x},${y})`}>
-                                  <text x={0} y={0} dy={12} textAnchor="middle" fill="#94a3b8" fontSize={9}>
+                                <g transform={`translate(${x - 30},${y})`}>
+                                  <text x={0} y={0} dy={12} textAnchor="start" fill="#94a3b8" fontSize={9} fontWeight="bold">
                                     {item.time}
                                   </text>
                                   {showDate && (
-                                    <text x={0} y={0} dy={24} textAnchor="middle" fill="#64748b" fontSize={8} fontWeight="bold">
+                                    <text x={0} y={0} dy={24} textAnchor="start" fill="#f59e0b" fontSize={8} fontWeight="black">
                                       {item.gameDate}
                                     </text>
                                   )}
@@ -765,7 +773,7 @@ export function MarketPage() {
                             <Area
                               type="linear"
                               dataKey="price"
-                              stroke={isUpTrend ? "#f43f5e" : "#3b82f6"}
+                              stroke={isUpTrend ? "#f43f5e" : (customDiff < 0 ? "#3b82f6" : "#cbd5e1")}
                               strokeWidth={3}
                               fill="url(#colorPrice)"
                               isAnimationActive={false}
@@ -1150,7 +1158,7 @@ export function MarketPage() {
                                   className="px-2 py-0.5 bg-amber-500 text-white text-[11px] font-black rounded-lg hover:bg-amber-600 transition-colors"
                                 >
                                   수령
-                                  ㅋ                               </button>
+                                </button>
                               )}
                               {trade.isCollected && (
                                 <span className="text-[11px] text-slate-400 font-bold">수령 완료</span>
