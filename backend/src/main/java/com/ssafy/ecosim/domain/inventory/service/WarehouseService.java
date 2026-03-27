@@ -124,6 +124,7 @@ public class WarehouseService {
         slots.sort(Comparator.comparingInt(WarehouseSlot::getSlotIndex));
         long remaining = amount;
         Instant now = Instant.now();
+        String eventReason = normalizeReason(reason, "WAREHOUSE_ITEM_STORED");
 
         for (WarehouseSlot slot : slots) {
             if (slot.getItem() != null && slot.getItem().getId().equals(itemId)) {
@@ -132,8 +133,7 @@ public class WarehouseService {
                     long added = Math.min(space, remaining);
                     slot.addItem(item, added);
                     remaining -= added;
-                    if (reason != null)
-                        publishStored(warehouse, slot, companyId, itemId, added, now, reason);
+                    publishStored(warehouse, slot, companyId, itemId, added, now, eventReason);
                     if (remaining == 0)
                         return;
                 }
@@ -145,8 +145,7 @@ public class WarehouseService {
                 long added = Math.min(item.getMaxStackSize(), remaining);
                 slot.addItem(item, added);
                 remaining -= added;
-                if (reason != null)
-                    publishStored(warehouse, slot, companyId, itemId, added, now, reason);
+                publishStored(warehouse, slot, companyId, itemId, added, now, eventReason);
                 if (remaining == 0)
                     return;
             }
@@ -178,6 +177,7 @@ public class WarehouseService {
 
         long remaining = amount;
         Instant now = Instant.now();
+        String eventReason = normalizeReason(reason, "WAREHOUSE_ITEM_REMOVED");
         for (WarehouseSlot slot : slots) {
             if (remaining <= 0)
                 break;
@@ -188,8 +188,7 @@ public class WarehouseService {
             else
                 slot.setItemAndQuantity(slot.getItem(), quantityAfter);
             remaining -= take;
-            if (reason != null)
-                publishRemoved(warehouse, slot, companyId, itemId, take, quantityAfter, now, reason);
+            publishRemoved(warehouse, slot, companyId, itemId, take, quantityAfter, now, eventReason);
         }
     }
 
@@ -209,6 +208,13 @@ public class WarehouseService {
                 warehouse.getId(), slot.getId(), slot.getSlotIndex(),
                 companyId, itemId, quantityDelta, quantityAfter,
                 reason, removedAt));
+    }
+
+    private String normalizeReason(String reason, String fallbackReason) {
+        if (reason == null || reason.isBlank()) {
+            return fallbackReason;
+        }
+        return reason;
     }
 
     public long getItemQuantity(Long companyId, Long itemId) {

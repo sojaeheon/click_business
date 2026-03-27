@@ -57,7 +57,7 @@ const handleGuestMode = async () => {
         }
       } catch { /* 기업 없음 → 산업선택으로 */ }
 
-      window.location.href = '/industry-selection';
+      window.location.href = '/onboarding';
     } catch (error) {
       console.error("게스트 로그인 실패:", error);
       useAlertStore.getState().openAlert("서버와 연결할 수 없습니다. 백엔드(8000번 포트)가 켜져 있는지 확인해 주세요.", "서버 오류");

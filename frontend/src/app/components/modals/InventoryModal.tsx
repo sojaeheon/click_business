@@ -182,7 +182,7 @@ export function InventoryModal() {
 
           <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
 
-            <div className="grid grid-cols-3 gap-5 pb-4">
+            <div className="grid grid-cols-3 gap-5 pt-4 px-4 pb-4">
               {slotsToDisplay.map((_, idx) => {
                 const isLocked = idx >= inventoryMax;
                 const isExpandable = isLocked && idx === inventoryMax;
@@ -214,11 +214,11 @@ export function InventoryModal() {
                           : "bg-gray-100/30 border-2 border-dashed border-gray-200 opacity-60 cursor-not-allowed"
                         : item
                           ? isSelected
-                            ? "bg-gradient-to-br from-indigo-50 to-blue-50 border-2 border-indigo-400 shadow-[0_8px_20px_rgba(79,70,229,0.2)] cursor-pointer ring-4 ring-indigo-200 ring-offset-2 scale-105 z-10"
+                            ? "bg-gradient-to-br from-indigo-50 to-blue-50 border-2 border-indigo-400 shadow-[0_8px_20px_rgba(79,70,229,0.2)] cursor-pointer ring-4 ring-indigo-200 ring-offset-2 z-10"
                             : "bg-white border-2 border-slate-200 hover:border-indigo-300 hover:shadow-lg cursor-pointer hover:-translate-y-1 shadow-sm"
                           : "bg-gray-50/50 border-2 border-dashed border-slate-200 hover:bg-slate-100/50 cursor-pointer"
                       }
-                      ${isDragOver ? "ring-4 ring-blue-300 ring-offset-2 scale-105 z-10 border-blue-400" : ""}
+                      ${isDragOver ? "ring-4 ring-blue-300 ring-offset-2 z-10 border-blue-400" : ""}
                     `}
                   >
                     <span className="absolute top-2 left-3 text-[10px] font-black text-gray-400 tracking-wider">

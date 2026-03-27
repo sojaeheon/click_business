@@ -20,7 +20,7 @@ export const LoginSuccessPage = () => {
     // 이미 회사가 있으면 /main, 없으면 /industry-selection
     apiClient.get('/companies/me')
       .then(() => navigate('/main', { replace: true }))
-      .catch(() => navigate('/industry-selection', { replace: true }));
+      .catch(() => navigate('/onboarding', { replace: true }));
   }, [navigate]);
 
   return null;
