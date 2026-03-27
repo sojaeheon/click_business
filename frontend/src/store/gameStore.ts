@@ -1,9 +1,8 @@
 import { create } from "zustand";
 
 // 🚨 gameApi.ts에 정의된 정확한 이름인 대문자 CompanyAPI로 가져옵니다.
-import { CompanyAPI, WarehouseAPI, InventoryAPI, BankAPI, WorkstationAPI, NewsAPI } from "../api/gameApi";
-import { WORKER_DEFINITIONS, getWorkerDefByLevel } from "../constants/workers";
-import { useAlertStore } from "./useAlertStore";
+import { CompanyAPI, WarehouseAPI, InventoryAPI, BankAPI, WorkstationAPI, NewsAPI, GameTimeAPI } from "../api/gameApi";
+
 
 // ─────────────────────────────────────────────────────────────────────────
 // 1. 타입 정의 (Types)
@@ -167,6 +166,7 @@ export interface GameState {
 
   fetchCompanyData: (companyId: number) => Promise<void>;
   fetchNews: () => Promise<void>;
+  fetchGameTime: () => Promise<void>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -473,23 +473,23 @@ export const useGameStore = create<GameState>()(
         });
 
         set({ news: mappedNews });
-
-        // ★ 뉴스의 가장 최근 publishedAt에서 인게임 날짜 추출
-        if (newsData.length > 0) {
-          const latest = newsData[0];
-          let dateStr = "";
-          if (typeof latest.publishedAt === "string") {
-            dateStr = latest.publishedAt.split('T')[0];
-          } else if (Array.isArray(latest.publishedAt)) {
-            const [y, m, d] = latest.publishedAt;
-            dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-          }
-          if (dateStr) set({ inGameDate: dateStr });
-        }
       } catch (err) {
         console.error("뉴스 데이터 로드 실패:", err);
       }
-    }
+    },
+
+    fetchGameTime: async () => {
+      try {
+        const time = await GameTimeAPI.getCurrentTime();
+        // currentTick: 0~599 (10분 사이클 내 현재 위치)
+        set({
+          inGameDate: time.formattedDate,
+          dayProgress: (time.currentTick ?? 0) / 600,
+        });
+      } catch (err) {
+        console.error("게임 시간 로드 실패:", err);
+      }
+    },
   })
 );
 

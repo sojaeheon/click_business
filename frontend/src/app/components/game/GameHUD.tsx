@@ -23,26 +23,14 @@ export function GameHUD({ onOpenGuide }: { onOpenGuide?: () => void }) {
   const dayProgress = useGameStore(s => s.dayProgress);
   const unreadAlerts = state.alerts.filter((n) => !n.read).length;
 
-  // ★ 게임 날짜 폴링 (뉴스 API에서 추출) — 60초마다 갱신
+  // ★ 게임 시간 폴링 (GameTimeAPI) — 10초마다 갱신
   useEffect(() => {
+    useGameStore.getState().fetchGameTime();
     useGameStore.getState().fetchNews();
-    const interval = setInterval(() => useGameStore.getState().fetchNews(), 60000);
-    return () => clearInterval(interval);
+    const timeInterval = setInterval(() => useGameStore.getState().fetchGameTime(), 10000);
+    const newsInterval = setInterval(() => useGameStore.getState().fetchNews(), 60000);
+    return () => { clearInterval(timeInterval); clearInterval(newsInterval); };
   }, []);
-
-  // ★ 하루 경과 슬라이더 (10분 = 1일, 프론트 자체 계산)
-  // inGameDate가 바뀔 때마다 dayStart를 기록, 이후 elapsed / 600초로 progress 계산
-  useEffect(() => {
-    if (!inGameDate || inGameDate === "2020-01-01") return;
-    const dayStartRef = Date.now();
-    const DAY_MS = 10 * 60 * 1000; // 10분
-    const tick = setInterval(() => {
-      const elapsed = Date.now() - dayStartRef;
-      useGameStore.setState({ dayProgress: Math.min(1, elapsed / DAY_MS) });
-    }, 1000);
-    // 날짜 바뀌면 리셋
-    return () => clearInterval(tick);
-  }, [inGameDate]);
 
   const [year, month, day] = inGameDate.split('-');
   const progressPct = Math.min(Math.max(dayProgress * 100, 0), 100);
@@ -110,24 +98,34 @@ export function GameHUD({ onOpenGuide }: { onOpenGuide?: () => void }) {
           <div className="flex flex-col items-end gap-2">
             {/* 연도 */}
             <span className="text-white/60 text-lg mb-2 font-bold tracking-[0.2em] drop-shadow-[0_2px_3px_rgba(0,0,0,0.8)]">
-              20XX년
+              {year ?? '20XX'}년
             </span>
             {/* 월일 — 큰 텍스트 */}
             <span className="text-white font-black text-4xl tracking-wider leading-none drop-shadow-[0_3px_6px_rgba(0,0,0,0.7)]">
               {`${parseInt(month)}월 ${parseInt(day)}일`}
             </span>
             {/* 하루 경과 슬라이더 */}
-            <div className="relative w-full mt-3 h-3 bg-[#292631] rounded-full border border-gray-600 shadow-inner mt-0.5">
+            <div className="relative w-36 mt-5">
+              {/* 프로그레스 바 */}
+              <div className="h-3.5 bg-[#1a1825] rounded-full border border-gray-600 shadow-inner overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-[2000ms] ease-linear"
+                  style={{
+                    width: `${progressPct}%`,
+                    background: 'linear-gradient(90deg, #f59e0b 0%, #fbbf24 40%, #fde68a 70%, #fbbf24 100%)',
+                    backgroundSize: '200% 100%',
+                    animation: 'shimmer 2s linear infinite',
+                  }}
+                />
+              </div>
+              {/* 해 이모지 — 바 위에 떠있음 */}
               <div
-                className="absolute left-0 top-0 h-full rounded-full transition-all duration-1000 ease-linear bg-gradient-to-r from-amber-500 to-amber-300"
-                style={{ width: `${progressPct}%` }}
-              />
-              <div
-                className="absolute -top-2.5 -translate-x-1/2 z-10 text-lg drop-shadow-[0_2px_4px_rgba(0,0,0,0.7)] transition-all duration-1000 ease-linear select-none"
-                style={{ left: `${Math.max(8, progressPct)}%` }}
+                className="absolute -top-5 -translate-x-1/2 z-10 text-xl drop-shadow-[0_2px_4px_rgba(0,0,0,0.7)] transition-all duration-[2000ms] ease-linear select-none"
+                style={{ left: `${Math.max(5, Math.min(95, progressPct))}%` }}
               >
                 ☀️
               </div>
+              <style>{`@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
             </div>
           </div>
 
