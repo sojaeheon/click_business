@@ -30,7 +30,8 @@ public class Company extends BaseEntity {
 
     public IndustryType getIndustryType() {
         for (IndustryType type : IndustryType.values()) {
-            if (type.getIndustryId().equals(this.industryId)) return type;
+            if (type.getIndustryId().equals(this.industryId))
+                return type;
         }
         return null;
     }
@@ -65,8 +66,8 @@ public class Company extends BaseEntity {
         this.inputItemId = industryType.getInputItemId();
         this.outputItemId = industryType.getOutputItemId();
         this.level = 1;
-        this.cash = 1_000_000L;   // 초기 지급 현금 100만원
-        this.totalAsset = 1_000_000L;
+        this.cash = 5_000_000L; // 초기 지급 현금 100만원
+        this.totalAsset = 5_000_000L;
     }
 
     // 매도 체결 수령 시 현금 입금
