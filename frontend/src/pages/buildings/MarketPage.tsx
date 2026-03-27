@@ -345,12 +345,14 @@ export function MarketPage() {
         detail: "주문이 시장에 등록되었습니다. 체결 내역에서 수령해주세요!"
       });
 
-      setTimeout(() => {
-        setShowPopup(false);
-        setPrice(0);
-        setQuantity(0);
-        setPanelTab("pending"); // 주문 후 대기중 탭으로 이동
-      }, 1500);
+      setQuantity(0);
+      setPrice(0);
+      setPanelTab("pending"); // 주문 후 대기중 탭으로 이동
+      setShowPopup(true);
+      setTimeout(() => setShowPopup(false), 1500);
+      
+      // ✅ 주문 즉시 내 목록 갱신 트리거
+      triggerRefresh();
     } catch (e: any) {
       console.error(e);
       const errorDetail = e.response?.data?.message || e.message || "서버 통신 중 알 수 없는 오류가 발생했습니다.";
@@ -371,6 +373,8 @@ export function MarketPage() {
       useAlertStore.getState().openAlert(msg, "취소 오류");
     } finally {
       setCancellingId(null);
+      // ✅ 취소 즉시 내 목록 갱신 트리거
+      triggerRefresh();
     }
   };
 
@@ -1132,14 +1136,24 @@ export function MarketPage() {
                                 <button
                                   onClick={async (e) => {
                                     e.stopPropagation();
+                                    
+                                    // 🟢 즉각적 UI 반응 (Optimistic Update)
+                                    setTradeHistory(prev => 
+                                      prev.map(t => t.tradeHistoryId === trade.tradeHistoryId ? { ...t, isCollected: true } : t)
+                                    );
+
                                     try {
                                       await MarketAPI.collectTrade(trade.tradeHistoryId);
                                       await useGameStore.getState().fetchCompanyData(1);
+                                      // 수동 새로고침도 하되, 서버 DB 반영 시차로 인해 버튼이 다시 생기지 않도록 관리
+                                      triggerRefresh();
                                       useGameStore.getState().addAlert({
                                         message: "체결 결과 수령 완료",
                                         detail: `${trade.executionQuantity}개가 정산되었습니다.`
                                       });
                                     } catch (err: any) {
+                                      // 에러 발생 시 원래 상태로 복원
+                                      triggerRefresh();
                                       const msg = err.response?.data?.message || err.message || "수령에 실패했습니다.";
                                       useAlertStore.getState().openAlert(msg, "수령 오류");
                                     }
@@ -1147,7 +1161,7 @@ export function MarketPage() {
                                   className="px-2 py-0.5 bg-amber-500 text-white text-[11px] font-black rounded-lg hover:bg-amber-600 transition-colors"
                                 >
                                   수령
-                                  ㅋ                               </button>
+                                </button>
                               )}
                               {trade.isCollected && (
                                 <span className="text-[11px] text-slate-400 font-bold">수령 완료</span>
