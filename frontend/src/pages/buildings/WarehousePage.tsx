@@ -318,42 +318,6 @@ export function WarehousePage() {
     setShowDiscard(false);
   };
 
-  const handleTestAdd = async () => {
-    try {
-      const gameStore = useGameStore.getState();
-      const ind = gameStore.industry;
-      // 백엔드 IndustryType.java 명세 기반 ID: 드릴(3), 금광석(1), 금괴(2)
-      let targetItemId = 3; // 기본 드릴 (금광업용)
-      if (ind === "GOLD_SMELTING" || ind === "금 제련업") targetItemId = 1; // 금광석 (제련업용)
-      if (ind === "MANUFACTURING" || ind === "제조업") targetItemId = 2;    // 금괴 (제조업용)
-
-      // 빈 슬롯 수 × 아이템별 스택 사이즈로 안전한 지급량 계산
-      const maxStackByItem: Record<number, number> = { 1: 100, 2: 50, 3: 10 };
-      const maxStack = maxStackByItem[targetItemId] ?? 10;
-      const emptySlots = slots.filter(s => !s.locked && s.item === null).length;
-      const amount = Math.min(maxStack * emptySlots, 100);
-
-      if (amount <= 0) {
-        useAlertStore.getState().openAlert(
-          "창고에 빈 슬롯이 없어 아이템을 추가할 수 없습니다. 슬롯을 비우거나 확장해 주세요.",
-          "창고 공간 부족"
-        );
-        return;
-      }
-
-      await WarehouseAPI.addTestItem({ itemId: targetItemId, amount });
-      await fetchSlots(); // UI 갱신
-
-      useAlertStore.getState().openAlert(
-        `테스트 아이템(ID: ${targetItemId}) ${amount}개가 지급되었습니다!`,
-        "테스트 지급 완료"
-      );
-    } catch (err: any) {
-      const msg = err?.response?.data?.message ?? "알 수 없는 오류가 발생했습니다.";
-      useAlertStore.getState().openAlert(msg, "테스트 지급 실패");
-    }
-  };
-
   const localUnlocked = slots.filter(s => !s.locked).length;
   const localUsed = slots.filter(s => !s.locked && s.item !== null).length;
   const localPercent = localUnlocked > 0 ? Math.min((localUsed / localUnlocked) * 100, 100) : 0;

@@ -384,7 +384,7 @@ export const GameTimeAPI = {
    * 현재 게임 시뮬레이션 시간 조회
    */
   getCurrentTime: async (): Promise<GameTimeResponse> => {
-    const res = await apiClient.get('/api/game/time/current');
+    const res = await apiClient.get('/api/game/time/current', { baseURL: '/' });
     return res.data;
   }
 };
