@@ -5,7 +5,7 @@ import { useAlertStore } from "../store/useAlertStore";
 import { preloadGameModels } from "../app/components/game/preload";
 import { CompanyAPI, WorkstationAPI } from "../api/gameApi";
 import { Canvas } from '@react-three/fiber';
-import { useGLTF, OrbitControls, Environment } from '@react-three/drei';
+import { useGLTF, OrbitControls } from '@react-three/drei';
 
 /** ocean.glb 3D 배경 모델 */
 function OceanModel() {
@@ -24,7 +24,7 @@ function OceanBackground() {
         <directionalLight position={[5, 10, 5]} intensity={1.5} />
         <Suspense fallback={null}>
           <OceanModel />
-          <Environment preset="sunset" />
+          <hemisphereLight args={['#ff8844', '#0044ff', 0.6]} />
         </Suspense>
         <OrbitControls
           enableZoom={false}
