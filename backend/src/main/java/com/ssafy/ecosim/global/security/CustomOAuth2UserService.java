@@ -8,7 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
-import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
+import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,28 +46,46 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     }
 
     private User saveOrUpdateUser(String provider, String providerUserId, String email) {
-        // 1. 이미 가입된 OAuth 정보가 있는지 확인
-        return userOauthRepository.findByProviderAndProviderUserId(provider, providerUserId)
-                .map(UserOauth::getUser)
-                .orElseGet(() -> {
-                    // 2. 가입된 정보가 없다면, 현재 요청 쿠키에 게스트 ID가 있는지 확인 (연동 처리)
-                    Long guestId = getGuestIdFromCookie();
-                    User user;
+        Long guestId = getGuestIdFromCookie();
+        var existingOauth = userOauthRepository.findByProviderAndProviderUserId(provider, providerUserId);
 
-                    if (guestId != null) {
-                        user = userRepository.findById(guestId)
-                                .orElseGet(() -> createNewUser());
-                        if (user.getIsGuest()) {
-                            user.promoteFromGuest(); // 게스트에서 일반 유저로 승격
+        if (existingOauth.isPresent()) {
+            // 이미 가입된 OAuth 계정이 존재
+            if (guestId != null) {
+                // 게스트 연동 시도인데 이미 가입된 계정 → 충돌
+                // 프론트에서 confirm=true 파라미터로 재시도하면 기존 계정으로 로그인
+                HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes())
+                        .getRequest();
+                String confirm = null;
+                if (request.getCookies() != null) {
+                    for (Cookie cookie : request.getCookies()) {
+                        if ("GUEST_LINK_CONFIRM".equals(cookie.getName())) {
+                            confirm = cookie.getValue();
                         }
-                    } else {
-                        user = createNewUser();
                     }
+                }
+                if (!"true".equals(confirm)) {
+                    throw new OAuth2AuthenticationException(new OAuth2Error("GUEST_CONFLICT", "이미 가입된 계정입니다", null));
+                }
+            }
+            return existingOauth.get().getUser();
+        }
 
-                    UserOauth oauth = new UserOauth(user, provider, providerUserId, email);
-                    userOauthRepository.save(oauth);
-                    return user;
-                });
+        // 새 OAuth 연동
+        User user;
+        if (guestId != null) {
+            user = userRepository.findById(guestId)
+                    .orElseGet(this::createNewUser);
+            if (user.getIsGuest()) {
+                user.promoteFromGuest();
+            }
+        } else {
+            user = createNewUser();
+        }
+
+        UserOauth oauth = new UserOauth(user, provider, providerUserId, email);
+        userOauthRepository.save(oauth);
+        return user;
     }
 
     private User createNewUser() {
@@ -81,14 +99,20 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
                     .getRequest();
 
             if (request.getCookies() != null) {
+                System.out.println("[CustomOAuth2UserService] Cookies present: " + request.getCookies().length);
                 for (jakarta.servlet.http.Cookie cookie : request.getCookies()) {
+                    System.out.println("[CustomOAuth2UserService] Cookie: " + cookie.getName() + " = " + cookie.getValue());
                     if ("GUEST_ID".equals(cookie.getName())) {
-                        return Long.parseLong(cookie.getValue());
+                        Long guestId = Long.parseLong(cookie.getValue());
+                        System.out.println("[CustomOAuth2UserService] Found GUEST_ID: " + guestId);
+                        return guestId;
                     }
                 }
+            } else {
+                System.out.println("[CustomOAuth2UserService] No cookies in request!");
             }
         } catch (Exception e) {
-            // 쿠키 접근 또는 파싱 실패 시 무시
+            System.out.println("[CustomOAuth2UserService] Error reading cookie: " + e.getMessage());
         }
         return null;
     }

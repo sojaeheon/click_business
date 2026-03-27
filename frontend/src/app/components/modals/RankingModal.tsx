@@ -67,8 +67,7 @@ export function RankingModal() {
 
 
   return (
-    <div className="relative h-full flex flex-col pointer-events-auto overflow-y-auto hide-scrollbar" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
-      <style>{`.hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
+    <div className="relative h-full flex flex-col pointer-events-auto overflow-y-auto custom-scrollbar">
       <div className="flex items-center justify-between mb-2 flex-shrink-0">
         <div className="flex items-center gap-2">
           <Trophy className="w-5 h-5 text-yellow-600" />

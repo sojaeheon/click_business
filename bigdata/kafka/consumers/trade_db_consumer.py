@@ -45,6 +45,25 @@ def to_datetime(iso_time_str):
     except:
         return datetime.utcnow()
 
+
+def resolve_order_status(remaining_quantity):
+    return "COMPLETED" if remaining_quantity == 0 else "PARTIALLY_COMPLETED"
+
+
+def update_market_order(cur, order_id, remaining_quantity, executed_at):
+    cur.execute("""
+        UPDATE market_order
+        SET remaining_quantity = %s,
+            status = %s,
+            updated_at = %s
+        WHERE market_order_id = %s
+    """, (
+        remaining_quantity,
+        resolve_order_status(remaining_quantity),
+        executed_at,
+        order_id,
+    ))
+
 # -----------------------------
 # 체결 저장 (핵심)
 # -----------------------------
@@ -56,6 +75,8 @@ def insert_trade(conn, payload):
 
     buy_order_id = payload["buy_order_id"]
     sell_order_id = payload["sell_order_id"]
+    buy_remaining_quantity = payload["buy_remaining_quantity"]
+    sell_remaining_quantity = payload["sell_remaining_quantity"]
 
     with conn.cursor() as cur:
         # -----------------------------
@@ -81,6 +102,8 @@ def insert_trade(conn, payload):
             executed_at
         ))
 
+        update_market_order(cur, buy_order_id, buy_remaining_quantity, executed_at)
+
         # -----------------------------
         # SELL row
         # -----------------------------
@@ -103,6 +126,8 @@ def insert_trade(conn, payload):
             False,
             executed_at
         ))
+
+        update_market_order(cur, sell_order_id, sell_remaining_quantity, executed_at)
 
 # -----------------------------
 # 메인 루프

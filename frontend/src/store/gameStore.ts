@@ -26,6 +26,15 @@ const INDUSTRY_KO: Record<string, string> = {
 export function toKoIndustry(name: string): string {
   return INDUSTRY_KO[name] ?? name;
 }
+// 한글 산업명 → 영어 역변환 (speedMultiplier 등 영어 키 조회용)
+const INDUSTRY_EN: Record<string, string> = {
+  "금광업": "GOLD_MINING",
+  "금 제련업": "GOLD_SMELTING",
+  "제조업": "MANUFACTURING",
+};
+export function toEnIndustry(name: string): string {
+  return INDUSTRY_EN[name] ?? name;
+}
 /** 문자열 내 영어 산업명을 한글로 치환 */
 export function localizeIndustryText(text: string): string {
   return text.replace(/GOLD_MINING|GOLD_SMELTING|MANUFACTURING/g, (m) => INDUSTRY_KO[m] ?? m);
@@ -95,6 +104,8 @@ export interface GameState {
   hrData: HRData;
   isLoading: boolean;
   workstationId: number;  // ✅ 실제 DB workstation ID (하드코딩 1 제거)
+  inGameDate: string;     // 인게임 날짜 (예: "2020-01-01"), API 연동 전 더미값
+  dayProgress: number;    // 하루 경과 비율 0~1 (10분=1일), API 연동 전 더미값
 
   // 장착 일꾼 ID & 새로운 일꾼 알람
   equippedWorkerId: string | null;
@@ -117,9 +128,15 @@ export interface GameState {
     collectedTotal: number;
     uncollectedPile: number;
     // ✅ 백엔드에서 받는 생산 관련 추가 필드
-    minuteOutput: number | null;      // 분당 생산량
-    workerLevel: number | null;       // 장착 캐릭터 레벨
-    speedMultiplier: number | null;   // 속도 가중치
+    minuteOutput: number | null;
+    workerLevel: number | null;
+    speedMultiplier: number | null;
+    // ★ 최초 주문 수량 (일시정지/재개 시에도 유지, 완료 알림에 사용)
+    originalRequestedQty: number;
+    // ★ 보관함 가득 참으로 인한 일시정지 상태
+    pausedRemainingMs: number | null;
+    pausedRequestedQty: number | null;
+    pausedProducedSoFar: number | null;
   };
   setWorkstationState: (updater: Partial<GameState["workstationState"]>) => void;
 
@@ -139,8 +156,14 @@ export interface GameState {
   updateBankData: (data: Partial<BankData>) => void;
   updateDebt: (amount: number) => void; // 양수 = 부채 증가, 음수 = 부채 감소
 
-  getWarehouseUsage: () => { usedSlots: number; percent: number };
+  getWarehouseUsage: () => { usedSlots: number; percent: number; totalQty: number; maxQty: number };
   getIndustryItemNames: (indOverride?: string) => { material: string; product: string; reqMat: number; resProd: number; batchSize: number };
+
+  // BGM 볼륨 (0~100, localStorage 연동)
+  bgmVolume: number;
+  setBgmVolume: (v: number) => void;
+  sfxVolume: number;
+  setSfxVolume: (v: number) => void;
 
   fetchCompanyData: (companyId: number) => Promise<void>;
   fetchNews: () => Promise<void>;
@@ -170,9 +193,16 @@ export const useGameStore = create<GameState>()(
     hrData: { currentLevel: 0, expectedLevel: 0, successRate: 0, materialCurrent: 0, materialMax: 0 },
     isLoading: false,
     workstationId: 0,
+    inGameDate: "2020-01-01",
+    dayProgress: 0.35,
     inventoryItems: [],
     warehouseExpandTickets: 0,
     inventoryExpandTickets: 0,
+
+    bgmVolume: Number(localStorage.getItem("bgmVolume") ?? 70),
+    setBgmVolume: (v) => { localStorage.setItem("bgmVolume", String(v)); set({ bgmVolume: v }); },
+    sfxVolume: Number(localStorage.getItem("sfxVolume") ?? 50),
+    setSfxVolume: (v) => { localStorage.setItem("sfxVolume", String(v)); set({ sfxVolume: v }); },
 
     equippedWorkerId: null,
     hasNewWorker: false,
@@ -213,6 +243,10 @@ export const useGameStore = create<GameState>()(
       minuteOutput: null,
       workerLevel: null,
       speedMultiplier: null,
+      originalRequestedQty: 0,
+      pausedRemainingMs: null,
+      pausedRequestedQty: null,
+      pausedProducedSoFar: null,
     },
     setWorkstationState: (updater) => set(s => ({
       workstationState: { ...s.workstationState, ...updater }
@@ -253,17 +287,21 @@ export const useGameStore = create<GameState>()(
     })),
 
     getWarehouseUsage: () => {
-      const usedSlots = get().warehouseItems.length;
-      const percent = Math.min((usedSlots / get().warehouseMaxSlots) * 100, 100);
-      return { usedSlots, percent };
+      const items = get().warehouseItems;
+      const usedSlots = items.length;
+      const totalQty = items.reduce((sum, i) => sum + (i.quantity || 0), 0);
+      const maxQty = get().warehouseMaxSlots * MAX_PER_SLOT;
+      const percent = maxQty > 0 ? Math.min((totalQty / maxQty) * 100, 100) : 0;
+      return { usedSlots, percent, totalQty, maxQty };
     },
 
     getIndustryItemNames: (indOverride?: string) => {
       const ind = indOverride || get().industry;
-      if (ind === "GOLD_MINING" || ind === "금광업") return { material: "광산 드릴", product: "금광석", reqMat: 2, resProd: 40, batchSize: 20 };
-      if (ind === "GOLD_SMELTING" || ind === "금 제련업" || ind === "제철업") return { material: "금광석", product: "금괴", reqMat: 12, resProd: 6, batchSize: 10 };
-      if (ind === "MANUFACTURING" || ind === "제조업") return { material: "금괴", product: "광산 드릴", reqMat: 20, resProd: 2, batchSize: 5 };
-      return { material: "재료", product: "생산품", reqMat: 1, resProd: 1, batchSize: 5 };
+      // batchSize = resProd * N (±버튼 단위 = N랩 분량)
+      if (ind === "GOLD_MINING" || ind === "금광업") return { material: "광산 드릴", product: "금광석", reqMat: 2, resProd: 40, batchSize: 40 };
+      if (ind === "GOLD_SMELTING" || ind === "금 제련업" || ind === "제철업") return { material: "금광석", product: "금괴", reqMat: 12, resProd: 6, batchSize: 6 };
+      if (ind === "MANUFACTURING" || ind === "제조업") return { material: "금괴", product: "광산 드릴", reqMat: 20, resProd: 2, batchSize: 2 };
+      return { material: "재료", product: "생산품", reqMat: 1, resProd: 1, batchSize: 1 };
     },
 
 
@@ -341,10 +379,17 @@ export const useGameStore = create<GameState>()(
         const finalIndustry = toKoIndustry(realData?.industry_type ?? get().industry);
         const { material, product } = get().getIndustryItemNames(finalIndustry);
 
-        const fixedWarehouseItems = (warehouseRes.data as WarehouseItem[]).map(item => ({
-          ...item,
-          name: item.type === "material" ? material : item.type === "product" ? product : item.name
-        }));
+        const fixedWarehouseItems = (warehouseRes.data as any[]).map(item => {
+          const type = (item.itemType === "MATERIAL" || item.type === "material") ? "material" : "product";
+          const resolvedName = type === "material" ? material : product;
+          return {
+            id: String(item.itemId ?? item.id),
+            type: type as "material" | "product",
+            quantity: item.quantity,
+            name: resolvedName,
+            slotIndex: item.slotIndex
+          };
+        });
 
         // 백엔드가 maxSlots를 제공하면 가장 우선 적용 (과거 캐시 문제 해결)
         const warehouseMaxSlotsFromApi = (warehouseRes as any).maxSlots;
@@ -376,7 +421,9 @@ export const useGameStore = create<GameState>()(
             isWorking: wsStatusRes.data?.isWorking ?? false,
             producedCount: wsStatusRes.data?.producedQuantity ?? 0,
             storedCount: wsStatusRes.data?.producedQuantity ?? 0,
-            requestedQty: wsStatusRes.data?.totalQuantity ?? 0,
+            // ★ requestedQty는 프론트 onStart에서 설정한 값을 유지
+            // totalQuantity는 백엔드의 reservedQuantity(재료 수량)이므로 생산 목표량과 다름
+            requestedQty: get().workstationState.requestedQty || wsStatusRes.data?.totalQuantity || 0,
             endTime: wsStatusRes.data?.expectedEndTime ? new Date(wsStatusRes.data.expectedEndTime).getTime() : null,
             minuteOutput: wsStatusRes.data?.minuteOutput ?? null,
             workerLevel: wsStatusRes.data?.workerLevel ?? null,
@@ -397,13 +444,24 @@ export const useGameStore = create<GameState>()(
         const newsData = await NewsAPI.getNews();
 
         const mappedNews: NewsItem[] = newsData.map((item: any) => {
-          let dateStr = "";
+          let pubDate: Date;
           if (typeof item.publishedAt === "string") {
-            dateStr = item.publishedAt.split('T')[0].replaceAll('-', '.');
+            pubDate = new Date(item.publishedAt.split('T')[0]);
           } else if (Array.isArray(item.publishedAt)) {
             const [year, month, day] = item.publishedAt;
-            dateStr = `${year}.${String(month).padStart(2, '0')}.${String(day).padStart(2, '0')}`;
+            pubDate = new Date(year, month - 1, day);
+          } else {
+            pubDate = new Date();
           }
+
+          // 유저 요구사항: 발행일을 이틀 앞당겨서 표시 (예: 1월 8일 뉴스 -> 1월 6일로 표시)
+          const displayDate = new Date(pubDate);
+          displayDate.setDate(displayDate.getDate() - 2);
+
+          const y = displayDate.getFullYear();
+          const m = String(displayDate.getMonth() + 1).padStart(2, '0');
+          const d = String(displayDate.getDate()).padStart(2, '0');
+          const dateStr = `${y}.${m}.${d}`;
 
           return {
             id: String(item.id ?? "anonymous"),
@@ -415,6 +473,19 @@ export const useGameStore = create<GameState>()(
         });
 
         set({ news: mappedNews });
+
+        // ★ 뉴스의 가장 최근 publishedAt에서 인게임 날짜 추출
+        if (newsData.length > 0) {
+          const latest = newsData[0];
+          let dateStr = "";
+          if (typeof latest.publishedAt === "string") {
+            dateStr = latest.publishedAt.split('T')[0];
+          } else if (Array.isArray(latest.publishedAt)) {
+            const [y, m, d] = latest.publishedAt;
+            dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          }
+          if (dateStr) set({ inGameDate: dateStr });
+        }
       } catch (err) {
         console.error("뉴스 데이터 로드 실패:", err);
       }

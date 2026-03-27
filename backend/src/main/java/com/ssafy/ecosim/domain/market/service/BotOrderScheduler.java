@@ -6,6 +6,7 @@ import com.ssafy.ecosim.domain.market.entity.OrderType;
 import com.ssafy.ecosim.domain.market.kafka.OrderEventPublisher;
 import com.ssafy.ecosim.domain.market.repository.ExternalIndexRepository;
 import com.ssafy.ecosim.domain.market.repository.redis.OrderBookManager;
+import com.ssafy.ecosim.global.util.GameTimeUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -29,10 +30,13 @@ public class BotOrderScheduler {
     private final OrderEventPublisher eventPublisher;
     // 현재 시장가(Redis Ticker) 조회용
     private final RedisTemplate<String, Object> redisTemplate;
+    private final RedisTemplate<String, String> stringRedisTemplate;
     // Market Sweep 시 반대편 호가창의 총 잔량 조회용
     private final OrderBookManager orderBookManager;
     // 외부 지표(DB) 조회용 리포지토리
     private final ExternalIndexRepository externalIndexRepository;
+    // 게임시간 관리 유틸
+    private final GameTimeUtil gameTimeUtil;
 
     // 아이템별 시뮬레이션 상태 관리 (1: 금석, 2: 금괴석, 3: 금 드릴)
     private final Map<Long, ItemSimulationState> itemStates = new HashMap<>();
@@ -56,36 +60,41 @@ public class BotOrderScheduler {
 
     // 개별 아이템의 1초당 시뮬레이션 로직 처리
     private void simulateTickForItem(Long itemId, ItemSimulationState state) {
-        if (state.currentTick == 0) {
-            initNewDayCycle(itemId, state);
+        // GameTimeUtil에서 현재 틱 및 날짜 조회
+        int currentTick = gameTimeUtil.getCurrentTick();
+        LocalDate currentDate = gameTimeUtil.getCurrentGameDate();
+        
+        // 날짜가 바뀌었으면 새 외부지표 로드
+        if (state.lastSimulatedDate == null || !currentDate.equals(state.lastSimulatedDate)) {
+            initNewDayCycle(itemId, state, currentDate);
         }
 
         // 지표 데이터가 없는 경우 스킵
-        if (state.targetCloseFluct == null) return;
+        if (state.targetCloseFluct == null) {
+            if (itemId == 1L) log.warn("[BotDebug] Item 1 skipped: targetCloseFluct is null");
+            return;
+        }
 
         // 1. 현재 시장가(Redis Ticker) 실시간 조회
         Long currentMarketPriceObj = getCurrentMarketPrice(itemId);
         // 이전에 저장된 시가가 없으면 DB에서 가져온 시가(dayOpenPrice)를 기본값으로 사용
         long currentMarketPrice = currentMarketPriceObj != null ? currentMarketPriceObj : state.dayOpenPrice;
 
-        // 2. 이번 틱의 '목표 변동 증분(Delta)' 계산
-        // 현재가 기준으로 이번 1초 동안 이동해야 할 순수 변화량(델타)만 추출하여 적용합니다.
-        double currentTotalFluct = state.tickTargetFluctuations[state.currentTick];
-        double previousTotalFluct = (state.currentTick == 0) ? 0.0 : state.tickTargetFluctuations[state.currentTick - 1];
-        
-        // 순수 델타 (이번 틱의 변화량)
-        double deltaFluct = currentTotalFluct - previousTotalFluct;
-        
-        // 현재가에 델타 적용 (현재가 × (1 + 델타))
-        double theoreticalTarget = currentMarketPrice * (1.0 + deltaFluct);
+        if (itemId == 1L && currentTick % 10 == 0) {
+            log.info("[BotDebug] Item 1 Tick: {}, MarketPrice: {}, OpenPrice: {}", 
+                currentTick, currentMarketPrice, state.dayOpenPrice);
+        }
 
+        // 2. 이번 틱의 '타겟 가격' 계산 (시가 베이스로 계산하여 0원 데드락 방지)
+        double currentTotalFluct = state.tickTargetFluctuations[currentTick];
+        double theoreticalTarget = state.dayOpenPrice * (1.0 + currentTotalFluct);
         long currentTargetPrice = applyTickSize(theoreticalTarget);
 
         // 3. 초당 생성할 가상 봇 갯수 랜덤 설정 (TPS)
         int botCount = ThreadLocalRandom.current().nextInt(MIN_TPS, MAX_TPS + 1);
 
         // 최초 시작 시드(Seed) 주문: 유동성 형성을 위해 엄청난 주문 쏟아내기
-        if (state.isFirstDay && state.currentTick == 0) {
+        if (state.isFirstDay && currentTick == 0) {
             botCount = 1000; // 최초 1회만 거물급 매물대 형성 (초기화)
             state.isFirstDay = false;
         }
@@ -104,43 +113,78 @@ public class BotOrderScheduler {
                 // A) 메이커 봇 (70%): 호가창 유동성 제공
                 type = ThreadLocalRandom.current().nextBoolean() ? OrderType.BUY : OrderType.SELL;
                 
-                // 목표가 기준 ±5~20 Tick에 분산 배치
-                long tickOffset = ThreadLocalRandom.current().nextLong(5, 21) * tickSize;
-                orderPrice = ThreadLocalRandom.current().nextBoolean()
-                             ? currentTargetPrice + tickOffset
-                             : currentTargetPrice - tickOffset;
+                // 매수는 목표가 아래, 매도는 목표가 위에만 배치 (1~15 Tick 오프셋)
+                long tickOffset = ThreadLocalRandom.current().nextLong(1, 16) * tickSize;
+                if (type == OrderType.BUY) {
+                    orderPrice = currentTargetPrice - tickOffset;
+                } else {
+                    orderPrice = currentTargetPrice + tickOffset;
+                }
                 
-                // 큰 물량 (50~200)
-                orderQty = ThreadLocalRandom.current().nextLong(50, 201);
+                // [계산적 메이커] 해당 호가의 현재 잔량 확인 후 딱 필요한 만큼(최대 150)만 공급
+                double minScore, maxScore;
+                if (type == OrderType.BUY) {
+                    minScore = -((double)orderPrice * 1_000_000.0 + 999_999.0);
+                    maxScore = -((double)orderPrice * 1_000_000.0);
+                } else {
+                    minScore = (double)orderPrice * 1_000_000.0;
+                    maxScore = (double)orderPrice * 1_000_000.0 + 999_999.0;
+                }
+                
+                long currentVolume = orderBookManager.getVolumeInScoreRange(itemId.intValue(), type.name(), minScore, maxScore);
+                long targetDepth = 3000L;
+                
+                if (currentVolume < targetDepth) {
+                    orderQty = Math.min(150, targetDepth - currentVolume);
+                    if (orderQty < 50) orderQty = 50; // 최소 활성량 보장
+                } else {
+                    // 이미 충분하면 유동성 공급 생략 (벽 생성 방지)
+                    continue; 
+                }
                 
             } else if (rand < 0.9) {
                 // B) 테이커 봇 (20%): 목표가로 시장가 이동
                 type = priceGoingUp ? OrderType.BUY : OrderType.SELL;
                 
-                // 목표가 ±1~3 Tick
+                // 목표가 ±1~3 Tick (타겟가 근처 물량 집중 체결)
                 long tickOffset = ThreadLocalRandom.current().nextLong(-1, 4) * tickSize;
                 orderPrice = currentTargetPrice + tickOffset;
                 
-                // 반대편 호가창 물량의 100%를 균등 분배
+                // 반대편 호가창 물량의 100%를 균등 분배 (잔량 없는 정밀 체결)
                 String oppositeType = priceGoingUp ? "SELL" : "BUY";
-                double minScore = Math.min(currentMarketPrice, currentTargetPrice);
-                double maxScore = Math.max(currentMarketPrice, currentTargetPrice);
-                long totalVolume = orderBookManager.getVolumeInScoreRange(itemId.intValue(), oppositeType, minScore, maxScore);
+                double minRangeScore = (double)Math.min(currentMarketPrice, currentTargetPrice) * 1_000_000.0;
+                double maxRangeScore = (double)Math.max(currentMarketPrice, currentTargetPrice) * 1_000_000.0 + 999_999.0;
                 
+                // BUY 테이커는 SELL 호가(양수 스코어)를, SELL 테이커는 BUY 호가(음수 스코어)를 조회
+                if (type == OrderType.SELL) {
+                   // SELL 봇은 BUY 호가(음수)를 확인해서 시장가 하향 유도
+                   double tmp = minRangeScore;
+                   minRangeScore = -(maxRangeScore);
+                   maxRangeScore = -(tmp);
+                }
+                
+                long totalVolume = orderBookManager.getVolumeInScoreRange(itemId.intValue(), oppositeType, minRangeScore, maxRangeScore);
                 int takerCount = Math.max(1, (int)(botCount * 0.2)); // 20% 봇
-                orderQty = totalVolume <= 0
-                           ? ThreadLocalRandom.current().nextLong(50, 101)
-                           : Math.max(50, (totalVolume * 10) / (takerCount * 10));
+                
+                if (totalVolume <= 0) {
+                    // 치울 물량이 없으면 주문 내지 않음 (가격은 메이커가 채우면서 자연스럽게 형성됨)
+                    continue;
+                }
+                
+                // 가용 물량의 100%를 정확히 나누어 가져감 (사전 계산된 시장 충격)
+                orderQty = Math.max(1, totalVolume / takerCount);
                 
             } else {
                 // C) 노이즈 봇 (10%): 시장 자연스러움
                 type = ThreadLocalRandom.current().nextBoolean() ? OrderType.BUY : OrderType.SELL;
                 
-                // 현재가 기준 무작위 ±10~30 Tick
+                // 매수는 현재가 아래, 매도는 현재가 위에만 배치 (10~30 Tick 오프셋)
                 long tickOffset = ThreadLocalRandom.current().nextLong(10, 31) * tickSize;
-                orderPrice = ThreadLocalRandom.current().nextBoolean()
-                             ? currentMarketPrice + tickOffset
-                             : currentMarketPrice - tickOffset;
+                if (type == OrderType.BUY) {
+                    orderPrice = currentMarketPrice - tickOffset;
+                } else {
+                    orderPrice = currentMarketPrice + tickOffset;
+                }
                 
                 // 소량 (1~10)
                 orderQty = ThreadLocalRandom.current().nextLong(1, 11);
@@ -159,29 +203,17 @@ public class BotOrderScheduler {
                     .price(orderPrice)
                     .totalQuantity(orderQty)
                     .isVirtual(true) // 봇이 생성한 가짜 데이터임을 명시!
-                    .timestamp(System.currentTimeMillis())
+                    .timestamp(gameTimeUtil.getCurrentGameTimestamp()) // 게임시간 사용
                     .build();
 
             eventPublisher.publishOrderEvent(botEvent);
         }
-
-        // 전역 시계 동기화 (ID 1번 아이템 기준으로 Redis에 현재 틱 저장) - 증가 전에 먼저 저장
-        if (itemId == 1L) {
-            redisTemplate.opsForValue().set("game:simulation:tick", String.valueOf(state.currentTick));
-        }
-        
-        // 사이클 증가
-        state.currentTick++;
-
-        if (state.currentTick >= CYCLE_SECONDS) {
-            state.currentTick = 0;
-        }
     }
 
     /**
-     * 새로운 10분이 시작될 때(1일차), 새로운 목표 가격들을 DB에서 과거부터 순차적으로 세팅합니다.
+     * 새로운 날짜가 시작될 때 외부 지표에서 데이터를 로드합니다.
      */
-    private void initNewDayCycle(Long itemId, ItemSimulationState state) {
+    private void initNewDayCycle(Long itemId, ItemSimulationState state, LocalDate currentDate) {
         // 외부 지표 테이블(external_index)에서 시간 순서에 맞는 실제 데이터를 꺼내옴
         Optional<ExternalIndex> nextIndex;
         if (state.lastSimulatedDate == null) {
@@ -203,14 +235,14 @@ public class BotOrderScheduler {
         }
 
         ExternalIndex index = nextIndex.get();
-        state.lastSimulatedDate = index.getPriceDate();
+        state.lastSimulatedDate = currentDate;
 
         // 초기 시장가 세팅 (서버 기동 후 거래 내역이 없을 때 DB 시가 적용)
         Long marketPriceObj = getCurrentMarketPrice(itemId);
         long currentMarketPrice;
         if (marketPriceObj == null && index.getOpenPrice() != null) {
             currentMarketPrice = index.getOpenPrice().longValue();
-            redisTemplate.opsForValue().set("market:price:" + itemId, String.valueOf(currentMarketPrice));
+            stringRedisTemplate.opsForValue().set("market:price:" + itemId, String.valueOf(currentMarketPrice));
         } else {
             currentMarketPrice = marketPriceObj != null ? marketPriceObj : (index.getOpenPrice() != null ? index.getOpenPrice().longValue() : 10000L);
         }
@@ -219,26 +251,21 @@ public class BotOrderScheduler {
         state.dayOpenPrice = currentMarketPrice;
         
         // 시가를 Redis에 저장하여 OrderBookService에서 변동률 계산 시 사용
-        redisTemplate.opsForValue().set("market:price:open:" + itemId, String.valueOf(currentMarketPrice));
+        stringRedisTemplate.opsForValue().set("market:price:open:" + itemId, String.valueOf(currentMarketPrice));
         // 새 사이클 시작 시 이전 차트 데이터 초기화
         orderBookManager.clearChartData(itemId.intValue());
 
-        // DB 등락률(Decimal 5,2)을 변동률 값(0.01 = 1%)으로 변환 (게임적 재미를 위해 외부 지표의 10배 변동성 부여)
+        // DB 등락률(Decimal 5,2)을 변동률 값(0.01 = 1%)으로 변환 (외부 지표와 1:1 대응)
         state.targetOpenFluct = 0.0; // 시가는 전일 종가와 이어진다고 가정
-        state.targetHighFluct = (index.getOpenHighFluctRate() != null ? index.getOpenHighFluctRate().doubleValue() / 100.0 : 0.02) * 10.0;
-        state.targetLowFluct = (index.getOpenLowFluctRate() != null ? index.getOpenLowFluctRate().doubleValue() / 100.0 : -0.02) * 10.0;
-        state.targetCloseFluct = (index.getFluctRate() != null ? index.getFluctRate().doubleValue() / 100.0 : 0.01) * 10.0;
+        state.targetHighFluct = (index.getOpenHighFluctRate() != null ? index.getOpenHighFluctRate().doubleValue() / 100.0 : 0.02);
+        state.targetLowFluct = (index.getOpenLowFluctRate() != null ? index.getOpenLowFluctRate().doubleValue() / 100.0 : -0.02);
+        state.targetCloseFluct = (index.getFluctRate() != null ? index.getFluctRate().doubleValue() / 100.0 : 0.01);
 
         // 패턴 결정 (50% 확률로 하루 동안 고가를 먼저 찍음)
         state.isHighFirst = ThreadLocalRandom.current().nextBoolean();
 
         log.info("[Virtual Index Cycle] Item: {} | Date: {} | Base Price: {} | Fluct (H/L/C): {} / {} / {}",
-                itemId, state.lastSimulatedDate, currentMarketPrice, state.targetHighFluct, state.targetLowFluct, state.targetCloseFluct);
-
-        // 전역 시계 동기화 (ID 1번 아이템 기준으로 Redis에 현재 날짜 저장)
-        if (itemId == 1L) {
-            redisTemplate.opsForValue().set("game:simulation:date", state.lastSimulatedDate.toString());
-        }
+                itemId, currentDate, currentMarketPrice, state.targetHighFluct, state.targetLowFluct, state.targetCloseFluct);
 
         // 장 시작 시점에, 하루치 600틱에 대한 '타겟 변동률'을 미리 계산하여 배열에 저장
         for (int i = 0; i < CYCLE_SECONDS; i++) {
@@ -293,7 +320,6 @@ public class BotOrderScheduler {
      * 아이템별 시뮬레이션 상태를 별도로 보관하는 내부 클래스입니다.
      */
     private static class ItemSimulationState {
-        int currentTick = 0;             // 현재 0~599초 중 몇 번째 틱인지
         boolean isFirstDay = true;       // 서버 시작 후 첫 사이클 여부
         LocalDate lastSimulatedDate = null; // 마지막으로 처리한 DB 지표 날짜
 

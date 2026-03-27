@@ -181,12 +181,6 @@ export function InventoryModal() {
           </div>
 
           <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-            <style>{`
-              .custom-scrollbar::-webkit-scrollbar { width: 8px; }
-              .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-              .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-              .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-            `}</style>
 
             <div className="grid grid-cols-3 gap-5 pb-4">
               {slotsToDisplay.map((_, idx) => {

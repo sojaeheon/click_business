@@ -105,6 +105,7 @@ export function ControlGuideModal({ forceOpen = false, onForceClose }: {
               <div className="flex flex-col items-center gap-3">
                 <div className="flex gap-3">
                   <Key className="w-12 h-10 text-base">E</Key>
+                  <Key className="w-12 h-10 text-base">X</Key>
                   <Key className="w-32 h-10 text-sm tracking-[0.2em]">SPACE</Key>
                 </div>
                 <div className="bg-gray-800 px-3 py-2 rounded-lg border border-gray-700 w-full text-center space-y-1.5 text-[13px] text-gray-300">
@@ -116,6 +117,9 @@ export function ControlGuideModal({ forceOpen = false, onForceClose }: {
                   </p>
                   <p>
                     <span className="text-purple-400 font-bold">E 키</span>를 누르면 <strong>감정표현 (이모트)</strong>
+                  </p>
+                  <p>
+                    <span className="text-red-400 font-bold">X 키</span>를 누르면 <strong>공격 모션</strong>
                   </p>
                 </div>
               </div>

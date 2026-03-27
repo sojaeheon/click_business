@@ -24,6 +24,7 @@ CONSUMER_TYPE = _get_env("CONSUMER_TYPE", "trade_hdfs")
 HDFS_URL = _get_env("HDFS_URL")
 HDFS_USER = _get_env("HDFS_USER", "root")
 HDFS_BASE_PATH = _get_env("HDFS_BASE_PATH", "/raw/kafka")
+FLUSH_INTERVAL_SEC = int(_get_env("FLUSH_INTERVAL_SEC", "60"))
 
 def sanitize_path_segment(value: str) -> str:
     return (value or "unknown").replace("/", "_").replace(" ", "_")
@@ -46,11 +47,14 @@ def dt_from_epoch_second(epoch_second: int) -> datetime:
     return datetime.fromtimestamp(epoch_second, tz=timezone.utc).astimezone()
 
 
+def floor_epoch_second(epoch_second: int, interval_sec: int) -> int:
+    return epoch_second - (epoch_second % interval_sec)
+
+
 def hdfs_path_for(event_type: str, bucket_time: datetime) -> str:
     dt = bucket_time.strftime("%Y-%m-%d")
     hour = bucket_time.strftime("%H")
     minute = bucket_time.strftime("%M")
-    second = bucket_time.strftime("%S")
     ts = int(time.time() * 1000)
     safe_event_type = sanitize_path_segment(event_type)
     safe_topic = sanitize_path_segment(KAFKA_TOPIC)
@@ -58,7 +62,7 @@ def hdfs_path_for(event_type: str, bucket_time: datetime) -> str:
 
     return (
         f"{HDFS_BASE_PATH}/topic={safe_topic}/event_type={safe_event_type}"
-        f"/dt={dt}/hour={hour}/minute={minute}/second={second}"
+        f"/dt={dt}/hour={hour}/minute={minute}"
         f"/part-{safe_consumer_type}-{ts}.jsonl"
     )
 
@@ -130,7 +134,7 @@ def main():
 
     hdfs_client = InsecureClient(HDFS_URL, user=HDFS_USER)
     buffers: Dict[str, List[str]] = {}
-    active_bucket_second = int(time.time())
+    active_bucket_second = floor_epoch_second(int(time.time()), FLUSH_INTERVAL_SEC)
 
     try:
         print(
@@ -140,7 +144,8 @@ def main():
 
         while True:
             now_second = int(time.time())
-            if now_second != active_bucket_second:
+            now_bucket_second = floor_epoch_second(now_second, FLUSH_INTERVAL_SEC)
+            if now_bucket_second != active_bucket_second:
                 wrote_any = False
                 for event_type, lines in list(buffers.items()):
                     if lines:
@@ -152,7 +157,7 @@ def main():
                     consumer.commit()
                     print("[TRADE-HDFS] kafka offsets committed")
 
-                active_bucket_second = now_second
+                active_bucket_second = now_bucket_second
 
             polled = consumer.poll(timeout_ms=200)
             total = 0

@@ -4,15 +4,17 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { MapControls, useGLTF, useAnimations, Html } from "@react-three/drei";
 import * as THREE from "three";
 import { SkeletonUtils } from "three-stdlib";
-import { useGame, useGameStore } from "../../../store/gameStore";
+import { useGame, useGameStore, toEnIndustry } from "../../../store/gameStore";
 import { WorkstationAPI } from "../../../api/gameApi";
-import { getWorkerDefByLevel, IndustryKey } from "../../../constants/workers";
+import { getWorkerDefByLevel, IndustryKey, WORKER_LEVEL_MODELS } from "../../../constants/workers";
+import { playSfx } from "../../../utils/sfx";
 
 import {
   TILE_S, BX, BZ, BW, ROAD_STEP, ROAD_S,
   outerX, outerZ, vRoadX1, vRoadX2,
   CONFIG, M, CAR_PATHS, SHARED_STATE,
   BUILDING_AREAS, WORKSTATION_POS, buildingToPage, EMOTES,
+  DEFAULT_WORKSTATION_CAP,
 } from "./constants";
 import { EnvModel, HoverableGroup } from "./BaseComponents";
 import { WorldBounds } from "./SceneHelpers";
@@ -59,7 +61,7 @@ function OceanTile({ position, scale }: { position: [number, number, number], sc
 
 function OceanGrid() {
   const TILE_SIZE = 60;
-  const GRID_RADIUS = 1;
+  const GRID_RADIUS = 3;
   const tiles = [];
   for (let x = -GRID_RADIUS; x <= GRID_RADIUS; x++) {
     for (let z = -GRID_RADIUS; z <= GRID_RADIUS; z++) {
@@ -93,28 +95,39 @@ function PlayerCharacter({
   const lastBuildingRef = useRef<string | null>(null);
   const lastInWorkstation = useRef(false);
   const isWorking_ref = useRef(isWorkstationWorking);
-  const modeRef = useRef<"idle" | "walking" | "working" | "spawning" | "jumping">("spawning");
-  const [mode, setMode] = useState<"idle" | "walking" | "working" | "spawning" | "jumping">("spawning");
+  const modeRef = useRef<"idle" | "walking" | "working" | "spawning" | "jumping" | "attacking">("spawning");
+  const [mode, setMode] = useState<"idle" | "walking" | "working" | "spawning" | "jumping" | "attacking">("spawning");
   const [showMenu, setShowMenu] = useState(false);
   const jumpVelocityRef = useRef(0);
   const [emotionAnim, setEmotionAnim] = useState<string | null>(null);
+  const footstepRef = useRef<HTMLAudioElement | null>(null);
 
-  const { scene: barbarianScene } = useGLTF("/models/characters/Barbarian.glb");
+  // 장착된 일꾼 레벨에 따라 캐릭터 모델 결정
+  const equippedWorkerLevel = useGameStore(s => {
+    const eqId = s.equippedWorkerId;
+    if (!eqId) return 0;
+    const item = s.inventoryItems.find(i => i.id === eqId);
+    return item?.level ?? 0;
+  });
+  const characterModelPath = WORKER_LEVEL_MODELS[equippedWorkerLevel] || "/models/characters/Barbarian.glb";
+
+  const { scene: characterScene } = useGLTF(characterModelPath);
   const { animations: toolsAnims } = useGLTF("/models/animations/Rig_Medium_Tools.glb");
   const { animations: moveAnims } = useGLTF("/models/animations/Rig_Medium_MovementBasic.glb");
   const { animations: generalAnims } = useGLTF("/models/animations/Rig_Medium_General.glb");
+  const { animations: combatAnims } = useGLTF("/models/animations/Rig_Medium_CombatMelee.glb");
 
-  const clonedBarbarian = useMemo(() => {
-    const c = SkeletonUtils.clone(barbarianScene);
+  const clonedCharacter = useMemo(() => {
+    const c = SkeletonUtils.clone(characterScene);
     c.traverse((child: any) => {
       if ((child as THREE.Mesh).isMesh) { child.castShadow = true; child.receiveShadow = true; }
     });
     return c;
-  }, [barbarianScene]);
+  }, [characterScene]);
 
   const allAnimations = useMemo(() =>
-    [...toolsAnims, ...moveAnims, ...generalAnims].map(c => c.clone()),
-    [toolsAnims, moveAnims, generalAnims]
+    [...toolsAnims, ...moveAnims, ...generalAnims, ...combatAnims].map(c => c.clone()),
+    [toolsAnims, moveAnims, generalAnims, combatAnims]
   );
   const { actions } = useAnimations(allAnimations, groupRef);
 
@@ -140,10 +153,18 @@ function PlayerCharacter({
         }
         if (modeRef.current !== "jumping" && modeRef.current !== "spawning") {
           keysRef.current.jump = true;
+          playSfx("/audio/jump.wav", 0.8);
         }
       }
       if (e.code === 'KeyE' && !e.repeat && !isPaused) {
         setShowMenu(prev => !prev);
+      }
+      if (e.code === 'KeyX' && !e.repeat && !isPaused) {
+        if (modeRef.current !== "spawning" && modeRef.current !== "attacking") {
+          modeRef.current = "attacking";
+          setMode("attacking");
+          playSfx("/audio/hit.wav", 0.8);
+        }
       }
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
       setKey(e.code, true);
@@ -168,6 +189,7 @@ function PlayerCharacter({
       spawnAct.setLoop(THREE.LoopOnce, 1);
       spawnAct.clampWhenFinished = true;
       spawnAct.reset().play();
+      playSfx("/audio/spawn.wav", 0.5);
       const onFinished = () => { if (modeRef.current === "spawning") { modeRef.current = "idle"; setMode("idle"); } };
       const mixer = spawnAct.getMixer();
       mixer.addEventListener('finished', onFinished);
@@ -182,6 +204,7 @@ function PlayerCharacter({
     Object.values(actions).forEach(a => a?.fadeOut(0.2));
     if (emotionAnim && actions[emotionAnim]) {
       actions[emotionAnim]!.setEffectiveTimeScale(1).reset().fadeIn(0.3).play();
+      playSfx("/audio/spawn.wav", 0.4);
       return;
     }
     if (mode === "spawning") return;
@@ -194,13 +217,33 @@ function PlayerCharacter({
       else if (currentIndustry === "제조업") { act = actions["Work_B"] || actions["Work_A"] || Object.values(actions)[0]; }
       else { act = actions["Work_A"] || actions["Work_B"] || Object.values(actions)[0]; }
       if (act) act.setEffectiveTimeScale(1.2).reset().fadeIn(0.3).play();
+    } else if (mode === "attacking") {
+      const act = actions["Melee_Unarmed_Attack_Kick"] || actions["Melee_1H_Attack_Slice_Horizontal"] || actions["Melee_Unarmed_Attack_Spin"] || Object.values(actions)[0];
+      if (act) {
+        act.setLoop(THREE.LoopOnce, 1);
+        act.clampWhenFinished = true;
+        act.setEffectiveTimeScale(1.5).reset().fadeIn(0.1).play();
+        const mixer = act.getMixer();
+        const onDone = () => { modeRef.current = "idle"; setMode("idle"); mixer.removeEventListener('finished', onDone); };
+        mixer.addEventListener('finished', onDone);
+      }
     } else if (mode === "jumping") {
       const act = actions["Jump_A"] || actions["Jump_B"] || actions["Jump"] || Object.values(actions)[0];
       if (act) act.setEffectiveTimeScale(1.5).reset().fadeIn(0.1).play();
     } else if (mode === "walking") {
       const act = actions["Running_A"] || actions["Walking_A"] || Object.values(actions)[0];
       if (act) act.setEffectiveTimeScale(1.5).reset().fadeIn(0.3).play();
+      // 발걸음 SFX 루프
+      if (!footstepRef.current) {
+        const a = new Audio("/audio/footstep.mp3");
+        a.loop = true;
+        a.volume = 0.3 * (useGameStore.getState().sfxVolume / 100);
+        footstepRef.current = a;
+      }
+      footstepRef.current.play().catch(() => {});
     } else {
+      // 걷기 아닐 때 발걸음 정지
+      if (footstepRef.current) { footstepRef.current.pause(); footstepRef.current.currentTime = 0; }
       const act = actions["Idle_A"] || actions["Idle_B"] || null;
       if (act) act.setEffectiveTimeScale(1).reset().fadeIn(0.3).play();
     }
@@ -296,16 +339,19 @@ function PlayerCharacter({
       onOpenWorkstationModal?.();
     }
 
-    let newMode: "idle" | "walking" | "working" | "jumping" = "idle";
-    if (posRef.current.y > 0 || jumpVelocityRef.current > 0) {
-      newMode = "jumping";
-    } else if (inWorkstation && isWorkstationWorking) {
-      newMode = "working";
-    } else if (isMoving) {
-      newMode = "walking";
-    }
+    // attacking 모드 중에는 모드 전환하지 않음 (애니메이션 완료 후 자동 idle 복귀)
+    if (modeRef.current !== "attacking") {
+      let newMode: "idle" | "walking" | "working" | "jumping" = "idle";
+      if (posRef.current.y > 0 || jumpVelocityRef.current > 0) {
+        newMode = "jumping";
+      } else if (inWorkstation && isWorkstationWorking) {
+        newMode = "working";
+      } else if (isMoving) {
+        newMode = "walking";
+      }
 
-    if (newMode !== modeRef.current) { modeRef.current = newMode; setMode(newMode); }
+      if (newMode !== modeRef.current) { modeRef.current = newMode; setMode(newMode); }
+    }
 
     let currentBuilding: string | null = null;
     for (const b of BUILDING_AREAS) {
@@ -320,7 +366,7 @@ function PlayerCharacter({
 
   return (
     <group ref={groupRef} scale={0.9}>
-      <primitive object={clonedBarbarian} />
+      <primitive object={clonedCharacter} />
       {showMenu && !isPaused && (
         <Html position={[0, 4, 0]} center zIndexRange={[100, 0]}>
           <div className="relative w-40 h-40 flex items-center justify-center pointer-events-auto">
@@ -470,6 +516,7 @@ export function GameScene({
   const openBuildingPage = useGameStore(s => s.openBuildingPage);
   const setWorkstationState = useGameStore(s => s.setWorkstationState);
   const isWorkstationWorking = useGameStore(s => s.workstationState.isWorking);
+  const equippedWorkerId = useGameStore(s => s.equippedWorkerId);
   const [inWorkstation, setInWorkstation] = useState(false);
 
   const go = useCallback((name: string, label: string) => {
@@ -492,28 +539,35 @@ export function GameScene({
           const safeQty = Math.round(qty / resProd) * resProd || resProd;
           const laps = safeQty / resProd;
           const materialNeeded = laps * reqMat;
+          const actualProduced = laps * resProd;
 
           const def = getWorkerDefByLevel(workerLevel || 1);
-          const industryName = store.industry as IndustryKey;
+          const industryName = toEnIndustry(store.industry) as IndustryKey;
           const speedMult = def.speedMultiplier[industryName] || 1.0;
-          // ★ 타이머는 정수 laps 기준 (백엔드가 정수 랩 단위로만 생산하므로 일치시킴)
-          const actualProduced = laps * resProd;
           const totalMsNeeded = Math.ceil((laps * 60000) / speedMult);
+
+          // ★ 시작 전 기존 pile 수량 저장 (fetchCompanyData가 덮어쓸 수 있으므로)
+          const existingPile = Math.max(
+            store.workstationState.uncollectedPile ?? 0,
+            store.workstationState.storedCount ?? 0
+          );
 
           setWorkstationState({ isStarting: true });
 
           await WorkstationAPI.start({ companyId: 1, recipeId: 1, quantity: safeQty, workerId: 1 });
           await store.fetchCompanyData(1);
 
-          // ★ requestedQty = actualProduced (정수 랩 기준 실제 생산량)
+          // ★ 기존 pile을 명시적으로 복원하여 누적
           setWorkstationState({
             isStarting: false,
             isWorking: true,
             startTime: Date.now(),
             totalMs: totalMsNeeded,
             requestedQty: actualProduced,
+            originalRequestedQty: actualProduced,
             producedCount: 0,
             collectedTotal: 0,
+            uncollectedPile: existingPile,
           });
 
           const timeSec = Math.ceil((laps * 60) / speedMult);
@@ -569,6 +623,7 @@ export function GameScene({
       {!isLoginMode && (
         <React.Suspense fallback={null}>
           <PlayerCharacter
+            key={equippedWorkerId ?? 'default'}
             isWorkstationWorking={isWorkstationWorking}
             onEnterBuilding={go}
             isPaused={isPaused}
@@ -579,6 +634,20 @@ export function GameScene({
       )}
     </>
   );
+}
+
+/** 카메라가 플레이어를 부드럽게 추적 */
+function CameraTracker() {
+  useFrame((state) => {
+    const target = SHARED_STATE.playerPos;
+    if (target.y < -50) return; // 아직 스폰 전
+    const controls = state.controls as any;
+    if (!controls?.target) return;
+    const offset = state.camera.position.clone().sub(controls.target);
+    controls.target.lerp(target, 0.05);
+    state.camera.position.copy(controls.target.clone().add(offset));
+  });
+  return null;
 }
 
 function refocusCanvas(wrap: HTMLDivElement | null) {
@@ -665,6 +734,7 @@ export function IsometricScene({ isLoginMode = false }: { isLoginMode?: boolean 
         >
           <GameScene onDialog={setDialogData} isPaused={isGlobalPaused} isLoginMode={isLoginMode} />
           <WorldBounds />
+          {!isLoginMode && <CameraTracker />}
           <MapControls
             makeDefault enabled={!isLoginMode} enableRotate={false} enableZoom enablePan
             minZoom={CONFIG.CAMERA.minZoom} maxZoom={CONFIG.CAMERA.maxZoom}

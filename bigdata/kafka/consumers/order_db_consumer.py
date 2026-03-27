@@ -84,13 +84,14 @@ def insert_order(conn, data, payload):
 # 주문 취소 (UPDATE)
 # -----------------------------
 def cancel_order(conn, payload):
+    cancelled_at = to_datetime(payload.get("cancelled_at"))
     with conn.cursor() as cur:
         cur.execute("""
             UPDATE market_order
             SET status = 'CANCELED',
-                updated_at = NOW()
+                updated_at = %s
             WHERE market_order_id = %s
-        """, (payload["order_id"],))
+        """, (cancelled_at, payload["order_id"]))
 
 
 def process_event_with_retry(conn, event_type, data, payload, retries=20, delay=0.5):

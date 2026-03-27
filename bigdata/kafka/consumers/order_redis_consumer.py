@@ -136,6 +136,7 @@ def cancel_order(data, payload):
     order_id = payload["order_id"]
     item_id = payload["item_id"]
     side = payload["side"].upper()
+    cancelled_at_ms = to_epoch_millis(payload.get("cancelled_at"))
 
     # 호가창에서 제거
     zset_key = f"market:orderbook:{item_id}:buy" if side == "BUY" else f"market:orderbook:{item_id}:sell"
@@ -147,7 +148,8 @@ def cancel_order(data, payload):
     if r.exists(order_key):
         r.hset(order_key, mapping={
             "status": "CANCELED",
-            "cancelled_at": payload.get("cancelled_at", str(int(time.time())))
+            "cancelledAt": str(cancelled_at_ms),
+            "updatedAt": str(cancelled_at_ms)
         })
 
     print(f"[CANCEL] Order 취소 완료: {order_id} -> {zset_key}")

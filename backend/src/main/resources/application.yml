@@ -18,7 +18,7 @@ spring:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
       ddl-auto: validate
-    show-sql: true
+    show-sql: false
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -82,12 +82,12 @@ inventory:
 # API 요청 로그 출력 설정
 logging:
   level:
-    org.springframework.web: DEBUG
-    org.flywaydb: DEBUG
+    org.springframework.web: INFO
+    org.flywaydb: INFO
     org.apache.kafka: WARN
     org.springframework.kafka: WARN
     com.ssafy.ecosim.domain.market.kafka: WARN
-    com.ssafy.ecosim.domain.market.service: DEBUG # market 기능 로그 확인용
+    com.ssafy.ecosim.domain.market.service: INFO # market 기능 로그 확인용
     # org.springframework.security: DEBUG (필요시 보안 필터 로그도 볼 수 있습니다)
 
 management:

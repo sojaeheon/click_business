@@ -79,10 +79,13 @@ public class SecurityConfig {
                                                 .userInfoEndpoint(info -> info.userService(customOAuth2UserService))
                                                 .successHandler(successHandler)
                                                 .failureHandler((request, response, exception) -> {
-                                                        // 실패 원인을 로그로 출력
                                                         exception.printStackTrace();
                                                         String frontendUrl = allowedOrigins.split(",")[0];
-                                                        response.sendRedirect(frontendUrl + "/login?error=" + exception.getMessage());
+                                                        String errorCode = "unknown";
+                                                        if (exception instanceof org.springframework.security.oauth2.core.OAuth2AuthenticationException oauthEx) {
+                                                                errorCode = oauthEx.getError().getErrorCode();
+                                                        }
+                                                        response.sendRedirect(frontendUrl + "/?error=" + errorCode);
                                                 }))
                                 .exceptionHandling(handler -> handler
                                                 .authenticationEntryPoint(customAuthenticationEntryPoint));

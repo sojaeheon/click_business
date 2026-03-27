@@ -21,7 +21,6 @@ export default function App() {
   const activeBuildingPage = useGameStore(state => state.activeBuildingPage);
   const activeModal = useGameStore(state => state.activeModal);
   const fetchCompanyData = useGameStore(state => state.fetchCompanyData);
-
   // ── 실시간 알림 WebSocket 연결 ──────────────────────────────
   useNotificationSocket();
 

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useGame, useGameStore } from "../../../store/gameStore";
 import type { ModalTab } from "../../../store/gameStore";
 
@@ -18,8 +19,33 @@ const leftButtons: HudButton[] = [
 export function GameHUD({ onOpenGuide }: { onOpenGuide?: () => void }) {
   const { state, openModal } = useGame();
   const percent = useGameStore(state => state.getWarehouseUsage().percent);
-  const companyName = useGameStore(s => s.companyName);
+  const inGameDate = useGameStore(s => s.inGameDate);
+  const dayProgress = useGameStore(s => s.dayProgress);
   const unreadAlerts = state.alerts.filter((n) => !n.read).length;
+
+  // ★ 게임 날짜 폴링 (뉴스 API에서 추출) — 60초마다 갱신
+  useEffect(() => {
+    useGameStore.getState().fetchNews();
+    const interval = setInterval(() => useGameStore.getState().fetchNews(), 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // ★ 하루 경과 슬라이더 (10분 = 1일, 프론트 자체 계산)
+  // inGameDate가 바뀔 때마다 dayStart를 기록, 이후 elapsed / 600초로 progress 계산
+  useEffect(() => {
+    if (!inGameDate || inGameDate === "2020-01-01") return;
+    const dayStartRef = Date.now();
+    const DAY_MS = 10 * 60 * 1000; // 10분
+    const tick = setInterval(() => {
+      const elapsed = Date.now() - dayStartRef;
+      useGameStore.setState({ dayProgress: Math.min(1, elapsed / DAY_MS) });
+    }, 1000);
+    // 날짜 바뀌면 리셋
+    return () => clearInterval(tick);
+  }, [inGameDate]);
+
+  const [year, month, day] = inGameDate.split('-');
+  const progressPct = Math.min(Math.max(dayProgress * 100, 0), 100);
 
   return (
     <div className="absolute inset-0 pointer-events-none">
@@ -30,16 +56,15 @@ export function GameHUD({ onOpenGuide }: { onOpenGuide?: () => void }) {
         {/* 왼쪽 상단: 기업 프로필 */}
         <button
           onClick={() => openModal("profile")}
-          className="pointer-events-auto relative flex flex-col items-center justify-start w-32 h-36 hover:scale-105 transition-transform cursor-pointer active:scale-95 flex-shrink-0"
+          className="pointer-events-auto w-40 relative flex flex-col items-center justify-start hover:scale-105 transition-transform cursor-pointer active:scale-95 flex-shrink-0"
           title="기업 프로필"
         >
-          {/* 기업프로필 배경 (Group 59) */}
-          <div className="relative w-32 h-32 flex items-start justify-center">
+          <div className="relative w-40 h-40 flex items-start justify-center">
             <img src="/ui_icons/Group 59.png" alt="Profile BG" className="absolute inset-0 w-full h-full object-contain drop-shadow-md" />
-            <img src="/ui_icons/building.png" alt="Building" className="relative w-20 h-20 mt-1 object-contain drop-shadow" />
+            <img src="/ui_icons/building.png" alt="Building" className="relative w-20 h-20 mt-4 object-contain drop-shadow" />
           </div>
-          {/* 하단 회사 이름 텍스트 */}
-          <span className="text-white font-bold text-sm tracking-widest drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] -mt-6">
+          {/* 회사 이름 — 아이콘 너비(120px) 내에서 줄바꿈 */}
+          <span className="max-w-[120px] text-white font-bold text-sm tracking-widest drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] -mt-10 text-center break-all leading-snug">
             {state.companyName}
           </span>
         </button>
@@ -49,7 +74,7 @@ export function GameHUD({ onOpenGuide }: { onOpenGuide?: () => void }) {
 
           {/* 현 잔액 영역 */}
           <div className="relative flex items-center bg-[#292631] rounded-r-full rounded-l-3xl h-12 min-w-[300px] shadow-lg border border-gray-700">
-            <div className="absolute -left-6 top-1/2 -translate-y-1/2 w-16 h-16  flex items-center justify-center z-10">
+            <div className="absolute -left-6 top-1/2 -translate-y-1/2 w-16 h-16 flex items-center justify-center z-10">
               <img src="/ui_icons/Coins.png" alt="Coins" className="w-16 h-16 object-contain drop-shadow" />
             </div>
             <div className="pl-14 pr-6 w-full flex flex-col items-center justify-center">
@@ -64,7 +89,6 @@ export function GameHUD({ onOpenGuide }: { onOpenGuide?: () => void }) {
             <div className="absolute -left-6 top-1/2 -translate-y-1/2 w-16 h-16 flex items-center justify-center z-10">
               <img src="/ui_icons/box.png" alt="Box" className="w-20 h-20 object-contain drop-shadow" />
             </div>
-
             <div className="pl-10 pr-4 w-full flex items-center justify-center h-full">
               <div className="relative w-full h-5 bg-gray-900 rounded overflow-hidden">
                 <div
@@ -79,32 +103,61 @@ export function GameHUD({ onOpenGuide }: { onOpenGuide?: () => void }) {
           </div>
         </div>
 
-        {/* 오른쪽 상단: 알림 + 설정 */}
-        <div className="flex items-center gap-5 flex-shrink-0 pt-2 pr-4">
-          <button
-            onClick={() => openModal("alert")}
-            className="pointer-events-auto relative w-20 h-20 hover:scale-110 transition-transform cursor-pointer"
-            title="알림"
-          >
-            <img src="/ui_icons/notification.png" alt="Notification" className="w-full h-full object-contain drop-shadow-lg" />
-            {unreadAlerts > 0 && (
-              <span className="absolute top-1 -right-1 bg-red-600 border-[3px] border-white text-white font-black text-xs w-7 h-7 flex items-center justify-center rounded-full shadow-md">
-                {unreadAlerts}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => openModal("settings")}
-            className="pointer-events-auto relative w-20 h-20 hover:scale-110 transition-transform cursor-pointer"
-            title="설정"
-          >
-            <img src="/ui_icons/setting.png" alt="Settings" className="w-full h-full object-contain drop-shadow-lg" />
-          </button>
+        {/* ── 오른쪽 상단: 날짜 패널 (알림+설정 내장) ── */}
+        <div className="pointer-events-auto flex-shrink-0 mr-2 mt-1 flex items-start gap-3">
+
+          {/* 날짜 + 슬라이더 */}
+          <div className="flex flex-col items-end gap-2">
+            {/* 연도 */}
+            <span className="text-white/60 text-lg mb-2 font-bold tracking-[0.2em] drop-shadow-[0_2px_3px_rgba(0,0,0,0.8)]">
+              20XX년
+            </span>
+            {/* 월일 — 큰 텍스트 */}
+            <span className="text-white font-black text-4xl tracking-wider leading-none drop-shadow-[0_3px_6px_rgba(0,0,0,0.7)]">
+              {`${parseInt(month)}월 ${parseInt(day)}일`}
+            </span>
+            {/* 하루 경과 슬라이더 */}
+            <div className="relative w-full mt-3 h-3 bg-[#292631] rounded-full border border-gray-600 shadow-inner mt-0.5">
+              <div
+                className="absolute left-0 top-0 h-full rounded-full transition-all duration-1000 ease-linear bg-gradient-to-r from-amber-500 to-amber-300"
+                style={{ width: `${progressPct}%` }}
+              />
+              <div
+                className="absolute -top-2.5 -translate-x-1/2 z-10 text-lg drop-shadow-[0_2px_4px_rgba(0,0,0,0.7)] transition-all duration-1000 ease-linear select-none"
+                style={{ left: `${Math.max(8, progressPct)}%` }}
+              >
+                ☀️
+              </div>
+            </div>
+          </div>
+
+          {/* 알림 + 설정 */}
+          <div className="flex flex-col items-center gap-2">
+            <button
+              onClick={() => openModal("alert")}
+              className="relative w-14 h-14 hover:scale-110 transition-transform cursor-pointer"
+              title="알림"
+            >
+              <img src="/ui_icons/notification.png" alt="알림" className="w-full h-full object-contain drop-shadow-lg" />
+              {unreadAlerts > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-600 border-[3px] border-white text-white font-black text-[10px] w-6 h-6 flex items-center justify-center rounded-full shadow-md">
+                  {unreadAlerts}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => openModal("settings")}
+              className="w-14 h-14 hover:scale-110 transition-transform cursor-pointer"
+              title="설정"
+            >
+              <img src="/ui_icons/setting.png" alt="설정" className="w-full h-full object-contain drop-shadow-lg" />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* ── 왼쪽 세로: 앱 아이콘들 ── */}
-      <div className="absolute left-6 top-1/2 -translate-y-1/2 flex flex-col gap-6 pointer-events-auto">
+      {/* ── 왼쪽 세로: 프로필 버튼 아래에 간격 두고 배치 ── */}
+      <div className="absolute left-6 top-[200px] flex flex-col gap-6 pointer-events-auto">
         {leftButtons.map(({ key, label, imgSrc }) => (
           <button
             key={key}
