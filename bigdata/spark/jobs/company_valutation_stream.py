@@ -208,9 +208,15 @@ warehouse_events = (
         col("payload").getItem("item_id").cast("bigint").alias("item_id"),
         when(
             col("event_type") == "warehouse.item.removed",
-            -col("payload").getItem("quantity_delta").cast("bigint")
+            -coalesce(
+                col("payload").getItem("quantity_delta"),
+                col("payload").getItem("quantity"),
+            ).cast("bigint")
         ).otherwise(
-            col("payload").getItem("quantity_delta").cast("bigint")
+            coalesce(
+                col("payload").getItem("quantity_delta"),
+                col("payload").getItem("quantity"),
+            ).cast("bigint")
         ).alias("qty_delta"),
         parse_event_ts(
             coalesce(
@@ -645,15 +651,11 @@ def upsert_item_qty_state(batch_df: DataFrame, batch_id: int):
                         COALESCE(q.qty, 0) AS old_qty,
                         s.qty_delta,
                         GREATEST(COALESCE(q.qty, 0) + s.qty_delta, 0) AS new_qty,
-                        (GREATEST(COALESCE(q.qty, 0) + s.qty_delta, 0) - COALESCE(q.qty, 0)) AS effective_delta,
-                        COALESCE(p.last_price, 0) AS last_price,
-                        ((GREATEST(COALESCE(q.qty, 0) + s.qty_delta, 0) - COALESCE(q.qty, 0)) * COALESCE(p.last_price, 0))::BIGINT AS inventory_delta
+                        (GREATEST(COALESCE(q.qty, 0) + s.qty_delta, 0) - COALESCE(q.qty, 0)) AS effective_delta
                     FROM tmp_qty_stage s
                     LEFT JOIN company_item_qty_state q
                       ON q.company_id = s.company_id
                      AND q.item_id = s.item_id
-                    LEFT JOIN item_price_state p
-                      ON p.item_id = s.item_id
                 """)
 
                 # qty는 effective_delta 기준으로만 반영
@@ -666,14 +668,22 @@ def upsert_item_qty_state(batch_df: DataFrame, batch_id: int):
                         updated_at = GREATEST(company_item_qty_state.updated_at, EXCLUDED.updated_at)
                 """)
 
-                # inventory_value도 effective_delta 기준으로 반영
+                # inventory_value는 영향받은 회사만 현재 qty * 현재가격으로 재계산 (정합성 우선)
                 cur.execute("""
                     INSERT INTO company_inventory_value_state (company_id, inventory_value, updated_at)
-                    SELECT company_id, SUM(inventory_delta)::BIGINT, NOW()
-                    FROM tmp_qty_effective
-                    GROUP BY company_id
+                    SELECT
+                        q.company_id,
+                        COALESCE(SUM(q.qty * COALESCE(p.last_price, 0)), 0)::BIGINT AS inventory_value,
+                        NOW()
+                    FROM company_item_qty_state q
+                    LEFT JOIN item_price_state p
+                      ON p.item_id = q.item_id
+                    WHERE q.company_id IN (
+                        SELECT DISTINCT company_id FROM tmp_qty_effective
+                    )
+                    GROUP BY q.company_id
                     ON CONFLICT (company_id) DO UPDATE
-                    SET inventory_value = company_inventory_value_state.inventory_value + EXCLUDED.inventory_value,
+                    SET inventory_value = EXCLUDED.inventory_value,
                         updated_at = EXCLUDED.updated_at
                 """)
 

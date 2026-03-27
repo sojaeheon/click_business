@@ -60,6 +60,7 @@ services:
       /opt/spark/bin/spark-submit
       --master spark://spark-master:7077
       --total-executor-cores 1
+      --conf spark.executor.instances=4
       --executor-cores 1
       /opt/spark-apps/market_news_stream.py
       --trigger-interval "10 minute"
@@ -93,6 +94,7 @@ services:
       /opt/spark/bin/spark-submit
       --master spark://spark-master:7077
       --total-executor-cores 1
+      --conf spark.executor.instances=4
       --executor-cores 1
       /opt/spark-apps/company_valutation_stream.py
       '
