@@ -9,7 +9,9 @@ import com.ssafy.ecosim.domain.minigame.dto.MinigameClaimResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.ssafy.ecosim.global.kafka.publisher.CompanyCashEventPublisher;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Random;
 
@@ -21,6 +23,8 @@ public class MinigameService {
     private final InventoryService inventoryService;
     private final MinigameRewardProperties rewardProperties;
     private final CompanyRepository companyRepository;
+    private final CompanyCashEventPublisher companyCashEventPublisher;
+
 
     private final Random random = new Random();
     private static final long MINIGAME_COST = 100000L; // 미니게임 비용
@@ -69,6 +73,14 @@ public class MinigameService {
         company.spendCash(MINIGAME_COST);
         company.setMinigamePaid(true);
         companyRepository.save(company);
+        companyCashEventPublisher.publishCashChanged(
+            company.getId(),
+            company.getCash(),           // 변경 후 잔액
+            -MINIGAME_COST,              // 변화량(차감)
+            "MINIGAME_START",
+            null,                        // reference_id(optional)
+            Instant.now()
+        );
     }
 
     @Transactional
