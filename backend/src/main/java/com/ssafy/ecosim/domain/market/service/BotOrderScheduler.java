@@ -45,11 +45,11 @@ public class BotOrderScheduler {
     private static final int CYCLE_SECONDS = 600; // 10분 = 외부 지표 1일
     private static final List<Long> TARGET_ITEM_IDS = List.of(1L, 2L, 3L);
 
-    // 초당 생성량 (30~50건)
-    private static final int MIN_TPS = 30;
-    private static final int MAX_TPS = 50;
+    // 틱당 생성량 (10ms 틱 기준, 초당 100~200건 유지)
+    private static final int MIN_TPS = 1;
+    private static final int MAX_TPS = 2;
 
-    @Scheduled(fixedRate = 1000) // 1초마다 모든 아이템에 대해 가상 주문 생성 실행
+    @Scheduled(fixedRate = 10) // 10ms마다 모든 아이템에 대해 가상 주문 생성 실행
     public void generateVirtualOrderTick() {
         for (Long itemId : TARGET_ITEM_IDS) {
             // 아이템별 상태 객체가 없으면 생성 후 시뮬레이션 진행
@@ -95,7 +95,7 @@ public class BotOrderScheduler {
 
         // 최초 시작 시드(Seed) 주문: 유동성 형성을 위해 엄청난 주문 쏟아내기
         if (state.isFirstDay && currentTick == 0) {
-            botCount = 1000; // 최초 1회만 거물급 매물대 형성 (초기화)
+            botCount = 10; // 최초 1회만 거물급 매물대 형성 (초기화)
             state.isFirstDay = false;
         }
 
