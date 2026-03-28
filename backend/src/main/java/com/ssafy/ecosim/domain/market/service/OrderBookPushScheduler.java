@@ -16,13 +16,14 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+
 /**
  * 호가창 실시간 WebSocket Push 스케줄러
  *
  * <p>동작 방식:
  * <ol>
  *   <li>체결 시 {@link #markDirty(Integer)} 로 더티 플래그만 세운다 (Redis 접근 없음)</li>
- *   <li>300ms 스케줄러가 더티 아이템만 호가창을 새로 계산한다</li>
+ *   <li>100ms 스케줄러가 더티 아이템만 호가창을 새로 계산한다</li>
  *   <li>계산 결과를 Redis 스냅샷에 저장하고 WebSocket으로 브로드캐스트한다</li>
  * </ol>
  *
@@ -67,26 +68,22 @@ public class OrderBookPushScheduler {
     }
 
     /**
-     * 300ms마다 더티 아이템의 호가창을 계산하여 Redis 스냅샷 저장 + WebSocket 브로드캐스트합니다.
+     * 50ms마다 더티 아이템의 호가창을 계산하여 Redis 스냅샷 저장 + WebSocket 브로드캐스트합니다.
      */
-    @Scheduled(fixedRate = 300)
+    @Scheduled(fixedRate = 50)
     public void pushOrderBooks() {
         if (stopping.get()) return;
 
         for (Integer itemId : ITEM_IDS) {
             AtomicBoolean dirty = dirtyFlags.get(itemId);
-            // compareAndSet(true, false): 더티면 false로 바꾸고 진입, 아니면 스킵
             if (dirty == null || !dirty.compareAndSet(true, false)) continue;
 
             try {
-                // 항상 새로 계산 (스냅샷 우선 읽기 로직을 우회하는 내부 메서드 사용)
                 OrderBookResponseDto dto = orderBookService.computeOrderBook(itemId);
 
-                // Redis 스냅샷 저장 → REST API가 재계산 없이 반환 가능
                 String json = objectMapper.writeValueAsString(dto);
                 orderBookManager.saveSnapshot(itemId, json);
 
-                // WebSocket 브로드캐스트
                 messagingTemplate.convertAndSend("/topic/orderbook/" + itemId, dto);
 
             } catch (JsonProcessingException e) {
