@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { useOrderBookSocket } from "../../hooks/useOrderBookSocket";
+import { Client } from "@stomp/stompjs";
 import { ShoppingCart, TrendingUp, TrendingDown, Activity, ListOrdered, Clock, XCircle, BarChart2 } from "lucide-react";
 import { useGameStore } from "../../store/gameStore";
 import { MarketAPI } from "../../api/gameApi";
@@ -204,75 +204,83 @@ export function MarketPage() {
     setChangeRate(0);
   }, [itemId]);
 
-  // 🔌 호가창 WebSocket 실시간 수신
-  useOrderBookSocket(itemId, (data) => {
-    if (data.sellOrders || data.buyOrders) {
-      const asks = (data.sellOrders || []).map((o) => ({ ...o, quantity: o.totalQuantity }));
-      const bids = (data.buyOrders || []).map((o) => ({ ...o, quantity: o.totalQuantity }));
-      setOrderBook({ asks, bids });
-    } else {
-      setOrderBook({ asks: [], bids: [] });
-    }
+  // 📡 WebSocket (STOMP) — 오더북 실시간 구독
+  useEffect(() => {
+    if (!mode) return;
 
-    const latestPrice = data.currentPrice;
-    if (latestPrice) {
-      setCurrentPrice(latestPrice);
-      setChangePrice(data.changePrice ?? 0);
-      setChangeRate(data.changeRate ?? 0);
+    const token = sessionStorage.getItem('accessToken');
+    const wsUrl = (import.meta.env.VITE_WS_URL ?? 'ws://localhost:8000') + '/ws-ecosim';
+    const capturedItemId = itemId;
 
-      setChartData(prev => {
-        const lastPrice = prev.length > 0 ? prev[prev.length - 1].price : latestPrice;
-        if (latestPrice > lastPrice) setMarketTrend("up");
-        else if (latestPrice < lastPrice) setMarketTrend("down");
-        else setMarketTrend("neutral");
-        setTimeout(() => setMarketTrend("neutral"), 800);
-        return prev;
-      });
-    }
-  });
+    const client = new Client({
+      brokerURL: wsUrl,
+      connectHeaders: token ? { Authorization: `Bearer ${token}` } : {},
+      reconnectDelay: 3000,
+      onConnect: () => {
+        client.subscribe(`/topic/orderbook/${capturedItemId}`, (message) => {
+          try {
+            const data = JSON.parse(message.body);
+            const asks = (data.sellOrders || []).map((o: any) => ({ ...o, quantity: o.totalQuantity || 0 }));
+            const bids = (data.buyOrders || []).map((o: any) => ({ ...o, quantity: o.totalQuantity || 0 }));
+            setOrderBook({ asks, bids });
 
-  // ⏱️ 실시간 데이터 업데이트 (체결내역, 미체결 주문, 캔들) — 호가창은 WebSocket으로 분리
+            const latestPrice = data.currentPrice;
+            if (latestPrice) {
+              setCurrentPrice(latestPrice);
+              setChangePrice(data.changePrice ?? 0);
+              setChangeRate(data.changeRate ?? 0);
+              setChartData(prev => {
+                const lastPrice = prev.length > 0 ? prev[prev.length - 1].price : latestPrice;
+                if (latestPrice > lastPrice) setMarketTrend("up");
+                else if (latestPrice < lastPrice) setMarketTrend("down");
+                else setMarketTrend("neutral");
+                setTimeout(() => setMarketTrend("neutral"), 800);
+                return prev;
+              });
+            }
+          } catch (e) {
+            console.warn("[WS] 오더북 메시지 파싱 실패:", e);
+          }
+        });
+
+        // 최초 연결 시 REST로 초기 데이터 로드
+        MarketAPI.getOrderbook(capturedItemId).then(res => {
+          const data = (res.data?.data ?? res.data) as any;
+          if (data && (data.sellOrders || data.buyOrders)) {
+            const asks = (data.sellOrders || []).map((o: any) => ({ ...o, quantity: o.totalQuantity || 0 }));
+            const bids = (data.buyOrders || []).map((o: any) => ({ ...o, quantity: o.totalQuantity || 0 }));
+            setOrderBook({ asks, bids });
+            if (data.currentPrice) {
+              setCurrentPrice(data.currentPrice);
+              setChangePrice(data.changePrice ?? 0);
+              setChangeRate(data.changeRate ?? 0);
+            }
+          }
+        }).catch(() => {});
+      },
+      onDisconnect: () => {},
+      onStompError: (frame) => {
+        console.warn("[WS] STOMP 에러:", frame.headers['message']);
+      },
+    });
+
+    client.activate();
+
+    return () => {
+      client.deactivate();
+    };
+  }, [mode, itemId]);
+
+  // ⏱️ 폴링 — 차트/체결내역/미체결 주문 (오더북 제외)
   useEffect(() => {
     if (!mode) return;
 
     const controller = new AbortController();
-    // 이 effect가 실행된 시점의 itemId를 캡처
     const capturedItemId = itemId;
 
     const fetchData = async () => {
       try {
-        // [1] 오더북/호가창 조회
-        const res = await MarketAPI.getOrderbook(capturedItemId);
-        // ✅ 응답 도착 시점에 itemId가 바뀌었으면 무시 (race condition 방지)
-        if (controller.signal.aborted) return;
-
-        const data = res.data as any;
-
-        if (data && (data.sellOrders || data.buyOrders)) {
-          const asks = (data.sellOrders || []).map((o: any) => ({ ...o, quantity: o.remainingQuantity || o.totalQuantity || 0 }));
-          const bids = (data.buyOrders || []).map((o: any) => ({ ...o, quantity: o.remainingQuantity || o.totalQuantity || 0 }));
-          setOrderBook({ asks, bids });
-
-          const latestPrice = data.currentPrice;
-          if (latestPrice) {
-            setCurrentPrice(latestPrice);
-            setChangePrice(data.changePrice ?? 0);
-            setChangeRate(data.changeRate ?? 0);
-
-            setChartData(prev => {
-              const lastPrice = prev.length > 0 ? prev[prev.length - 1].price : latestPrice;
-              if (latestPrice > lastPrice) setMarketTrend("up");
-              else if (latestPrice < lastPrice) setMarketTrend("down");
-              else setMarketTrend("neutral");
-              setTimeout(() => setMarketTrend("neutral"), 800);
-              return prev;
-            });
-          }
-        } else {
-          setOrderBook({ asks: [], bids: [] });
-        }
-
-        // [2] 백엔드 1분봉 차트 조회
+        // [1] 백엔드 1분봉 차트 조회 (3초 폴링)
         try {
           const chartRes = await MarketAPI.get1MinCandles(capturedItemId, 100);
           if (controller.signal.aborted) return;
@@ -879,13 +887,13 @@ export function MarketPage() {
 
                   // 현재가보다 높은 매도 호가만 필터링 (가격 내림차순)
                   const askPrices = [...orderBook.asks]
-                    .filter(ask => ask.price > currentMarketPrice)
+                    .filter(ask => ask.price >= currentMarketPrice)
                     .sort((a, b) => b.price - a.price)
                     .slice(0, DISPLAY_LEVELS);
 
                   // 현재가보다 낮은 매수 호가만 필터링 (가격 내림차순)
                   const bidPrices = [...orderBook.bids]
-                    .filter(bid => bid.price < currentMarketPrice)
+                    .filter(bid => bid.price <= currentMarketPrice)
                     .sort((a, b) => b.price - a.price)
                     .slice(0, DISPLAY_LEVELS);
 
