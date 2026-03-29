@@ -1,9 +1,9 @@
 include:
   - infra/compose.yaml
   - data/compose.yaml
-  - backend/compose.yaml
+  # - backend/compose.yaml
   - bigdata/compose.yaml
-  - frontend/compose.yaml
+  # - frontend/compose.yaml
 
 # 루트에서 올릴 때만 적용되는 경로 오버라이드
 # services:
