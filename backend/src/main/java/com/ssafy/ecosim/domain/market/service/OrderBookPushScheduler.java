@@ -15,15 +15,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
-
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 호가창 실시간 WebSocket Push 스케줄러
  *
  * <p>동작 방식:
  * <ol>
- *   <li>체결 시 {@link #markDirty(Integer)} 로 더티 플래그만 세운다 (Redis 접근 없음)</li>
- *   <li>100ms 스케줄러가 더티 아이템만 호가창을 새로 계산한다</li>
+ *   <li>체결 시 {@link #markDirty(Integer)} 로 더티 플래그를 세운다</li>
+ *   <li>500ms마다 강제 push — 체결 없이 주문만 변해도 최신 상태 반영</li>
  *   <li>계산 결과를 Redis 스냅샷에 저장하고 WebSocket으로 브로드캐스트한다</li>
  * </ol>
  *
@@ -35,12 +35,20 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class OrderBookPushScheduler {
 
     private static final List<Integer> ITEM_IDS = List.of(1, 2, 3);
+    private static final long FORCE_PUSH_INTERVAL_MS = 500;
 
     // itemId별 더티 플래그 — 체결이 일어났으면 true, push 완료 후 false
     private final Map<Integer, AtomicBoolean> dirtyFlags = new ConcurrentHashMap<>(Map.of(
             1, new AtomicBoolean(false),
             2, new AtomicBoolean(false),
             3, new AtomicBoolean(false)
+    ));
+
+    // itemId별 마지막 push 시각 — 강제 push 주기 계산용
+    private final Map<Integer, AtomicLong> lastPushTime = new ConcurrentHashMap<>(Map.of(
+            1, new AtomicLong(0),
+            2, new AtomicLong(0),
+            3, new AtomicLong(0)
     ));
 
     // 종료 플래그 — Spring 컨텍스트 종료 시 Redis 접근 차단
@@ -68,15 +76,24 @@ public class OrderBookPushScheduler {
     }
 
     /**
-     * 50ms마다 더티 아이템의 호가창을 계산하여 Redis 스냅샷 저장 + WebSocket 브로드캐스트합니다.
+     * 50ms마다 체크:
+     * - 체결(dirty) 발생 시 즉시 push
+     * - 체결 없어도 500ms마다 강제 push (주문 변화 반영)
      */
-    @Scheduled(fixedRate = 50)
+    @Scheduled(fixedRate = 100)
     public void pushOrderBooks() {
         if (stopping.get()) return;
 
+        long now = System.currentTimeMillis();
+
         for (Integer itemId : ITEM_IDS) {
             AtomicBoolean dirty = dirtyFlags.get(itemId);
-            if (dirty == null || !dirty.compareAndSet(true, false)) continue;
+            AtomicLong lastPush = lastPushTime.get(itemId);
+
+            boolean isDirty = dirty != null && dirty.compareAndSet(true, false);
+            boolean isForcePush = lastPush != null && (now - lastPush.get() >= FORCE_PUSH_INTERVAL_MS);
+
+            if (!isDirty && !isForcePush) continue;
 
             try {
                 OrderBookResponseDto dto = orderBookService.computeOrderBook(itemId);
@@ -85,6 +102,7 @@ public class OrderBookPushScheduler {
                 orderBookManager.saveSnapshot(itemId, json);
 
                 messagingTemplate.convertAndSend("/topic/orderbook/" + itemId, dto);
+                if (lastPush != null) lastPush.set(now);
 
             } catch (JsonProcessingException e) {
                 log.error("[OrderBookPushScheduler] JSON 직렬화 실패 itemId={}", itemId, e);
