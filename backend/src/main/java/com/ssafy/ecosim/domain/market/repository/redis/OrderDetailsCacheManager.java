@@ -4,9 +4,13 @@ import com.ssafy.ecosim.domain.market.entity.MarketOrder;
 import com.ssafy.ecosim.domain.market.entity.OrderType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.SessionCallback;
+import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -102,6 +106,44 @@ public class OrderDetailsCacheManager {
             log.error("Failed to parse OrderDetails from Redis cache for orderId={}: {}", orderId, e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * 여러 주문의 price + remainingQuantity를 Redis Pipeline으로 일괄 조회합니다.
+     * 호가창 집계 전용 — HGETALL 대신 HMGET으로 필요한 2개 필드만 읽어 네트워크 왕복을 1회로 줄입니다.
+     *
+     * @param orderIds 조회할 주문 ID 목록
+     * @return orderId → long[]{price, remainingQuantity} 맵 (캐시 미스 항목은 포함되지 않음)
+     */
+    @SuppressWarnings("unchecked")
+    public Map<Long, long[]> getOrderPriceAndQtyBatch(List<Long> orderIds) {
+        if (orderIds == null || orderIds.isEmpty()) return Map.of();
+
+        List<Object> results = redisTemplate.executePipelined(new SessionCallback<Object>() {
+            @Override
+            @SuppressWarnings("rawtypes")
+            public Object execute(RedisOperations operations) {
+                for (Long orderId : orderIds) {
+                    operations.opsForHash().multiGet(
+                            getKey(orderId),
+                            List.of("price", "remainingQuantity")
+                    );
+                }
+                return null;
+            }
+        });
+
+        Map<Long, long[]> result = new HashMap<>(orderIds.size());
+        for (int i = 0; i < orderIds.size(); i++) {
+            List<String> fields = (List<String>) results.get(i);
+            if (fields == null || fields.size() < 2 || fields.get(0) == null || fields.get(1) == null) continue;
+            try {
+                long price = Long.parseLong(fields.get(0));
+                long qty   = Long.parseLong(fields.get(1));
+                result.put(orderIds.get(i), new long[]{price, qty});
+            } catch (NumberFormatException ignored) {}
+        }
+        return result;
     }
 
     /**

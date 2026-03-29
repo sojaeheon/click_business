@@ -3,12 +3,14 @@ package com.ssafy.ecosim.domain.market.dto.response;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 import java.util.List;
 
 @Schema(description = "호가창 응답")
 @Getter
 @AllArgsConstructor
+@NoArgsConstructor
 public class OrderBookResponseDto {
 
     @Schema(description = "아이템 ID", example = "1")

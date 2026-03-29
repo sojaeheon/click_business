@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ssafy.ecosim.domain.market.dto.response.OrderBookEntryDto;
 import com.ssafy.ecosim.domain.market.dto.response.OrderBookResponseDto;
 import com.ssafy.ecosim.domain.market.dto.response.TradeHistoryDto;
-import com.ssafy.ecosim.domain.market.entity.MarketOrder;
 import com.ssafy.ecosim.domain.market.repository.TradeHistoryRepository;
 import com.ssafy.ecosim.domain.market.repository.redis.OrderBookManager;
 import com.ssafy.ecosim.domain.market.repository.redis.OrderDetailsCacheManager;
@@ -111,6 +110,8 @@ public class OrderBookService {
 
     /**
      * ZSet 결과(order ID 목록)를 가격 레벨별 누적 물량으로 집계합니다.
+     * Redis Pipeline으로 필요한 2개 필드(price, remainingQuantity)를 일괄 조회하여
+     * 개별 HGETALL 500회 → 파이프라인 1회로 줄입니다.
      *
      * @param tuples   ZSet rangeWithScores 결과
      * @param descSort true → 매수(높은 가격 우선), false → 매도(낮은 가격 우선)
@@ -122,18 +123,19 @@ public class OrderBookService {
             return Collections.emptyList();
         }
 
+        // orderId 목록 추출 → pipeline으로 price+qty 일괄 조회
+        List<Long> orderIds = tuples.stream()
+                .map(t -> Long.valueOf(t.getValue()))
+                .toList();
+
+        Map<Long, long[]> priceQtyMap = orderDetailsCacheManager.getOrderPriceAndQtyBatch(orderIds);
+
         // 가격 레벨 → 누적 잔량
         Map<Long, Long> priceMap = new LinkedHashMap<>();
-
-        for (ZSetOperations.TypedTuple<String> tuple : tuples) {
-            Long orderId = Long.valueOf(tuple.getValue());
-            MarketOrder order = orderDetailsCacheManager.getOrderCache(orderId);
-            if (order == null)
-                continue;
-
-            long price = order.getPrice();
-            long qty = order.getRemainingQuantity();
-            priceMap.merge(price, qty, Long::sum);
+        for (Long orderId : orderIds) {
+            long[] pq = priceQtyMap.get(orderId);
+            if (pq == null) continue;
+            priceMap.merge(pq[0], pq[1], Long::sum);
         }
 
         // 가격 레벨 정렬 후 상위 DEPTH만 잘라 반환
