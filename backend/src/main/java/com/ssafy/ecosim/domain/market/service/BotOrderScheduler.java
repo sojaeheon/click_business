@@ -1,11 +1,12 @@
 package com.ssafy.ecosim.domain.market.service;
 
-import com.ssafy.ecosim.domain.market.dto.event.OrderCreationEventDto;
 import com.ssafy.ecosim.domain.market.entity.ExternalIndex;
+import com.ssafy.ecosim.domain.market.entity.MarketOrder;
+import com.ssafy.ecosim.domain.market.entity.OrderStatus;
 import com.ssafy.ecosim.domain.market.entity.OrderType;
-import com.ssafy.ecosim.domain.market.kafka.OrderEventPublisher;
 import com.ssafy.ecosim.domain.market.repository.ExternalIndexRepository;
 import com.ssafy.ecosim.domain.market.repository.redis.OrderBookManager;
+import com.ssafy.ecosim.domain.market.repository.redis.OrderDetailsCacheManager;
 import com.ssafy.ecosim.global.util.GameTimeUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,12 +28,15 @@ import java.util.concurrent.ThreadLocalRandom;
 @RequiredArgsConstructor
 public class BotOrderScheduler {
 
-    private final OrderEventPublisher eventPublisher;
     // 현재 시장가(Redis Ticker) 조회용
     private final RedisTemplate<String, Object> redisTemplate;
     private final RedisTemplate<String, String> stringRedisTemplate;
     // Market Sweep 시 반대편 호가창의 총 잔량 조회용
     private final OrderBookManager orderBookManager;
+    // 봇 주문 Redis 직접 등록용
+    private final OrderDetailsCacheManager orderDetailsCacheManager;
+    // 봇 주문 추가 시 호가창 push 트리거용
+    private final OrderBookPushScheduler orderBookPushScheduler;
     // 외부 지표(DB) 조회용 리포지토리
     private final ExternalIndexRepository externalIndexRepository;
     // 게임시간 관리 유틸
@@ -45,11 +49,11 @@ public class BotOrderScheduler {
     private static final int CYCLE_SECONDS = 600; // 10분 = 외부 지표 1일
     private static final List<Long> TARGET_ITEM_IDS = List.of(1L, 2L, 3L);
 
-    // 틱당 생성량 (10ms 틱 기준, 초당 100~200건 유지)
+    // 틱당 생성량 (50ms 틱 기준, 초당 ~60건 소량 주문)
     private static final int MIN_TPS = 1;
-    private static final int MAX_TPS = 2;
+    private static final int MAX_TPS = 1;
 
-    @Scheduled(fixedRate = 10) // 10ms마다 모든 아이템에 대해 가상 주문 생성 실행
+    @Scheduled(fixedRate = 50) // 50ms마다 모든 아이템에 대해 가상 주문 생성 실행
     public void generateVirtualOrderTick() {
         for (Long itemId : TARGET_ITEM_IDS) {
             // 아이템별 상태 객체가 없으면 생성 후 시뮬레이션 진행
@@ -100,16 +104,16 @@ public class BotOrderScheduler {
         }
 
         for (int i = 0; i < botCount; i++) {
-            // 3-Tier 봇 시스템: 메이커(70%), 테이커(20%), 노이즈(10%)
+            // 3-Tier 봇 시스템: 메이커(50%), 테이커(40%), 노이즈(10%)
             double rand = ThreadLocalRandom.current().nextDouble();
-            
+
             OrderType type;
             long orderPrice;
             long orderQty;
             long tickSize = 100L;
             boolean priceGoingUp = currentTargetPrice > currentMarketPrice;
-            
-            if (rand < 0.7) {
+
+            if (rand < 0.5) {
                 // A) 메이커 봇 (70%): 호가창 유동성 제공
                 type = ThreadLocalRandom.current().nextBoolean() ? OrderType.BUY : OrderType.SELL;
                 
@@ -132,18 +136,18 @@ public class BotOrderScheduler {
                 }
                 
                 long currentVolume = orderBookManager.getVolumeInScoreRange(itemId.intValue(), type.name(), minScore, maxScore);
-                long targetDepth = 3000L;
-                
+                long targetDepth = 150L;
+
                 if (currentVolume < targetDepth) {
-                    orderQty = Math.min(150, targetDepth - currentVolume);
-                    if (orderQty < 50) orderQty = 50; // 최소 활성량 보장
+                    orderQty = Math.min(10, targetDepth - currentVolume);
+                    if (orderQty < 3) orderQty = 3; // 최소 활성량 보장
                 } else {
                     // 이미 충분하면 유동성 공급 생략 (벽 생성 방지)
                     continue; 
                 }
                 
             } else if (rand < 0.9) {
-                // B) 테이커 봇 (20%): 목표가로 시장가 이동
+                // B) 테이커 봇 (40%): 목표가로 시장가 이동
                 type = priceGoingUp ? OrderType.BUY : OrderType.SELL;
                 
                 // 목표가 ±1~3 Tick (타겟가 근처 물량 집중 체결)
@@ -171,8 +175,8 @@ public class BotOrderScheduler {
                     continue;
                 }
                 
-                // 가용 물량의 100%를 정확히 나누어 가져감 (사전 계산된 시장 충격)
-                orderQty = Math.max(1, totalVolume / takerCount);
+                // 소량씩 분할 체결 (한 번에 전체 쓸어담기 방지)
+                orderQty = Math.max(1, Math.min(20L, totalVolume / (takerCount * 10)));
                 
             } else {
                 // C) 노이즈 봇 (10%): 시장 자연스러움
@@ -186,27 +190,43 @@ public class BotOrderScheduler {
                     orderPrice = currentMarketPrice + tickOffset;
                 }
                 
-                // 소량 (1~10)
-                orderQty = ThreadLocalRandom.current().nextLong(1, 11);
+                // 소량 (1~3)
+                orderQty = ThreadLocalRandom.current().nextLong(1, 4);
             }
             
             // 최소 1틱(100원) 방어
             orderPrice = Math.max(tickSize, orderPrice);
 
-            // 여러 가상 기관(회사)들이 참여하는 것처럼 보이기 위해 500번 ~ 999번 사이의 랜덤 회사 ID 부여
+            // Snowflake-style orderId
+            long orderId = (System.currentTimeMillis() << 20)
+                    | (ThreadLocalRandom.current().nextLong(1 << 20));
             long randomCompanyId = ThreadLocalRandom.current().nextLong(500, 1000);
+            long timestamp = gameTimeUtil.getCurrentGameTimestamp();
 
-            OrderCreationEventDto botEvent = OrderCreationEventDto.builder()
+            // 봇 주문 Redis 직접 등록 (Kafka 우회 → 지연 제거)
+            MarketOrder botOrder = MarketOrder.builder()
+                    .id(orderId)
                     .itemId(itemId.intValue())
-                    .companyId(randomCompanyId) // 봇 회사 식별번호 (500~999 랜덤)
+                    .companyId(randomCompanyId)
                     .orderType(type)
                     .price(orderPrice)
                     .totalQuantity(orderQty)
-                    .isVirtual(true) // 봇이 생성한 가짜 데이터임을 명시!
-                    .timestamp(gameTimeUtil.getCurrentGameTimestamp()) // 게임시간 사용
+                    .remainingQuantity(orderQty)
+                    .status(OrderStatus.PENDING)
+                    .isVirtual(true)
                     .build();
 
-            eventPublisher.publishOrderEvent(botEvent);
+            // HASH 저장 (주문 상세)
+            orderDetailsCacheManager.saveOrderCache(botOrder, timestamp);
+
+            // ZSET 저장 (호가창) — Python consumer와 동일한 score 공식
+            long ts = timestamp % 1_000_000L;
+            double score = (double) (orderPrice * 1_000_000L + ts);
+            if (type == OrderType.BUY) {
+                orderBookManager.addBuy(itemId.intValue(), orderId, -score);
+            } else {
+                orderBookManager.addSell(itemId.intValue(), orderId, score);
+            }
         }
     }
 
