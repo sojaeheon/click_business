@@ -742,12 +742,12 @@ export function MarketPage() {
                               const prevItem = index > 0 ? displayChartData[index - 1] : null;
                               const showDate = item.gameDate && (!prevItem || prevItem.gameDate !== item.gameDate);
                               return (
-                                <g transform={`translate(${x - 30},${y})`}>
-                                  <text x={0} y={0} dy={12} textAnchor="start" fill="#94a3b8" fontSize={9} fontWeight="bold">
+                                <g transform={`translate(${x},${y})`}>
+                                  <text x={0} y={0} dy={12} textAnchor="middle" fill="#94a3b8" fontSize={9} fontWeight="bold">
                                     {item.time}
                                   </text>
                                   {showDate && (
-                                    <text x={0} y={0} dy={24} textAnchor="start" fill="#f59e0b" fontSize={8} fontWeight="black">
+                                    <text x={0} y={0} dy={24} textAnchor="middle" fill="#f59e0b" fontSize={8} fontWeight="black">
                                       {item.gameDate}
                                     </text>
                                   )}
