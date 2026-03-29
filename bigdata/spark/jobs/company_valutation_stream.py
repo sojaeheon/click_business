@@ -43,6 +43,13 @@ spark = (
     .getOrCreate()
 )
 spark.sparkContext.setLogLevel("WARN")
+spark.conf.set("spark.sql.shuffle.partitions", os.getenv("SPARK_SHUFFLE_PARTITIONS", "8"))
+spark.conf.set(
+    "spark.default.parallelism",
+    os.getenv("SPARK_DEFAULT_PARALLELISM", os.getenv("SPARK_SHUFFLE_PARTITIONS", "8")),
+)
+spark.conf.set("spark.sql.adaptive.enabled", "true")
+spark.conf.set("spark.sql.adaptive.coalescePartitions.enabled", "true")
 
 
 # -----------------------------
@@ -86,6 +93,17 @@ CKPT_TR = os.getenv("VALUATION_TR_CHECKPOINT", f"{CKPT_BASE}/valuation-tr")
 STREAM_CASH = "cash_state"
 STREAM_WH = "item_qty_state"
 STREAM_TR = "item_price_state"
+
+# Spark CPU 튜닝(마이크로배치 오버헤드 완화)
+SPARK_SHUFFLE_PARTITIONS = int(os.getenv("SPARK_SHUFFLE_PARTITIONS", "8"))
+SPARK_DEFAULT_PARALLELISM = int(
+    os.getenv("SPARK_DEFAULT_PARALLELISM", str(SPARK_SHUFFLE_PARTITIONS))
+)
+
+# 토픽별 처리량 제한(기본값은 보수적으로 낮춰 CPU 급등 방지)
+MAX_OFFSETS_CASH = int(os.getenv("MAX_OFFSETS_CASH", "1200"))
+MAX_OFFSETS_WH = int(os.getenv("MAX_OFFSETS_WH", "1200"))
+MAX_OFFSETS_TR = int(os.getenv("MAX_OFFSETS_TR", "1200"))
 
 
 # -----------------------------
@@ -131,14 +149,14 @@ def iter_chunks(df: DataFrame, cols: List[str], chunk_size: int) -> Iterable[lis
 # -----------------------------
 # Kafka topic별 source
 # -----------------------------
-def read_topic_stream(topic_name: str) -> DataFrame:
+def read_topic_stream(topic_name: str, max_offsets: int) -> DataFrame:
     return (
         spark.readStream
         .format("kafka")
         .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
         .option("subscribe", topic_name)
         .option("startingOffsets", "latest")
-        .option("maxOffsetsPerTrigger", MAX_OFFSETS_PER_TRIGGER)
+        .option("maxOffsetsPerTrigger", max_offsets)
         .option("failOnDataLoss", "false")
         .load()
     )
@@ -171,9 +189,9 @@ def parse_envelope(raw_df: DataFrame) -> DataFrame:
 # -----------------------------
 # source별 정규화
 # -----------------------------
-company_base = parse_envelope(read_topic_stream(TOPIC_COMPANY))
-warehouse_base = parse_envelope(read_topic_stream(TOPIC_WAREHOUSE))
-trade_base = parse_envelope(read_topic_stream(TOPIC_TRADE))
+company_base = parse_envelope(read_topic_stream(TOPIC_COMPANY, MAX_OFFSETS_CASH))
+warehouse_base = parse_envelope(read_topic_stream(TOPIC_WAREHOUSE, MAX_OFFSETS_WH))
+trade_base = parse_envelope(read_topic_stream(TOPIC_TRADE, MAX_OFFSETS_TR))
 
 cash_events = (
     company_base
