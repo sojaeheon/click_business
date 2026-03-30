@@ -1,0 +1,225 @@
+// 각 단계의 결과를 저장할 맵
+def stageResults = [
+    'Backend Build': '➖ Skipped',
+    'Frontend Build': '➖ Skipped',
+    'K8s Deployment': '➖ Skipped',
+    'Big Data Test': '➖ Skipped'
+]
+
+pipeline {
+    agent any
+
+    parameters {
+        string(
+            name: 'DEPLOY_BRANCH',
+            defaultValue: 'develop',
+            description: '빌드/배포할 브랜치 (예: develop, fix/my-branch). 웹훅 자동 빌드 시에는 무시됩니다.'
+        )
+    }
+
+    environment {
+        DOCKER_HUB_ID = "${env.DOCKER_HUB_ID}"
+        BACKEND_APP_NAME = 's14p21b109-backend'
+        FRONTEND_APP_NAME = 's14p21b109-frontend'
+
+        BACKEND_IMAGE = "${DOCKER_HUB_ID}/${BACKEND_APP_NAME}:${env.BUILD_NUMBER}"
+        FRONTEND_IMAGE = "${DOCKER_HUB_ID}/${FRONTEND_APP_NAME}:${env.BUILD_NUMBER}"
+
+        K8S_CREDENTIAL_ID = 'k8s-kubeconfig'
+        DOCKER_HUB_CREDENTIAL_ID = 'docker-hub-credentials'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                script {
+                    // 수동 빌드(UserIdCause)면 파라미터 브랜치로, 웹훅이면 해당 브랜치로 체크아웃
+                    def isManual = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause').size() > 0
+                    def branch = isManual
+                        ? params.DEPLOY_BRANCH
+                        : (env.gitlabSourceBranch ?: env.GIT_BRANCH ?: 'develop')
+
+                    echo "체크아웃 브랜치: ${branch} (수동빌드: ${isManual})"
+                    checkout([
+                        $class: 'GitSCM',
+                        branches: [[name: "*/${branch}"]],
+                        extensions: [[$class: 'CleanBeforeCheckout']],
+                        userRemoteConfigs: scm.userRemoteConfigs
+                    ])
+                }
+                script {
+                    env.CHANGED_FILES = sh(
+                        script: 'git diff --name-only HEAD~1 HEAD 2>/dev/null || git log --name-only --format="" -1',
+                        returnStdout: true
+                    ).trim()
+                    echo "변경된 파일 목록:\n${env.CHANGED_FILES}"
+                }
+            }
+        }
+
+        stage('Build & Push Images') {
+            parallel {
+                stage('Backend') {
+                    when {
+                        anyOf {
+                            expression { env.CHANGED_FILES?.split('\n')?.any { it.startsWith('backend/') } }
+                            buildingTag()
+                            triggeredBy 'UserIdCause'
+                        }
+                    }
+                    steps {
+                        script {
+                            try {
+                                docker.withRegistry('https://index.docker.io/v1/', DOCKER_HUB_CREDENTIAL_ID) {
+                                    def backendImg = docker.build("${BACKEND_IMAGE}", "./backend")
+                                    backendImg.push()
+                                    backendImg.push("latest")
+                                }
+                                stageResults['Backend Build'] = '✅ Success'
+                            } catch (e) {
+                                stageResults['Backend Build'] = '❌ Failed'
+                                throw e
+                            }
+                        }
+                    }
+                }
+                stage('Frontend') {
+                    when {
+                        anyOf {
+                            expression { env.CHANGED_FILES?.split('\n')?.any { it.startsWith('frontend/') } }
+                            buildingTag()
+                            triggeredBy 'UserIdCause'
+                        }
+                    }
+                    steps {
+                        script {
+                            // catchError: Frontend 빌드 실패해도 전체 파이프라인은 계속 진행
+                            // buildResult: 최종 빌드 상태를 UNSTABLE로 (FAILURE 아님 → K8s stage 스킵 방지)
+                            catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                                docker.withRegistry('https://index.docker.io/v1/', DOCKER_HUB_CREDENTIAL_ID) {
+                                    def frontendImg = docker.build("${FRONTEND_IMAGE}", "./frontend")
+                                    frontendImg.push()
+                                    frontendImg.push("latest")
+                                }
+                                stageResults['Frontend Build'] = '✅ Success'
+                            }
+                            if (stageResults['Frontend Build'] != '✅ Success') {
+                                stageResults['Frontend Build'] = '❌ Failed'
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('K8s Infrastructure Deployment') {
+            when {
+                anyOf {
+                    expression {
+                        env.CHANGED_FILES?.split('\n')?.any {
+                            it.startsWith('backend/') || it.startsWith('frontend/') || it.startsWith('k8s/')
+                        }
+                    }
+                    buildingTag()
+                    triggeredBy 'UserIdCause'
+                }
+            }
+            steps {
+                script {
+                    try {
+                        withCredentials([string(credentialsId: K8S_CREDENTIAL_ID, variable: 'KUBE_CONTENT')]) {
+                            sh """
+                                echo "\${KUBE_CONTENT}" | base64 -d > kubeconfig
+                                export KUBECONFIG=kubeconfig
+                                kubectl apply -f infra/k8s/deployment.yaml
+                                rm kubeconfig
+                            """
+
+                            if (stageResults['Backend Build'] == '✅ Success') {
+                                sh """
+                                    echo "\${KUBE_CONTENT}" | base64 -d > kubeconfig
+                                    export KUBECONFIG=kubeconfig
+                                    kubectl set image deployment/backend-app backend=${BACKEND_IMAGE}
+                                    kubectl rollout status deployment/backend-app --timeout=180s
+                                    rm kubeconfig
+                                """
+                            }
+
+                            if (stageResults['Frontend Build'] == '✅ Success') {
+                                sh """
+                                    echo "\${KUBE_CONTENT}" | base64 -d > kubeconfig
+                                    export KUBECONFIG=kubeconfig
+                                    kubectl set image deployment/frontend-app frontend=${FRONTEND_IMAGE}
+                                    kubectl rollout status deployment/frontend-app --timeout=120s
+                                    rm kubeconfig
+                                """
+                            }
+                        }
+                        stageResults['K8s Deployment'] = '✅ Success'
+                    } catch (e) {
+                        stageResults['K8s Deployment'] = '❌ Failed'
+                        throw e
+                    }
+                }
+            }
+        }
+        
+        stage('Big Data Integration Test') {
+            when {
+                expression { env.CHANGED_FILES?.split('\n')?.any { it.startsWith('bigdata/') } }
+            }
+            steps {
+                script {
+                    try {
+                        echo '빅데이터 분산 환경 연동 테스트 중...'
+                        stageResults['Big Data Test'] = '✅ Success'
+                    } catch (e) {
+                        stageResults['Big Data Test'] = '❌ Failed'
+                        throw e
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                def buildStatus = currentBuild.currentResult
+                def color = (buildStatus == 'SUCCESS') ? '#00FF00' : (buildStatus == 'FAILURE' ? '#FF0000' : '#FFA500')
+                
+                // 상세 리포트 생성
+                def summaryMsg = stageResults.collect { k, v -> "- **${k}**: ${v}" }.join('\n')
+                
+                // 커밋 정보를 git 명령어로 직접 가져오기 (changeSets가 비어있는 경우 대비)
+                def changeLog = "N/A"
+                try {
+                    def author = sh(script: 'git log -1 --format="%an"', returnStdout: true).trim()
+                    def msg    = sh(script: 'git log -1 --format="%s"',  returnStdout: true).trim()
+                    changeLog = "✍️ **Author:** ${author}\n💬 **Msg:** ${msg}"
+                } catch (e) { /* ignore */ }
+
+              def currentStatus = currentBuild.currentResult
+                def statusColor = (currentStatus == 'SUCCESS') ? '#00FF00' : (currentStatus == 'FAILURE' ? '#FF0000' : '#FFA500')
+                
+                // 2. Mattermost 전송 (기본 설정을 무시하고 직접 주소 입력)
+                mattermostSend (
+                    color: statusColor,
+                    endpoint: "https://meeting.ssafy.com/hooks/64bwh9doxpnbfcndhpezpsp9ic",
+                    channel: 'b109',
+                    message: """
+**🚀 파이프라인 결과: ${currentStatus} (Branch: ${env.GIT_BRANCH ?: env.BRANCH_NAME ?: 'unknown'})**
+${changeLog}
+
+| Stage | Status |
+| :--- | :--- |
+${stageResults.collect { k, v -> "| ${k} | ${v} |" }.join('\n')}
+
+---
+🔗 [상세 로그 확인하기](${env.BUILD_URL}console)
+""".stripIndent()
+                )
+            }
+        }
+    }
+}

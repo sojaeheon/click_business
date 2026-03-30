@@ -1,67 +1,65 @@
-# [보안 관련 - 절대 금지]
-secrets/
+### --- [1. Security & Secrets] --- ###
+.env
+.env.*
+/env/
+/secrets/
 secret.key
+infra/k8s/secret.yaml
+**/secret.yaml
+**/secret.yml
 secret.key.not-so-secret
 credentials.xml
 users/
+venv/
+/Fingerprints/
 
-# [빌드 결과물 및 임시 파일]
-war/
-work/
-jobs/*/builds/
-jobs/*/lastStable
-jobs/*/lastSuccessful
-workspace/
-
-# [로그 및 시스템 상태]
-logs/
-*.log
-*.tmp
-*.bak
-Fingerprints/
-
-# [플러그인 관련]
-# 플러그인 자체(.hpi)는 다시 다운로드하면 되므로 제외하는 것이 일반적입니다.
-plugins/*.jpi
-plugins/*.hpi
-plugins/*.bak
-
-# 젠킨스 내부 데이터 제외
-jenkins_home/
-jobs/
-logs/
-*.log
-work/
-workspace/
-secret.key
-secrets/
-credentials.xml
-
-# 1. 환경 변수 파일 (가장 중요)
-.env
-
-# 3. 운영체제 및 IDE 관련
-.DS_Store
-.idea/
-.vscode/
-
-
-### --- Java & Spring Boot --- ###
+### --- [2. Java & Spring Boot] --- ###
 *.class
 *.log
 *.main
 *.pyc
 .gradle/
+**/.gradle/
 build/
 bin/
 out/
 target/
-# Spring Boot default sensitive files
-.mvn/wrapper/maven-wrapper.jar
+# 예외 처리: 빌드 폴더 내 일부 실행에 필요한 파일은 허용
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+# Spring Boot sensitive setting files (Local)
 application*.properties
 application*.yml
+# 기본 설정 파일은 커밋 허용 (env var 기반이라 시크릿 없음)
 
-### --- IntelliJ & IDE --- ###
+.mvn/wrapper/maven-wrapper.jar
+
+### --- [3. Jenkins & CI/CD] --- ###
+.jenkins/
+jenkins_home/
+war/
+work/
+workspace/
+/jobs/
+/plugins/*.jpi
+/plugins/*.hpi
+/plugins/*.bak
+*.war
+*.ear
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+!backend/gradle/wrapper/gradle-wrapper.jar
+
+### --- [4. Docker & Kubernetes] --- ###
+.docker/
+docker-compose.override.yml
+.kube/
+charts/*.tgz
+charts/charts/
+charts/index.yaml
+
+### --- [5. IDE & OS] --- ###
 .idea/
 *.iml
 *.iws
@@ -70,54 +68,29 @@ application*.yml
 .classpath
 .project
 .settings/
-
-### --- Build Tools (Gradle/Maven) --- ###
-.gradle
-build/
-!gradle/wrapper/gradle-wrapper.jar
-target/
-pom.xml.tag
-pom.xml.releaseBackup
-pom.xml.utils
-release.properties
-
-### --- Docker --- ###
-# 도커 이미지 빌드 시 생성되는 임시 파일이나 로그
-.docker/
-docker-compose.override.yml
-
-### --- Jenkins & CI/CD --- ###
-# Jenkins 빌드 로그나 임시 작업 파일
-.jenkins/
-*.war
-*.ear
-*.jar
-# Jenkinsfile은 보통 git에 포함시키지만, 로컬 테스트용은 제외 가능
-# Jenkinsfile.local
-
-### --- Kubernetes (K8s) --- ###
-# K8s 관련 민감한 설정 (kubeconfig 등)
-.kube/
-# Helm 차트 빌드 결과물
-charts/*.tgz
-charts/charts/
-charts/index.yaml
-
-### --- OS & Etc --- ###
+.apt_generated
+.factorypath
+.springBeans
+.sts4-cache
 .DS_Store
 Thumbs.db
 desktop.ini
 .metadata
+
+### --- [6. Temporary & Data] --- ###
+*.tmp
+*.bak
 temp/
 tmp/
-
-### --- Data (추후 결정 대비) --- ###
-# 데이터베이스 데이터 폴더나 CSV 파일 등
 *.db
 *.sqlite
-/data/
 
-# Environment variables and secrets
-/env/
-.env
-.env.*
+rule.md
+/postgres_data/
+**/postgres_data/
+**/redis_data/
+/pjt2/
+hadoop.env
+.claude/
+claude.md
+*/secret

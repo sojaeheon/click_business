@@ -1,0 +1,384 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: postgres-db
+    restart: always
+    environment:
+      POSTGRES_DB: ecosim
+      POSTGRES_USER: ecosim
+      POSTGRES_PASSWORD: ecosim
+      # POSTGRES_INITDB_ARGS: "--auth-host=trust --auth-local=trust"
+      POSTGRES_HOST_AUTH_METHOD: trust # Docker 내부 접속 허용
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+    networks:
+      - ecosim-network
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redis_data:/data
+    # RDB 스냅샷 비활성화 (Kafka가 source of truth → Redis는 캐시 역할)
+    # AOF(appendonly)로 전환: 변경사항만 순차 append → CPU 스파이크 없음
+    command: redis-server --save "" --appendonly yes --appendfsync everysec
+    networks:
+      - ecosim-network
+
+  # -----------------------------
+  # HDFS NameNode
+  # 파일 시스템 메타데이터 관리
+  # -----------------------------
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+
+    ports:
+      # NameNode Web UI
+      - "9870:9870"
+
+      # HDFS client 접속 포트
+      - "9000:9000"
+
+    environment:
+      # HDFS 클러스터 이름
+      CLUSTER_NAME: ecosim-hdfs
+
+    env_file:
+      # Hadoop 환경 변수 파일
+      - ./hdfs/configs/hadoop.env
+
+    volumes:
+      # NameNode 메타데이터 저장
+      - ./hdfs/storage/namenode:/hadoop/dfs/name
+
+      # 초기화 스크립트
+      - ./hdfs/init:/init
+
+      # 샘플 데이터 폴더
+      - ./hdfs/sample-data:/sample-data
+
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:9870/ || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+    networks:
+      - ecosim-network
+
+  # -----------------------------
+  # HDFS DataNode
+  # 실제 데이터 블록 저장
+  # -----------------------------
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+
+    depends_on:
+      # NameNode 이후 실행
+      - namenode
+
+    ports:
+      # DataNode Web UI
+      - "9864:9864"
+
+    environment:
+      # NameNode 준비 후 실행
+      SERVICE_PRECONDITION: "namenode:9870"
+
+    env_file:
+      - ./hdfs/configs/hadoop.env
+
+    volumes:
+      # 실제 데이터 블록 저장
+      - ./hdfs/storage/datanode:/hadoop/dfs/data
+
+    networks:
+      - ecosim-network
+
+  # -----------------------------
+  # external loader 서비스
+  # -----------------------------
+  external-loader:
+    image: python:3.11-slim
+    container_name: external-loader
+    working_dir: /app
+    volumes:
+      - ../bigdata:/app
+    env_file:
+      - .env
+    command: >
+      sh -c "pip install --no-cache-dir psycopg2-binary &&
+            python external_data/loader/external_data_loader.py"
+    networks:
+      - ecosim-network
+  # -----------------------------
+  # ZooKeeper 서비스
+  # -----------------------------
+  zookeeper:
+    # Confluent에서 제공하는 ZooKeeper 이미지
+    image: confluentinc/cp-zookeeper:7.6.0
+
+    # 컨테이너 이름 지정 (docker ps에서 보기 쉽게)
+    container_name: zookeeper
+
+    ports:
+      # 호스트:컨테이너
+      # ZooKeeper 기본 클라이언트 포트
+      - "2181:2181"
+
+    environment:
+      # ZooKeeper 클라이언트 접속 포트
+      ZOOKEEPER_CLIENT_PORT: 2181
+
+      # ZooKeeper 내부 heartbeat tick 시간 (ms)
+      # 클러스터에서 node 상태 체크 주기
+      ZOOKEEPER_TICK_TIME: 2000
+
+    networks:
+      # Kafka와 통신하기 위한 Docker 네트워크
+      - ecosim-network
+
+  # -----------------------------
+  # Kafka Broker 서비스
+  # -----------------------------
+  kafka:
+    # Confluent Kafka 이미지
+    image: confluentinc/cp-kafka:7.6.0
+
+    # 컨테이너 이름
+    container_name: kafka
+
+    # zookeeper가 먼저 실행되도록 의존성 설정
+    depends_on:
+      - zookeeper
+
+    ports:
+      # Kafka client 접속 포트
+      # Spring Boot / Python / Spark 등이 여기로 접속
+      - "9092:9092"
+
+    environment:
+
+      # Kafka Broker ID
+      # Kafka 클러스터에서 broker 식별용
+      # 단일 브로커이므로 1
+      KAFKA_BROKER_ID: 1
+
+      # Kafka가 사용할 ZooKeeper 주소
+      # docker 내부 네트워크에서 zookeeper:2181로 접근
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+
+      # Kafka가 실제로 바인딩해서 듣는 주소
+      # 0.0.0.0 = 모든 인터페이스
+      # KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+
+      # Kafka가 외부 client에게 광고하는 주소
+      # Spring Boot가 localhost:9092로 접속
+      # KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092 # 외부
+      # KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092 # 내부
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+
+      # consumer offset topic replication 설정
+      # single broker이므로 1로 설정
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+    healthcheck:
+      test: [ "CMD-SHELL", "nc -z localhost 29092" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+    networks:
+      # ZooKeeper와 동일 네트워크
+      - ecosim-network
+
+  # -----------------------------
+  # Kafka Topic Init
+  # -----------------------------
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: kafka-init
+    depends_on:
+      - kafka
+    volumes:
+      - ../bigdata/kafka/scripts/create_topics.sh:/usr/local/bin/create_topics.sh
+    entrypoint: [ "/bin/bash", "/usr/local/bin/create_topics.sh" ]
+    networks:
+      - ecosim-network
+
+  # -----------------------------
+  # Kafka Consumer
+  # -----------------------------
+  order-redis-consumer:
+    build:
+      context: ../bigdata
+      dockerfile: kafka/Dockerfile.kafka
+    container_name: order-redis-consumer
+    restart: always
+    depends_on:
+      - kafka
+      - redis
+    environment:
+      CONSUMER_TYPE: order_redis
+    networks:
+      - ecosim-network
+
+  order-db-consumer:
+    build:
+      context: ../bigdata
+      dockerfile: kafka/Dockerfile.kafka
+    container_name: order-db-consumer
+    restart: always
+    depends_on:
+      - kafka
+      - postgres
+    environment:
+      CONSUMER_TYPE: order_db
+    networks:
+      - ecosim-network
+
+  order-hdfs-consumer:
+    build:
+      context: ../bigdata
+      dockerfile: kafka/Dockerfile.kafka
+    container_name: order-hdfs-consumer
+    restart: always
+    depends_on:
+      kafka:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      CONSUMER_TYPE: order_hdfs
+      KAFKA_TOPIC: market.order.events
+      KAFKA_GROUP_ID: order-hdfs-consumer
+      HDFS_BASE_PATH: /raw/kafka
+      HDFS_FLUSH_INTERVAL_SEC: 1
+    networks:
+      - ecosim-network
+
+  trade-db-consumer:
+    build:
+      context: ../bigdata
+      dockerfile: kafka/Dockerfile.kafka
+    container_name: trade-db-consumer
+    restart: always
+    depends_on:
+      - kafka
+      - postgres
+    environment:
+      CONSUMER_TYPE: trade_db
+    networks:
+      - ecosim-network
+
+  trade-hdfs-consumer:
+    build:
+      context: ../bigdata
+      dockerfile: kafka/Dockerfile.kafka
+    container_name: trade-hdfs-consumer
+    restart: always
+    depends_on:
+      kafka:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      CONSUMER_TYPE: trade_hdfs
+      KAFKA_TOPIC: market.trade.events
+      KAFKA_GROUP_ID: trade-hdfs-consumer
+      HDFS_BASE_PATH: /raw/kafka
+      HDFS_FLUSH_INTERVAL_SEC: 1
+    networks:
+      - ecosim-network
+
+  # -----------------------------
+  # Kafka Consumer (HDFS 적재용)
+  # -----------------------------
+  hdfs-raw-sink-consumer:
+    build:
+      context: ../bigdata
+      dockerfile: kafka/Dockerfile.kafka
+    container_name: hdfs-raw-sink-consumer
+    restart: always
+    depends_on:
+      kafka:
+        condition: service_healthy
+      namenode:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      CONSUMER_TYPE: hdfs_raw_sink
+    networks:
+      - ecosim-network
+
+  # -----------------------------
+  # Kafka Exporter + Prometheus + Grafana (모니터링 스택)
+  # -----------------------------
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.7.0
+    container_name: kafka-exporter
+    command:
+      - "--kafka.server=kafka:29092"
+    ports:
+      - "9308:9308"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: always
+    networks:
+      - ecosim-network
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - ecosim-network
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: grafana
+    ports:
+      - "3001:3000"
+    networks:
+      - ecosim-network
+
+  # -----------------------------
+  # Analytics용 PostgreSQL
+  # -----------------------------
+  analytics-postgres:
+    image: postgres:17
+    container_name: analytics-postgres
+    restart: always
+    env_file:
+      - ./.env
+    environment:
+      POSTGRES_DB: ${ANALYTICS_POSTGRES_DB}
+      POSTGRES_USER: ${ANALYTICS_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${ANALYTICS_POSTGRES_PASSWORD}
+    ports:
+      - "${ANALYTICS_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - ./analytics_postgres_data:/var/lib/postgresql/data
+      - ../bigdata/sql/analytics_schema.sql:/docker-entrypoint-initdb.d/01_analytics_schema.sql:ro
+    networks:
+      - ecosim-network
+
+networks:
+  ecosim-network:
+    name: ecosim-network
+    external: true

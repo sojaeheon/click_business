@@ -1,0 +1,35 @@
+include:
+  - infra/compose.yaml
+  - data/compose.yaml
+  - backend/compose.yaml
+  - bigdata/compose.yaml
+  - frontend/compose.yaml
+
+# 루트에서 올릴 때만 적용되는 경로 오버라이드
+# services:
+#   backend:
+#     env_file: [backend/.env]
+#   jenkins:
+#     env_file: [infra/.env]
+#   namenode:
+#     env_file: [data/hdfs/configs/hadoop.env]
+#     volumes:
+#       - ./bigdata/hdfs/storage/namenode:/hadoop/dfs/name
+#       - ./bigdata/hdfs/init:/init
+#       - ./bigdata/hdfs/sample-data:/sample-data
+#   datanode:
+#     env_file: [data/hdfs/configs/hadoop.env]
+#     volumes:
+#       - ./bigdata/hdfs/storage/datanode:/hadoop/dfs/data
+#   spark-master:
+#     build:
+#       context: bigdata
+#       dockerfile: spark/Dockerfile.spark
+#     volumes:
+#       - ./bigdata/spark/jobs:/opt/spark-apps
+#   spark-worker:
+#     build:
+#       context: bigdata
+#       dockerfile: spark/Dockerfile.spark
+#     volumes:
+#       - ./bigdata/spark/jobs:/opt/spark-apps

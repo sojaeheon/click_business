@@ -1,0 +1,49 @@
+services:
+  nginx:
+    image: nginx:stable-alpine
+    container_name: ecosim-nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      - jenkins
+    networks:
+      - ecosim-network
+
+  jenkins:
+    build: .
+    user: root
+    container_name: jenkins
+    restart: always
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./jenkins_home:/var/jenkins_home
+      - ./jenkins.yaml:/var/jenkins_home/jenkins.yaml
+    environment:
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+      - JENKINS_OPTS=--prefix=/jenkins
+      - CASC_JENKINS_CONFIG=/var/jenkins_home/jenkins.yaml
+      - MM_WEBHOOK_URL
+      - JENKINS_ADMIN_ID
+      - JENKINS_ADMIN_PASSWORD
+      - GITLAB_USERNAME
+      - GITLAB_TOKEN
+      - GITLAB_WEBHOOK_TOKEN
+      - DOCKER_HUB_ID
+      - DOCKER_HUB_PASSWORD
+      - JENKINS_URL
+      - KUBECONFIG_CONTENT
+      - GIT_BRANCH
+    networks:
+      - ecosim-network
+
+networks:
+  ecosim-network:
+    name: ecosim-network
+    external: true

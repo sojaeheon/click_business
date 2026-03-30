@@ -1,0 +1,108 @@
+services:
+  spark-master:
+    build:
+      context: .
+      dockerfile: ./spark/Dockerfile.spark
+    container_name: spark-master
+    volumes:
+      - ./spark/jobs:/opt/spark-apps
+    command: >
+      /opt/spark/bin/spark-class
+      org.apache.spark.deploy.master.Master
+    env_file:
+      - ../data/.env  
+    ports:
+      - "7077:7077"
+      - "8082:8080"
+    networks:
+      - ecosim-network
+
+  spark-worker:
+    build:
+      context: .
+      dockerfile: ./spark/Dockerfile.spark
+    container_name: spark-worker
+    depends_on:
+      - spark-master
+    volumes:
+      - ./spark/jobs:/opt/spark-apps
+    command: >
+      /opt/spark/bin/spark-class
+      org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077
+    env_file:
+      - ../data/.env
+    environment:
+      - SPARK_WORKER_CORES=2
+    ports:
+      - "8081:8081"
+    networks:
+      - ecosim-network
+
+  spark-market-news:
+    build:
+      context: .
+      dockerfile: ./spark/Dockerfile.spark
+    container_name: spark-market-news
+    depends_on:
+      - spark-master
+      - spark-worker
+    restart: unless-stopped
+    volumes:
+      - ./spark/jobs:/opt/spark-apps
+    env_file:
+      - ../data/.env
+    command: >
+      /bin/bash -lc '
+      until (echo > /dev/tcp/spark-master/7077) >/dev/null 2>&1; do sleep 2; done;
+      until (echo > /dev/tcp/namenode/9000) >/dev/null 2>&1; do sleep 2; done;
+      until (echo > /dev/tcp/postgres-db/5432) >/dev/null 2>&1; do sleep 2; done;
+      /opt/spark/bin/spark-submit
+      --master spark://spark-master:7077
+      --total-executor-cores 1
+      --executor-cores 1
+      /opt/spark-apps/market_news_stream.py
+      --trigger-interval "10 minute"
+      --window-minutes 10
+      --checkpoint-path /tmp/checkpoints/market-news-stream
+      '
+    networks:
+      - ecosim-network
+
+  
+  spark-submit-valuation:
+    build:
+      context: .
+      dockerfile: ./spark/Dockerfile.spark
+    container_name: spark-submit-valuation
+    depends_on:
+      - spark-master
+      - spark-worker
+    volumes:
+      - ./spark/jobs:/opt/spark-apps
+    env_file:
+      - ../data/.env
+    command: >
+      /bin/bash -lc '
+      until (echo > /dev/tcp/spark-master/7077) >/dev/null 2>&1; do sleep 2; done;
+      until (echo > /dev/tcp/kafka/29092) >/dev/null 2>&1; do sleep 2; done;
+      until (echo > /dev/tcp/postgres-db/5432) >/dev/null 2>&1; do sleep 2; done;
+      until (echo > /dev/tcp/analytics-postgres/5432) >/dev/null 2>&1; do sleep 2; done;
+      /opt/spark/bin/spark-submit
+      --master spark://spark-master:7077
+      --total-executor-cores 1
+      --executor-cores 1
+      /opt/spark-apps/company_valutation_stream.py
+      '
+    networks:
+      - ecosim-network
+
+# -----------------------------
+# Docker Network
+# 컨테이너 간 이름 기반 통신 가능
+# 예: kafka -> zookeeper:2181, spark -> namenode:9000
+# -----------------------------
+networks:
+  ecosim-network:
+    name: ecosim-network
+    external: true

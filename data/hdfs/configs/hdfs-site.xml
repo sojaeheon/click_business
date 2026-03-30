@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<configuration>
+
+  <!--
+  HDFS 파일 replication 수
+  DataNode가 1개라서 1
+  -->
+  <property>
+    <name>dfs.replication</name>
+    <value>1</value>
+  </property>
+
+
+  <!--
+  NameNode 메타데이터 저장 위치
+  -->
+  <property>
+    <name>dfs.namenode.name.dir</name>
+    <value>file:///hadoop/dfs/name</value>
+  </property>
+
+
+  <!--
+  DataNode 실제 데이터 저장 위치
+  -->
+  <property>
+    <name>dfs.datanode.data.dir</name>
+    <value>file:///hadoop/dfs/data</value>
+  </property>
+
+</configuration>
