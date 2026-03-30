@@ -5,12 +5,18 @@
 ```
 k6-tests/
 ├── tests/
-│   ├── smoke.js    # Smoke:  VU 1명, 30초 — 기본 동작 확인
-│   ├── load.js     # Load:   VU 20명, 5분  — 예상 트래픽 검증
-│   └── stress.js   # Stress: VU 150명까지  — 한계점 탐색
+│   ├── smoke.js              # 게스트 로그인 Smoke (VU 1명, 30초)
+│   ├── load.js               # 게스트 로그인 Load  (VU 20명, 5분)
+│   ├── stress.js             # 게스트 로그인 Stress (VU 150명)
+│   │
+│   ├── orderbook-smoke.js    # 호가창 Smoke  — 기본 동작 확인
+│   ├── orderbook-load.js     # 호가창 Load   — 예상 트래픽 (VU 20명, 5분)
+│   ├── orderbook-stress.js   # 호가창 Stress — 한계 탐색 (VU 200명)
+│   └── orderbook-ws.js       # 호가창 WebSocket — WS 전환 후 사용
+│
 ├── config/
-│   ├── options.js      # 테스트 종류별 k6 옵션 (vus, stages, thresholds)
-│   └── environments.js # 환경별 base URL (local / ec2)
+│   ├── options.js            # 테스트 옵션 (vus, stages, thresholds)
+│   └── environments.js       # 환경별 base URL (local / ec2)
 └── README.md
 ```
 
@@ -44,57 +50,95 @@ cd backend
 
 ## 실행 방법
 
-k6-tests 폴더 안에서 실행합니다.
+`k6-tests` 폴더 안에서 실행합니다.
 
 ```bash
 cd k6-tests
+```
 
-# Smoke Test (기본 동작 확인)
+### 게스트 로그인 테스트 (기존)
+```bash
 k6 run tests/smoke.js
-
-# Load Test (예상 부하 검증)
 k6 run tests/load.js
-
-# Stress Test (한계 탐색)
 k6 run tests/stress.js
+```
 
-# EC2 환경으로 실행
-k6 run -e ENV=ec2 tests/smoke.js
+### 호가창 테스트 (인증 불필요 — 즉시 실행 가능)
+```bash
+# 기본 동작 확인 (30초)
+k6 run tests/orderbook-smoke.js
+
+# 예상 부하 검증 (5분, VU 20명)
+k6 run tests/orderbook-load.js
+
+# 한계 탐색 (5분, VU 최대 200명)
+k6 run tests/orderbook-stress.js
+```
+
+### EC2 서버로 실행
+```bash
+k6 run -e ENV=ec2 tests/orderbook-smoke.js
+k6 run -e ENV=ec2 tests/orderbook-load.js
+k6 run -e ENV=ec2 tests/orderbook-stress.js
+```
+
+### WebSocket 호가창 테스트 (WS 전환 후 사용)
+```bash
+# JWT 토큰 없이 실행 (게스트 자동 발급)
+k6 run tests/orderbook-ws.js
+
+# 직접 발급한 토큰 사용
+k6 run -e TOKEN=eyJhbGci... tests/orderbook-ws.js
 ```
 
 ---
 
-## 테스트 후 DB 정리
+## 테스트 대상 엔드포인트
 
-게스트 로그인 시 DB에 유저 레코드가 생성됩니다. 테스트 후 반드시 정리하세요.
-
-```bash
-docker exec -it postgres-db psql -U ecosim -d ecosim \
-  -c "DELETE FROM users WHERE is_guest = true;"
-```
+| 엔드포인트 | 인증 | 테스트 파일 |
+|---|---|---|
+| `GET /api/v1/market/orderbooks?item_id={n}` | 불필요 | orderbook-smoke/load/stress.js |
+| `GET /api/v1/market/chart?item_id={n}` | 불필요 | orderbook-load.js |
+| `GET /api/v1/market/candles/1min?item_id={n}` | 불필요 | orderbook-load.js |
+| `WS /ws-ecosim` STOMP | JWT 필요 | orderbook-ws.js |
 
 ---
 
 ## 결과 해석
 
 ```
-http_req_duration ← 가장 중요한 지표
-  avg=120ms         평균 응답시간
-  p(90)=350ms       상위 10% 느린 요청
-  p(95)=480ms       SLA 기준으로 주로 사용
-  max=2100ms        최악의 경우
+── 기본 지표 ──────────────────────────────────────────────
+http_req_duration
+  avg=120ms     평균 응답시간
+  p(95)=480ms   SLA 기준으로 주로 사용 (95%가 이 시간 이내)
+  max=2100ms    최악의 경우
 
-http_req_failed   ← 실패율 (0.00%가 목표)
-vus               ← 현재 동시 접속자 수
-guest_login_duration_ms ← 커스텀 지표 (로그인만 측정)
+http_req_failed   실패율 (0.00%가 목표)
+vus               현재 동시 접속자 수
+
+── 호가창 커스텀 지표 ─────────────────────────────────────
+orderbook_read_duration_ms   호가창 조회 응답시간
+orderbook_fail_rate          호가창 실패율
+total_orderbook_reads        총 조회 횟수
 ```
 
 ### thresholds 합격 기준
 
-| 테스트   | p(95) 응답시간 | 실패율  |
-|--------|------------|-------|
-| Smoke  | 500ms 이내  | 1% 미만 |
-| Load   | 500ms 이내  | 1% 미만 |
-| Stress | 2000ms 이내 | 5% 미만 |
+| 테스트 | p(95) | 실패율 |
+|---|---|---|
+| Smoke | 500ms | 1% 미만 |
+| Load (호가창) | 200ms | 1% 미만 |
+| Stress (호가창) | 2000ms | 10% 미만 |
 
-기준을 초과하면 k6가 exit code 99로 종료됩니다 (CI에서 실패 처리 가능).
+기준 초과 시 k6가 exit code 99로 종료됩니다 (CI 실패 처리 가능).
+
+---
+
+## 테스트 후 DB 정리
+
+smoke/ws 테스트는 게스트 계정을 생성합니다. 테스트 후 정리하세요.
+
+```bash
+docker exec -it postgres-db psql -U ecosim -d ecosim \
+  -c "DELETE FROM users WHERE is_guest = true;"
+```
