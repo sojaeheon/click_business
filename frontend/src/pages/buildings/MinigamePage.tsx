@@ -61,7 +61,7 @@ export function MinigamePage() {
   const closeBuildingPage = useGameStore((state) => state.closeBuildingPage);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  const TOTAL_CLICKS = 80;
+  const TOTAL_CLICKS = 50;
   const [gameState, setGameState] = useState<"locked" | "playing" | "success" | "failure">("locked");
   const [timeLeft, setTimeLeft] = useState(10);
   const [clicksLeft, setClicksLeft] = useState(TOTAL_CLICKS);

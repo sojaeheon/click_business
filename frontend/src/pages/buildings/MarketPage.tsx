@@ -192,15 +192,26 @@ export function MarketPage() {
 
   const itemId = mode ? getItemId(mode) : 1;
 
-  // 모드/아이템 변경 시 모든 상태 즉시 초기화
+  // 아이템 변경 시 차트만 초기화 (호가창/대기중/체결은 캐시 유지)
   useEffect(() => {
     setChartData([]);
-    setOrderBook({ asks: [], bids: [] });
-    setTradeHistory([]);
-    setPendingOrders([]);
-    setCurrentPrice(0);
-    setChangePrice(0);
-    setChangeRate(0);
+  }, [itemId]);
+
+  // ★ 모드 진입 전에도 호가창 프리로드 (buy/sell 선택 화면에서 미리 가져옴)
+  useEffect(() => {
+    if (mode) return; // 모드 진입 후에는 아래 3초 폴링이 담당
+    const controller = new AbortController();
+    MarketAPI.getOrderbook(itemId).then(res => {
+      if (controller.signal.aborted) return;
+      const data = res.data as any;
+      if (data && (data.sellOrders || data.buyOrders)) {
+        const asks = (data.sellOrders || []).map((o: any) => ({ ...o, quantity: o.remainingQuantity || o.totalQuantity || 0 }));
+        const bids = (data.buyOrders || []).map((o: any) => ({ ...o, quantity: o.remainingQuantity || o.totalQuantity || 0 }));
+        setOrderBook({ asks, bids });
+        if (data.currentPrice) { setCurrentPrice(data.currentPrice); setChangePrice(data.changePrice ?? 0); setChangeRate(data.changeRate ?? 0); }
+      }
+    }).catch(() => {});
+    return () => controller.abort();
   }, [itemId]);
 
   // ⏱️ 실시간 데이터 업데이트 (오더북, 체결내역, 미체결 주문)

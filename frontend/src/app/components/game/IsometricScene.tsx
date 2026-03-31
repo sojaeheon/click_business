@@ -67,7 +67,7 @@ function OceanGrid() {
     for (let z = -GRID_RADIUS; z <= GRID_RADIUS; z++) {
       const scaleX = x % 2 === 0 ? 2 : -2;
       const scaleZ = z % 2 === 0 ? 2 : -2;
-      tiles.push(<OceanTile key={`ocean-${x}-${z}`} position={[x * TILE_SIZE, -0.8, z * TILE_SIZE]} scale={[scaleX, 2, scaleZ]} />);
+      tiles.push(<OceanTile key={`ocean-${x}-${z}`} position={[x * TILE_SIZE, -2.5, z * TILE_SIZE]} scale={[scaleX, 1, scaleZ]} />);
     }
   }
   return <group>{tiles}</group>;
@@ -300,7 +300,7 @@ function PlayerCharacter({
       }
 
       groupRef.current.rotation.y = Math.atan2(dir.x, dir.z);
-      const buffer = 5.0;
+      const buffer = 1.0;
       if (canMoveFlag) {
         posRef.current.copy(nextPos);
         posRef.current.x = THREE.MathUtils.clamp(posRef.current.x, -outerX - buffer, outerX + buffer);
@@ -636,15 +636,19 @@ export function GameScene({
   );
 }
 
-/** 카메라가 플레이어를 부드럽게 추적 */
+/** 카메라가 플레이어를 부드럽게 추적 (맵 경계 제한) */
 function CameraTracker() {
   useFrame((state) => {
     const target = SHARED_STATE.playerPos;
-    if (target.y < -50) return; // 아직 스폰 전
+    if (target.y < -50) return;
     const controls = state.controls as any;
     if (!controls?.target) return;
     const offset = state.camera.position.clone().sub(controls.target);
-    controls.target.lerp(target, 0.05);
+    // 카메라 타겟을 맵 경계 안으로 제한 (clipping 방지)
+    const clampedTarget = target.clone();
+    clampedTarget.x = THREE.MathUtils.clamp(clampedTarget.x, -outerX, outerX);
+    clampedTarget.z = THREE.MathUtils.clamp(clampedTarget.z, -outerZ, outerZ);
+    controls.target.lerp(clampedTarget, 0.05);
     state.camera.position.copy(controls.target.clone().add(offset));
   });
   return null;
@@ -725,7 +729,7 @@ export function IsometricScene({ isLoginMode = false }: { isLoginMode?: boolean 
       <div ref={canvasWrapRef} className="flex-1 w-full h-full relative cursor-auto" style={{ touchAction: "none" }} onClick={handleWrapperClick}>
         <Canvas
           flat orthographic
-          camera={{ position: [cx, cy, cz], zoom: isLoginMode ? 40 : CONFIG.CAMERA.initialZoom }}
+          camera={{ position: [cx, cy, cz], zoom: isLoginMode ? 40 : CONFIG.CAMERA.initialZoom, near: 0.1, far: 500 }}
           shadows
           gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
           performance={{ min: 0.5 }}
