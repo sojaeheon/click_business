@@ -164,6 +164,10 @@ export interface GameState {
   sfxVolume: number;
   setSfxVolume: (v: number) => void;
 
+  // 전역 음소거 (BGM + SFX 통합)
+  isMuted: boolean;
+  toggleMute: () => void;
+
   fetchCompanyData: (companyId: number) => Promise<void>;
   fetchNews: () => Promise<void>;
   fetchGameTime: () => Promise<void>;
@@ -210,6 +214,28 @@ export const useGameStore = create<GameState>()(
     setBgmVolume: (v) => { localStorage.setItem("bgmVolume", String(v)); set({ bgmVolume: v }); },
     sfxVolume: Number(localStorage.getItem("sfxVolume") ?? 50),
     setSfxVolume: (v) => { localStorage.setItem("sfxVolume", String(v)); set({ sfxVolume: v }); },
+
+    isMuted: localStorage.getItem("isMuted") === "true",
+    toggleMute: () => {
+      const { isMuted, bgmVolume, sfxVolume } = get();
+      if (!isMuted) {
+        // 음소거: 현재 볼륨 저장 후 0으로
+        localStorage.setItem("prevBgmVolume", String(bgmVolume));
+        localStorage.setItem("prevSfxVolume", String(sfxVolume));
+        localStorage.setItem("isMuted", "true");
+        localStorage.setItem("bgmVolume", "0");
+        localStorage.setItem("sfxVolume", "0");
+        set({ isMuted: true, bgmVolume: 0, sfxVolume: 0 });
+      } else {
+        // 음소거 해제: 저장된 볼륨 복원
+        const prevBgm = Number(localStorage.getItem("prevBgmVolume") ?? 70);
+        const prevSfx = Number(localStorage.getItem("prevSfxVolume") ?? 50);
+        localStorage.setItem("isMuted", "false");
+        localStorage.setItem("bgmVolume", String(prevBgm));
+        localStorage.setItem("sfxVolume", String(prevSfx));
+        set({ isMuted: false, bgmVolume: prevBgm, sfxVolume: prevSfx });
+      }
+    },
 
     // 튜토리얼
     isTutorial: false,

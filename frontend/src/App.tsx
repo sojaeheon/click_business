@@ -6,6 +6,7 @@ import { OnboardingPage } from './pages/OnboardingPage';
 import { IndustrySelectionPage } from './pages/IndustrySelectionPage';
 import { MainPage } from './pages/MainPage';
 import { GlobalAlert } from './app/components/ui/GlobalAlert';
+import { GlobalMuteButton } from './app/components/ui/GlobalMuteButton';
 import { useGameStore } from './store/gameStore';
 import './App.css';
 
@@ -49,6 +50,7 @@ function App() {
   return (
     <>
       <BgmPlayer />
+      <GlobalMuteButton />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<LoginPage />} />

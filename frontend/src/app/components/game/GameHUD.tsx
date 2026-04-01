@@ -183,3 +183,4 @@ export function GameHUD({ onOpenGuide }: { onOpenGuide?: () => void }) {
     </div>
   );
 }
+
