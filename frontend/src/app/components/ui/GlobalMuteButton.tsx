@@ -8,13 +8,14 @@ export function GlobalMuteButton() {
   return (
     <button
       onClick={toggleMute}
-      className="fixed bottom-4 left-4 z-[9999] w-12 h-12 rounded-full bg-black/50 backdrop-blur-sm border border-white/20 flex items-center justify-center cursor-pointer hover:bg-black/70 transition-colors shadow-lg"
+      style={{ zIndex: 99999 }}
+      className="fixed bottom-6 left-6 w-14 h-14 rounded-full bg-black/80 backdrop-blur-md border-[2px] border-white/50 flex items-center justify-center cursor-pointer hover:bg-black hover:scale-110 transition-all shadow-2xl"
       title={isMuted ? "소리 켜기" : "소리 끄기"}
     >
       {isMuted ? (
-        <VolumeX className="w-6 h-6 text-red-400" />
+        <VolumeX className="w-8 h-8 text-red-500" />
       ) : (
-        <Volume2 className="w-6 h-6 text-white" />
+        <Volume2 className="w-8 h-8 text-white" />
       )}
     </button>
   );
