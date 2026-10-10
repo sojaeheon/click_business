@@ -89,6 +89,8 @@ rule.md
 /postgres_data/
 **/postgres_data/
 **/redis_data/
+data/kafka_data/
+bigdata/spark/checkpoints/
 /pjt2/
 hadoop.env
 .claude/

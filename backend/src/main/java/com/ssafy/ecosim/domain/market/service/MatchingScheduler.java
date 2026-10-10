@@ -2,6 +2,7 @@ package com.ssafy.ecosim.domain.market.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -9,6 +10,7 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 @EnableScheduling
+@ConditionalOnProperty(name = "market.matching.enabled", havingValue = "true", matchIfMissing = true)
 @RequiredArgsConstructor
 public class MatchingScheduler {
 

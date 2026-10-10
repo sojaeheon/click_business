@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -57,8 +58,14 @@ public class CandleAggregator {
 
         for (Integer itemId : TARGET_ITEM_IDS) {
             try {
-                // Redis chart 데이터를 모두 읽어 OHLC 계산
-                CandleData candle = buildCandle(itemId, candleStartMillis);
+                // 1분봉은 체결 버퍼로 만들고, 5분봉은 최근 1분봉 5개를 합친다.
+                CandleData candle = type == MarketCandle.CandleType.MIN_1
+                    ? buildCandle(itemId, candleStartMillis)
+                    : buildFiveMinuteCandle(itemId, candleStartMillis);
+
+                if (candle == null && type == MarketCandle.CandleType.MIN_1) {
+                    candle = buildReferenceCandle(itemId, candleStartMillis);
+                }
 
                 if (candle == null) {
                     log.warn("[CandleAggregator] itemId={} {} 체결 데이터 없음 → 현재가 보합 캔들", itemId, type);
@@ -70,8 +77,11 @@ public class CandleAggregator {
                     continue;
                 }
 
-                // ✅ 캔들 생성 후 chart 데이터 초기화 (다음 캔들이 중복 집계 안 되도록)
-                orderBookManager.clearChartData(itemId);
+                // 원시 체결 버퍼는 1분봉만 소비한다.
+                if (type == MarketCandle.CandleType.MIN_1) {
+                    orderBookManager.clearChartData(itemId);
+                    orderBookManager.clearReferenceChartData(itemId);
+                }
 
                 candleManager.saveCandleToRedis(itemId, candle, type);
                 candleManager.saveCandleToDB(itemId, candle, type);
@@ -96,12 +106,16 @@ public class CandleAggregator {
         }
 
         List<Long> prices = new ArrayList<>();
+        long volume = 0L;
         for (String data : chartData) {
             try {
-                // 형식: "timestamp:price"
+                // 신규 형식: "timestamp:price:quantity". 기존 형식도 읽는다.
                 String[] parts = data.split(":");
                 long price = Long.parseLong(parts[1]);
                 prices.add(price);
+                if (parts.length >= 3) {
+                    volume += Long.parseLong(parts[2]);
+                }
             } catch (Exception e) {
                 log.warn("[CandleAggregator] 데이터 파싱 실패: {}", data);
             }
@@ -118,6 +132,61 @@ public class CandleAggregator {
 
         return CandleData.builder()
             .open(open).high(high).low(low).close(close)
+            .volume(volume).timestamp(candleStartMillis)
+            .build();
+    }
+
+    private CandleData buildFiveMinuteCandle(Integer itemId, long candleStartMillis) {
+        List<CandleData> oneMinuteCandles = new ArrayList<>(
+            candleManager.getCandles(itemId, 5, MarketCandle.CandleType.MIN_1)
+        );
+        if (oneMinuteCandles.isEmpty()) {
+            return null;
+        }
+
+        oneMinuteCandles.sort(Comparator.comparingLong(CandleData::getTimestamp));
+        CandleData first = oneMinuteCandles.get(0);
+        CandleData last = oneMinuteCandles.get(oneMinuteCandles.size() - 1);
+        long high = oneMinuteCandles.stream().mapToLong(CandleData::getHigh).max().orElse(last.getClose());
+        long low = oneMinuteCandles.stream().mapToLong(CandleData::getLow).min().orElse(last.getClose());
+        long volume = oneMinuteCandles.stream().mapToLong(CandleData::getVolume).sum();
+
+        return CandleData.builder()
+            .open(first.getOpen())
+            .high(high)
+            .low(low)
+            .close(last.getClose())
+            .volume(volume)
+            .timestamp(candleStartMillis)
+            .build();
+    }
+
+    /**
+     * Builds a zero-volume candle from the external-index reference samples.
+     * These samples move the chart while the market is idle without creating
+     * fake trades or fake volume.
+     */
+    private CandleData buildReferenceCandle(Integer itemId, long candleStartMillis) {
+        List<String> samples = orderBookManager.getReferenceChartData(itemId);
+        if (samples == null || samples.isEmpty()) return null;
+
+        List<Long> prices = new ArrayList<>();
+        for (String sample : samples) {
+            try {
+                String[] parts = sample.split(":");
+                prices.add(Long.parseLong(parts[1]));
+            } catch (Exception e) {
+                log.warn("[CandleAggregator] invalid reference sample: {}", sample);
+            }
+        }
+        if (prices.isEmpty()) return null;
+
+        long open = prices.get(0);
+        long close = prices.get(prices.size() - 1);
+        long high = prices.stream().mapToLong(Long::longValue).max().orElse(close);
+        long low = prices.stream().mapToLong(Long::longValue).min().orElse(close);
+        return CandleData.builder()
+            .open(open).high(high).low(low).close(close)
             .volume(0L).timestamp(candleStartMillis)
             .build();
     }
@@ -126,7 +195,10 @@ public class CandleAggregator {
      * 체결 데이터가 없을 때 현재가 기준 보합(Flat) 캔들 생성.
      */
     private CandleData buildFlatCandle(Integer itemId, long candleStartMillis) {
-        Long price = orderBookManager.getMarketPrice(itemId);
+        Long price = orderBookManager.getReferencePrice(itemId);
+        if (price == null) {
+            price = orderBookManager.getMarketPrice(itemId);
+        }
         if (price == null) return null;
 
         return CandleData.builder()

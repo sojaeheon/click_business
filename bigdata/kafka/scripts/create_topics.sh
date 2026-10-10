@@ -4,7 +4,7 @@
 set -e
 
 # 환경변수 설정
-BOOTSTRAP=kafka:29092
+BOOTSTRAP=kafka:29092,kafka-2:29092,kafka-3:29092
 
 # Kafka Broker 준비 대기
 echo "Waiting for Kafka to be ready..."
@@ -24,7 +24,7 @@ echo "Creating topics..."
   --bootstrap-server $BOOTSTRAP \
   --topic market.order.events \
   --partitions 3 \
-  --replication-factor 1
+  --replication-factor 3
 
 # 마켓 체결 이벤트
 # ==========================================
@@ -34,7 +34,7 @@ echo "Creating topics..."
   --bootstrap-server $BOOTSTRAP \
   --topic market.trade.events \
   --partitions 3 \
-  --replication-factor 1
+  --replication-factor 3
 
 # 창고 이벤트
 # ==========================================
@@ -44,7 +44,7 @@ echo "Creating topics..."
   --bootstrap-server $BOOTSTRAP \
   --topic warehouse.events \
   --partitions 3 \
-  --replication-factor 1
+  --replication-factor 3
 
 # ==========================================
 # Kafka Topic 생성 (단일 토픽: company.events)
@@ -53,7 +53,7 @@ echo "Creating topics..."
   --bootstrap-server $BOOTSTRAP \
   --topic company.events \
   --partitions 3 \
-  --replication-factor 1
+  --replication-factor 3
 
 echo "Topic creation completed."
 

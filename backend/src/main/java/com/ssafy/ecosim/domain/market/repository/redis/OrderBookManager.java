@@ -21,6 +21,8 @@ public class OrderBookManager {
     private static final String BUY_KEY_PREFIX = "market:orderbook:%d:buy";
     private static final String SELL_KEY_PREFIX = "market:orderbook:%d:sell";
     private static final String TICKER_KEY_PREFIX = "market:price:%d";
+    private static final String REFERENCE_PRICE_KEY_PREFIX = "market:reference-price:%d";
+    private static final String REFERENCE_CHART_KEY_PREFIX = "market:reference-chart:%d";
 
     private String getBuyKey(Integer itemId) {
         return String.format(BUY_KEY_PREFIX, itemId);
@@ -92,6 +94,48 @@ public class OrderBookManager {
         stringRedisTemplate.opsForValue().set(key, String.valueOf(price));
     }
 
+    public void setOpenPrice(Integer itemId, Long price) {
+        stringRedisTemplate.opsForValue().set(
+            "market:price:open:" + itemId,
+            String.valueOf(price)
+        );
+    }
+
+    public Long getReferencePrice(Integer itemId) {
+        String value = stringRedisTemplate.opsForValue().get(
+            String.format(REFERENCE_PRICE_KEY_PREFIX, itemId)
+        );
+        if (value == null) return null;
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    public void setReferencePrice(Integer itemId, Long price) {
+        stringRedisTemplate.opsForValue().set(
+            String.format(REFERENCE_PRICE_KEY_PREFIX, itemId),
+            String.valueOf(price)
+        );
+    }
+
+    public void addReferenceChartData(Integer itemId, Long price, Long timestamp) {
+        String key = String.format(REFERENCE_CHART_KEY_PREFIX, itemId);
+        stringRedisTemplate.opsForList().rightPush(key, timestamp + ":" + price);
+        stringRedisTemplate.opsForList().trim(key, -120, -1);
+    }
+
+    public java.util.List<String> getReferenceChartData(Integer itemId) {
+        return stringRedisTemplate.opsForList().range(
+            String.format(REFERENCE_CHART_KEY_PREFIX, itemId), 0, -1
+        );
+    }
+
+    public void clearReferenceChartData(Integer itemId) {
+        stringRedisTemplate.delete(String.format(REFERENCE_CHART_KEY_PREFIX, itemId));
+    }
+
     /**
      * 호가창에서 특정 주문을 제거합니다 (체결 완료 또는 취소 시).
      */
@@ -145,10 +189,10 @@ public class OrderBookManager {
         }
     }
 
-    public void addChartData(Integer itemId, Long price, Long timestamp) {
+    public void addChartData(Integer itemId, Long price, Long quantity, Long timestamp) {
         String key = "market:chart:" + itemId;
-        // 형식: "timestamp:price"
-        stringRedisTemplate.opsForList().rightPush(key, timestamp + ":" + price);
+        // 형식: "timestamp:price:quantity"
+        stringRedisTemplate.opsForList().rightPush(key, timestamp + ":" + price + ":" + quantity);
         // 최신 100개 데이터만 유지
         stringRedisTemplate.opsForList().trim(key, -100, -1);
     }

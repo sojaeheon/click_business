@@ -83,7 +83,7 @@ public class MarketMatchingService {
         if (iterations >= 100) {
             log.warn("[Matching] Iteration limit reached for item {}", itemId);
         }
-        log.info("=== Matching finished for item: {} ===", itemId); //
+        log.debug("=== Matching finished for item: {} ===", itemId);
     }
 
     private void executeTrade(Integer itemId, MarketOrder buyOrder, MarketOrder sellOrder) {
@@ -118,7 +118,7 @@ public class MarketMatchingService {
 
         // Redis 시장가 갱신 및 차트 데이터 갱신
         orderBookManager.setMarketPrice(itemId, matchedPrice);
-        orderBookManager.addChartData(itemId, matchedPrice, executedAt);
+        orderBookManager.addChartData(itemId, matchedPrice, matchedQuantity, executedAt);
 
         // TradeEvent 발행
         TradeEventDto tradeEvent = TradeEventDto.builder()

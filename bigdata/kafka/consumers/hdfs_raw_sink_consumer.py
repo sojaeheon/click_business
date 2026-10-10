@@ -6,6 +6,7 @@ from typing import Dict, List, Tuple
 
 from hdfs import InsecureClient
 from kafka import KafkaConsumer
+from prometheus_client import Counter, Gauge, start_http_server
 
 
 # -----------------------------------------
@@ -39,6 +40,40 @@ HDFS_BASE_PATH = _get_env("HDFS_BASE_PATH", "/raw/kafka")
 # -----------------------------------------
 BATCH_SIZE = int(_get_env("BATCH_SIZE", "200"))
 FLUSH_INTERVAL_SEC = int(_get_env("FLUSH_INTERVAL_SEC", "5"))
+METRICS_PORT = int(_get_env("METRICS_PORT", "9102"))
+
+BUFFERED_RECORDS = Gauge(
+    "raw_sink_buffered_records",
+    "Records currently buffered before the next HDFS flush",
+)
+LAST_FLUSH_CYCLE = Gauge(
+    "raw_sink_last_flush_cycle_timestamp_seconds",
+    "Unix timestamp of the latest completed flush cycle, including empty cycles",
+)
+LAST_SUCCESSFUL_COMMIT = Gauge(
+    "raw_sink_last_successful_commit_timestamp_seconds",
+    "Unix timestamp of the latest Kafka commit after a successful HDFS write",
+)
+FLUSH_DURATION = Gauge(
+    "raw_sink_last_flush_duration_seconds",
+    "Duration of the latest HDFS flush cycle",
+)
+CONSUMED_RECORDS = Counter(
+    "raw_sink_consumed_records_total",
+    "Kafka records consumed by the raw sink",
+)
+WRITTEN_RECORDS = Counter(
+    "raw_sink_written_records_total",
+    "Records successfully written to HDFS",
+)
+FLUSH_ERRORS = Counter(
+    "raw_sink_flush_errors_total",
+    "HDFS flush or Kafka commit failures",
+)
+
+
+def buffered_record_count(buffers: Dict[Tuple[str, str], List[str]]) -> int:
+    return sum(len(lines) for lines in buffers.values())
 
 
 # -----------------------------------------
@@ -99,7 +134,8 @@ def decode_key(raw_key) -> str | None:
 # - 반환: (jsonl_line, event_type)
 # -----------------------------------------
 def build_record(msg) -> Tuple[str, str]:
-    raw_value = msg.value.decode("utf-8", errors="replace")
+    # Preserve the correct event type even when a producer included a UTF-8 BOM.
+    raw_value = msg.value.decode("utf-8-sig", errors="replace")
     event_type = parse_event_type_from_raw(raw_value)
     kafka_key = decode_key(msg.key)
 
@@ -142,6 +178,8 @@ def flush_to_hdfs(client: InsecureClient, topic: str, event_type: str, lines: Li
 # 4) write 성공 후 offset commit
 # -----------------------------------------
 def main():
+    start_http_server(METRICS_PORT)
+    LAST_FLUSH_CYCLE.set_to_current_time()
     consumer = KafkaConsumer(
         *KAFKA_TOPICS,
         bootstrap_servers=KAFKA_BOOTSTRAP,
@@ -175,6 +213,10 @@ def main():
                     buffers.setdefault(buffer_key, []).append(line)
                     total += 1
 
+            if total:
+                CONSUMED_RECORDS.inc(total)
+            BUFFERED_RECORDS.set(buffered_record_count(buffers))
+
             # 2) flush 조건 확인
             now = time.time()
             should_flush = False
@@ -190,20 +232,30 @@ def main():
 
             # 3) flush + commit
             if should_flush:
+                flush_started = time.time()
                 wrote_any = False
 
-                for (topic, event_type), lines in list(buffers.items()):
-                    if lines:
-                        flush_to_hdfs(hdfs_client, topic, event_type, lines)
-                        buffers[(topic, event_type)] = []
-                        wrote_any = True
+                try:
+                    for (topic, event_type), lines in list(buffers.items()):
+                        if lines:
+                            flush_to_hdfs(hdfs_client, topic, event_type, lines)
+                            WRITTEN_RECORDS.inc(len(lines))
+                            buffers[(topic, event_type)] = []
+                            wrote_any = True
 
-                # 적재 성공했을 때만 커밋
-                if wrote_any:
-                    consumer.commit()
-                    print("[RAW-SINK] kafka offsets committed")
+                    # 적재 성공했을 때만 커밋
+                    if wrote_any:
+                        consumer.commit()
+                        LAST_SUCCESSFUL_COMMIT.set_to_current_time()
+                        print("[RAW-SINK] kafka offsets committed")
 
-                last_flush = now
+                    last_flush = now
+                    LAST_FLUSH_CYCLE.set_to_current_time()
+                    FLUSH_DURATION.set(time.time() - flush_started)
+                    BUFFERED_RECORDS.set(buffered_record_count(buffers))
+                except Exception:
+                    FLUSH_ERRORS.inc()
+                    raise
 
     except KeyboardInterrupt:
         # 종료 시 잔여 버퍼 flush

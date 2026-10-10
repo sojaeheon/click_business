@@ -2,6 +2,8 @@ package com.ssafy.ecosim.global.kafka.publisher;
 
 import com.ssafy.ecosim.global.kafka.resolver.MessageKeyResolver;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -31,6 +33,32 @@ public class CompanyCashEventPublisherImpl implements CompanyCashEventPublisher 
 
     @Override
     public void publishCashChanged(
+            Long companyId,
+            Long cash,
+            Long changedAmount,
+            String reason,
+            String referenceId,
+            Instant changedAt
+    ) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()
+                && TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    publish(companyId, cash, changedAmount, reason, referenceId, changedAt);
+                }
+            });
+            return;
+        }
+
+        publish(companyId, cash, changedAmount, reason, referenceId, changedAt);
+    }
+
+    /**
+     * Sends only after the enclosing database transaction commits. Calls made
+     * without a transaction (such as a manual runner) are sent immediately.
+     */
+    private void publish(
             Long companyId,
             Long cash,
             Long changedAmount,

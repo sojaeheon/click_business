@@ -1,181 +1,135 @@
-import time
 import json
-import redis
+import os
+import time
 from datetime import datetime
+
+import redis
 from kafka import KafkaConsumer
 from kafka.errors import NoBrokersAvailable
 
-# -----------------------------
-# Redis 연결
-# -----------------------------
-r = redis.Redis(
-    host='redis',
-    port=6379,
-    db=0,
-    decode_responses=True
-)
 
-# -----------------------------
-# Kafka 연결
-# -----------------------------
-while True:
-    try:
-        consumer = KafkaConsumer(
-            'market.order.events',
-            bootstrap_servers='kafka:29092', 
-            auto_offset_reset='earliest', # latest
-            enable_auto_commit=False, # True
-            group_id='order-redis-consumer',
-            value_deserializer=lambda x: json.loads(x.decode('utf-8'))
-        )
-        print("Kafka Order Redis Consumer 연결 성공")
-        break
-    except NoBrokersAvailable:
-        print("Kafka 브로커 연결 실패, 5초 후 재시도...")
-        time.sleep(5)
+SKIP_VIRTUAL_EVENTS = os.getenv("SKIP_VIRTUAL_EVENTS", "false").lower() == "true"
 
-# -----------------------------
-# 시간 변환
-# -----------------------------
-def to_epoch_millis(iso_time_str):
+redis_client = redis.Redis(host="redis", port=6379, db=0, decode_responses=True)
+
+
+def create_consumer():
+    while True:
+        try:
+            return KafkaConsumer(
+                "market.order.events",
+                bootstrap_servers=os.getenv(
+                    "KAFKA_BOOTSTRAP_SERVERS",
+                    "kafka:29092,kafka-2:29092,kafka-3:29092",
+                ),
+                auto_offset_reset="earliest",
+                enable_auto_commit=False,
+                group_id="order-redis-consumer",
+                value_deserializer=lambda value: json.loads(value.decode("utf-8")),
+            )
+        except NoBrokersAvailable:
+            print("Kafka unavailable; retrying in 5 seconds")
+            time.sleep(5)
+
+
+def to_epoch_millis(value):
     try:
-        return int(datetime.fromisoformat(iso_time_str).timestamp() * 1000)
+        return int(datetime.fromisoformat(value).timestamp() * 1000)
     except Exception:
         return int(time.time() * 1000)
 
-# -----------------------------
-# 호가창 Score 계산
-# -----------------------------
-def compute_score(side, price, timestamp_ms):
-    # ts_fraction = timestamp_ms / 10**12
-    # if side.upper() == "BUY":
-    #     return price + (1 - ts_fraction)    # 매수: 높은 가격 우선
-    # else:
-    #     return price + ts_fraction          # 매도: 낮은 가격 우선
-    # if side == "BUY":
-    #     return -(price * 10**13) - timestamp_ms
-    # else:
-    #     return (price * 10**13) + timestamp_ms
-    # 가격을 상위 비트로, 시간을 하위 비트로 처리 (정밀도 유의)
-    # if side == "BUY":
-    #     return -float(f"{price}.{timestamp_ms}") # 높은 가격 우선
-    # else:
-    #     return float(f"{price}.{timestamp_ms}")  # 낮은 가격 우선
-    ts = timestamp_ms % 10**6  # 6자리만 사용
-    score = price * 10**6 + ts
-    if side == "BUY":
-        return -score
-    elif side == "SELL":
-        return score
 
-# -----------------------------
-# 주문 저장
-# -----------------------------
+def compute_score(side, price, timestamp_ms):
+    score = price * 10**6 + timestamp_ms % 10**6
+    return -score if side == "BUY" else score
+
+
 def save_order(data, payload):
-    company_id = data.get("company_id")
     order_id = payload["order_id"]
     item_id = payload["item_id"]
     side = payload["side"].upper()
     price = payload["price"]
     quantity = payload["quantity"]
-    is_virtual = payload.get("is_virtual", False)
     created_at_ms = to_epoch_millis(payload.get("created_at"))
-    updated_at_ms = created_at_ms
-    status = payload.get("status", "PENDING")
-    remaining_quantity = payload.get("remaining_quantity", quantity)
-
-    # 스코어 계산
     score = compute_score(side, price, created_at_ms)
 
-    # 주문 상세 정보 HASH 저장
-    order_key = f"market:order:{order_id}"
-    r.hset(order_key, mapping={
-        "companyId": str(company_id),
-        "orderId": str(order_id),
-        "itemId": str(item_id),
-        "orderType": side,
-        "price": str(price),
-        "totalQuantity": str(quantity),
-        "remainingQuantity": str(remaining_quantity),
-        "status": status,
-        "isVirtual": "true" if is_virtual else "false",
-        "createdAt": str(created_at_ms),
-        "updatedAt": str(updated_at_ms)
-    })
+    pipe = redis_client.pipeline(transaction=False)
+    pipe.hset(
+        f"market:order:{order_id}",
+        mapping={
+            "companyId": str(data.get("company_id")),
+            "orderId": str(order_id),
+            "itemId": str(item_id),
+            "orderType": side,
+            "price": str(price),
+            "totalQuantity": str(quantity),
+            "remainingQuantity": str(payload.get("remaining_quantity", quantity)),
+            "status": payload.get("status", "PENDING"),
+            "isVirtual": "true" if payload.get("is_virtual", False) else "false",
+            "createdAt": str(created_at_ms),
+            "updatedAt": str(created_at_ms),
+        },
+    )
+    orderbook_key = (
+        f"market:orderbook:{item_id}:buy"
+        if side == "BUY"
+        else f"market:orderbook:{item_id}:sell"
+    )
+    pipe.zadd(orderbook_key, {str(order_id): score})
+    pipe.execute()
 
-    # 호가창 ZSET
-    zset_key = f"market:orderbook:{item_id}:buy" if side == "BUY" else f"market:orderbook:{item_id}:sell"
-    r.zadd(zset_key, {str(order_id): score})
 
-    # # 주문 상세 정보 JSON 저장
-    # order_data = {
-    #     "company_id": company_id,
-    #     "order_id": order_id,
-    #     "item_id": item_id,
-    #     "side": side,
-    #     "price": price,
-    #     "quantity": quantity,
-    #     "remaining_quantity": remaining_quantity,
-    #     "status": status,
-    #     "is_virtual": is_virtual,
-    #     "created_at": created_at_ms,
-    #     "updated_at": updated_at_ms
-    # }
-    #
-    # # 호가창 JSON 저장
-    # order_key = f"market:order:{order_id}"
-    # r.set(order_key, json.dumps(order_data))    
-
-    print(f"[CREATE] Order 저장 완료: {order_id} -> {zset_key} (Score: {score})")
-
-# -----------------------------
-# 주문 취소
-# -----------------------------
-def cancel_order(data, payload):
-    company_id = data.get("company_id")
+def cancel_order(payload):
     order_id = payload["order_id"]
     item_id = payload["item_id"]
     side = payload["side"].upper()
     cancelled_at_ms = to_epoch_millis(payload.get("cancelled_at"))
+    orderbook_key = (
+        f"market:orderbook:{item_id}:buy"
+        if side == "BUY"
+        else f"market:orderbook:{item_id}:sell"
+    )
 
-    # 호가창에서 제거
-    zset_key = f"market:orderbook:{item_id}:buy" if side == "BUY" else f"market:orderbook:{item_id}:sell"
-    r.zrem(zset_key, order_id)
-
-    order_key = f"market:order:{order_id}"
-
-    # HASH 상태 업데이트
-    if r.exists(order_key):
-        r.hset(order_key, mapping={
+    pipe = redis_client.pipeline(transaction=False)
+    pipe.zrem(orderbook_key, order_id)
+    pipe.hset(
+        f"market:order:{order_id}",
+        mapping={
             "status": "CANCELED",
             "cancelledAt": str(cancelled_at_ms),
-            "updatedAt": str(cancelled_at_ms)
-        })
+            "updatedAt": str(cancelled_at_ms),
+        },
+    )
+    pipe.execute()
 
-    print(f"[CANCEL] Order 취소 완료: {order_id} -> {zset_key}")
 
-# -----------------------------
-# Kafka 메시지 처리 루프
-# -----------------------------
-print("Order 이벤트 수신 대기 중...")
-for message in consumer:
+def process_event(data):
+    event_type = data.get("event_type")
+    payload = data.get("payload")
+    if not payload:
+        return
+    if SKIP_VIRTUAL_EVENTS and payload.get("is_virtual", False):
+        return
+
+    if event_type == "market.order.created":
+        save_order(data, payload)
+    elif event_type == "market.order.cancelled":
+        cancel_order(payload)
+
+
+consumer = create_consumer()
+print(f"Order Redis consumer started (skip_virtual={SKIP_VIRTUAL_EVENTS})")
+
+while True:
+    batches = consumer.poll(timeout_ms=1000, max_records=500)
+    if not batches:
+        continue
+
     try:
-        data = message.value
-        print("Order 이벤트: ", json.dumps(message.value, indent=4, ensure_ascii=False))
-
-        event_type = data.get("event_type")
-        payload = data.get("payload")
-        if not payload:
-            continue
-
-        if event_type == "market.order.created":
-            save_order(data, payload)
-        elif event_type == "market.order.cancelled":
-            cancel_order(data, payload)
-        else:
-            print(f"[INFO] 알 수 없는 이벤트: {event_type}")
-
+        for messages in batches.values():
+            for message in messages:
+                process_event(message.value)
         consumer.commit()
-
-    except Exception as e:
-        print(f"[ERROR] 처리 실패: {e}")
+    except Exception as exc:
+        print(f"[ERROR] order Redis batch failed: {exc}")
+        time.sleep(1)

@@ -32,7 +32,18 @@ public class OrderBookService {
      * 가격 레벨별로 집계합니다.
      */
     public OrderBookResponseDto getOrderBook(Integer itemId) {
-        Long currentPrice = orderBookManager.getMarketPrice(itemId);
+        List<OrderBookEntryDto> buyOrders = aggregateOrders(
+                orderBookManager.getTopBuys(itemId, SCAN_LIMIT),
+                true);
+        List<OrderBookEntryDto> sellOrders = aggregateOrders(
+                orderBookManager.getTopSells(itemId, SCAN_LIMIT),
+                false);
+
+        Long currentPrice = resolveDisplayPrice(
+                orderBookManager.getMarketPrice(itemId),
+                orderBookManager.getReferencePrice(itemId),
+                buyOrders,
+                sellOrders);
         Long openPrice = orderBookManager.getOpenPrice(itemId);
         
         Long changePrice = null;
@@ -43,13 +54,29 @@ public class OrderBookService {
             changeRate = Math.round((double) changePrice / openPrice * 1000.0) / 10.0;
         }
 
-        List<OrderBookEntryDto> buyOrders = aggregateOrders(
-                orderBookManager.getTopBuys(itemId, SCAN_LIMIT),
-                true);
-        List<OrderBookEntryDto> sellOrders = aggregateOrders(
-                orderBookManager.getTopSells(itemId, SCAN_LIMIT),
-                false);
         return new OrderBookResponseDto(itemId, currentPrice, changePrice, changeRate, buyOrders, sellOrders);
+    }
+
+    private Long resolveDisplayPrice(
+            Long lastTradePrice,
+            Long referencePrice,
+            List<OrderBookEntryDto> buyOrders,
+            List<OrderBookEntryDto> sellOrders) {
+        if (lastTradePrice == null) return referencePrice;
+        if (referencePrice == null || buyOrders.isEmpty() || sellOrders.isEmpty()) {
+            return lastTradePrice;
+        }
+
+        long bestBid = buyOrders.get(0).getPrice();
+        long bestAsk = sellOrders.get(0).getPrice();
+        if (lastTradePrice >= bestBid && lastTradePrice <= bestAsk) {
+            return lastTradePrice;
+        }
+
+        // The external path can move faster than the 10-second quote refresh.
+        // Keep the displayed center inside the visible spread so neither side
+        // disappears from the client while the next quote refresh is pending.
+        return Math.max(bestBid, Math.min(bestAsk, referencePrice));
     }
 
     /**

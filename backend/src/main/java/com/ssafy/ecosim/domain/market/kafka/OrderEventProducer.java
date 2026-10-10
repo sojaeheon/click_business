@@ -26,7 +26,7 @@ public class OrderEventProducer {
         kafkaTemplate.send(TOPIC_MARKET_EVENTS, key, event)
                 .whenComplete((result, ex) -> {
                     if (ex == null) {
-                        log.info("[Kafka] {} sent ({}): orderId={}, itemId={}, partition={}",
+                        log.debug("[Kafka] {} sent ({}): orderId={}, itemId={}, partition={}",
                                 TOPIC_MARKET_EVENTS,
                                 event.getEventType(),
                                 event.getPayload().getOrderId(),
@@ -44,7 +44,7 @@ public class OrderEventProducer {
         kafkaTemplate.send(TOPIC_MARKET_EVENTS, key, event)
                 .whenComplete((result, ex) -> {
                     if (ex == null) {
-                        log.info("[Kafka] {} sent ({}): orderId={}, itemId={}, partition={}",
+                        log.debug("[Kafka] {} sent ({}): orderId={}, itemId={}, partition={}",
                                 TOPIC_MARKET_EVENTS,
                                 event.getEventType(),
                                 event.getPayload().getOrderId(),

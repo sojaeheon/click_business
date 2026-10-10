@@ -8,13 +8,71 @@ from urllib import request
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import Column, DataFrame, SparkSession
 from pyspark.sql import functions as F
+from pyspark.storagelevel import StorageLevel
+from pyspark.sql.types import StringType, StructField, StructType
 
 
 DEFAULT_ORDER_PATH = "hdfs://namenode:9000/raw/kafka/topic=market.order.events"
 DEFAULT_TRADE_PATH = "hdfs://namenode:9000/raw/kafka/topic=market.trade.events"
+DEFAULT_ORDER_CURATED_PATH = "hdfs://namenode:9000/curated/kafka/topic=market.order.events"
+DEFAULT_TRADE_CURATED_PATH = "hdfs://namenode:9000/curated/kafka/topic=market.trade.events"
 DEFAULT_CHECKPOINT_PATH = "/tmp/checkpoints/market-news-stream"
+
+ORDER_INPUT_SCHEMA = StructType([
+    StructField("kafka_topic", StringType(), True),
+    StructField("kafka_timestamp", StringType(), True),
+    StructField("ingested_at", StringType(), True),
+    StructField("event_raw", StringType(), True),
+    StructField("item_id", StringType(), True),
+    StructField("side", StringType(), True),
+    StructField("price", StringType(), True),
+    StructField("quantity", StringType(), True),
+    StructField("is_virtual", StringType(), True),
+    StructField("event_type", StringType(), True),
+    StructField("created_at", StringType(), True),
+    StructField("cancelled_at", StringType(), True),
+    StructField("occurred_at", StringType(), True),
+])
+
+TRADE_INPUT_SCHEMA = StructType([
+    StructField("kafka_topic", StringType(), True),
+    StructField("kafka_timestamp", StringType(), True),
+    StructField("ingested_at", StringType(), True),
+    StructField("event_type", StringType(), True),
+    StructField("event_raw", StringType(), True),
+    StructField("item_id", StringType(), True),
+    StructField("price", StringType(), True),
+    StructField("quantity", StringType(), True),
+    StructField("executed_at", StringType(), True),
+    StructField("occurred_at", StringType(), True),
+])
+
+ORDER_ENVELOPE_SCHEMA = StructType([
+    StructField("event_type", StringType(), True),
+    StructField("occurred_at", StringType(), True),
+    StructField("payload", StructType([
+        StructField("item_id", StringType(), True),
+        StructField("side", StringType(), True),
+        StructField("price", StringType(), True),
+        StructField("quantity", StringType(), True),
+        StructField("is_virtual", StringType(), True),
+        StructField("created_at", StringType(), True),
+        StructField("cancelled_at", StringType(), True),
+    ]), True),
+])
+
+TRADE_ENVELOPE_SCHEMA = StructType([
+    StructField("event_type", StringType(), True),
+    StructField("occurred_at", StringType(), True),
+    StructField("payload", StructType([
+        StructField("item_id", StringType(), True),
+        StructField("price", StringType(), True),
+        StructField("quantity", StringType(), True),
+        StructField("executed_at", StringType(), True),
+    ]), True),
+])
 
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = int(os.getenv("DB_PORT", "5432"))
@@ -25,6 +83,7 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "ecosim")
 NEWS_GLOBAL_COOLDOWN_MINUTES = int(os.getenv("NEWS_GLOBAL_COOLDOWN_MINUTES", "10"))
 NEWS_SIGNAL_COOLDOWN_MINUTES = int(os.getenv("NEWS_SIGNAL_COOLDOWN_MINUTES", "10"))
 NEWS_MIN_SEVERITY_SCORE = float(os.getenv("NEWS_MIN_SEVERITY_SCORE", "85.0"))
+MARKET_NEWS_SHUFFLE_PARTITIONS = int(os.getenv("MARKET_NEWS_SHUFFLE_PARTITIONS", "4"))
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("GMS_KEY", "")
 OPENAI_BASE_URL = os.getenv(
@@ -53,6 +112,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--order-path", default=DEFAULT_ORDER_PATH)
     parser.add_argument("--trade-path", default=DEFAULT_TRADE_PATH)
+    parser.add_argument("--order-curated-path", default=DEFAULT_ORDER_CURATED_PATH)
+    parser.add_argument("--trade-curated-path", default=DEFAULT_TRADE_CURATED_PATH)
     parser.add_argument("--window-minutes", type=int, default=10)
     parser.add_argument("--reference-time", default=None)
     parser.add_argument("--min-trade-qty", type=float, default=200.0)
@@ -78,6 +139,7 @@ def build_spark_session() -> SparkSession:
     spark = (
         SparkSession.builder.appName("market-news-stream")
         .config("spark.sql.session.timeZone", "Asia/Seoul")
+        .config("spark.sql.shuffle.partitions", str(MARKET_NEWS_SHUFFLE_PARTITIONS))
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("WARN")
@@ -107,30 +169,108 @@ def resolve_reference_time(batch_df, override_reference_time: Optional[str]) -> 
     return row["max_ts"]
 
 
-def read_json_recursive(spark: SparkSession, path: str) -> DataFrame:
-    return (
-        spark.read.option("recursiveFileLookup", "true")
-        .option("pathGlobFilter", "*.jsonl")
-        .json(path)
+def hdfs_path_exists(spark: SparkSession, path: str) -> bool:
+    hadoop_path = spark.sparkContext._jvm.org.apache.hadoop.fs.Path(path)
+    filesystem = hadoop_path.getFileSystem(
+        spark.sparkContext._jsc.hadoopConfiguration()
     )
+    return filesystem.exists(hadoop_path)
+
+
+def expand_hdfs_glob(spark: SparkSession, pattern: str) -> List[str]:
+    hadoop_path = spark.sparkContext._jvm.org.apache.hadoop.fs.Path(pattern)
+    filesystem = hadoop_path.getFileSystem(spark.sparkContext._jsc.hadoopConfiguration())
+    statuses = filesystem.globStatus(hadoop_path)
+    if not statuses:
+        return []
+    return [status.getPath().toString() for status in statuses]
+
+
+def read_event_window(
+    spark: SparkSession,
+    raw_path: str,
+    curated_path: str,
+    schema: StructType,
+    window_start: datetime,
+    window_end: datetime,
+) -> DataFrame:
+    if not hdfs_path_exists(spark, raw_path):
+        print(f"[MARKET-NEWS-STREAM] input path is absent; skipped: {raw_path}")
+        return spark.createDataFrame([], schema)
+
+    current_hour = window_start.replace(minute=0, second=0, microsecond=0)
+    last_hour = window_end.replace(minute=0, second=0, microsecond=0)
+    raw_input_paths: List[str] = []
+    parquet_input_paths: List[str] = []
+    while current_hour <= last_hour:
+        curated_hour_path = (
+            f"{curated_path}/dt={current_hour:%Y-%m-%d}/hour={current_hour:%H}"
+        )
+        if current_hour < last_hour and hdfs_path_exists(spark, curated_hour_path):
+            parquet_input_paths.append(curated_hour_path)
+        else:
+            pattern = (
+                f"{raw_path}/event_type=*/dt={current_hour:%Y-%m-%d}/hour={current_hour:%H}"
+            )
+            raw_input_paths.extend(expand_hdfs_glob(spark, pattern))
+        current_hour += timedelta(hours=1)
+
+    frames: List[DataFrame] = []
+    if parquet_input_paths:
+        frames.append(spark.read.schema(schema).parquet(*parquet_input_paths))
+    if raw_input_paths:
+        frames.append(
+            spark.read.schema(schema)
+            .option("recursiveFileLookup", "true")
+            .option("pathGlobFilter", "*.jsonl")
+            .json(raw_input_paths)
+        )
+
+    if not frames:
+        print(
+            "[MARKET-NEWS-STREAM] no HDFS partitions in window: "
+            f"path={raw_path} start={window_start.isoformat()} end={window_end.isoformat()}"
+        )
+        return spark.createDataFrame([], schema)
+
+    print(
+        "[MARKET-NEWS-STREAM] input sources: "
+        f"curated_hours={len(parquet_input_paths)} raw_hours={len(raw_input_paths)}",
+        flush=True,
+    )
+
+    result = frames[0]
+    for frame in frames[1:]:
+        result = result.unionByName(frame, allowMissingColumns=True)
+    return result
+
+
+def flexible_timestamp(column: Column) -> Column:
+    numeric_epoch = column.cast("double")
+    return F.when(
+        numeric_epoch.isNotNull(),
+        F.to_timestamp(F.from_unixtime(numeric_epoch)),
+    ).otherwise(F.to_timestamp(column))
 
 
 def normalize_orders(raw_orders: DataFrame) -> DataFrame:
-    event_ts = F.coalesce(
-        F.to_timestamp("created_at"),
-        F.to_timestamp("cancelled_at"),
-        F.to_timestamp("occurred_at"),
+    decoded = F.from_json(F.col("event_raw"), ORDER_ENVELOPE_SCHEMA)
+    normalized = raw_orders.withColumn("decoded", decoded)
+    occurred_at = F.coalesce(
+        F.col("occurred_at"),
+        F.col("decoded.occurred_at"),
+        F.col("ingested_at"),
     )
 
     return (
-        raw_orders.select(
-            F.col("item_id").cast("int").alias("item_id"),
-            F.upper(F.col("side")).alias("side"),
-            F.col("price").cast("double").alias("price"),
-            F.col("quantity").cast("double").alias("quantity"),
-            F.col("is_virtual").cast("boolean").alias("is_virtual"),
-            F.col("event_type").alias("event_type"),
-            event_ts.alias("event_ts"),
+        normalized.select(
+            F.coalesce(F.col("item_id"), F.col("decoded.payload.item_id")).cast("int").alias("item_id"),
+            F.upper(F.coalesce(F.col("side"), F.col("decoded.payload.side"))).alias("side"),
+            F.coalesce(F.col("price"), F.col("decoded.payload.price")).cast("double").alias("price"),
+            F.coalesce(F.col("quantity"), F.col("decoded.payload.quantity")).cast("double").alias("quantity"),
+            F.coalesce(F.col("is_virtual"), F.col("decoded.payload.is_virtual")).cast("boolean").alias("is_virtual"),
+            F.coalesce(F.col("event_type"), F.col("decoded.event_type")).alias("event_type"),
+            flexible_timestamp(occurred_at).alias("event_ts"),
         )
         .where(F.col("item_id").isNotNull() & F.col("event_ts").isNotNull())
         .withColumn(
@@ -143,14 +283,20 @@ def normalize_orders(raw_orders: DataFrame) -> DataFrame:
 
 
 def normalize_trades(raw_trades: DataFrame) -> DataFrame:
-    event_ts = F.coalesce(F.to_timestamp("executed_at"), F.to_timestamp("occurred_at"))
+    decoded = F.from_json(F.col("event_raw"), TRADE_ENVELOPE_SCHEMA)
+    normalized = raw_trades.withColumn("decoded", decoded)
+    occurred_at = F.coalesce(
+        F.col("occurred_at"),
+        F.col("decoded.occurred_at"),
+        F.col("ingested_at"),
+    )
 
     return (
-        raw_trades.select(
-            F.col("item_id").cast("int").alias("item_id"),
-            F.col("price").cast("double").alias("price"),
-            F.col("quantity").cast("double").alias("quantity"),
-            event_ts.alias("event_ts"),
+        normalized.select(
+            F.coalesce(F.col("item_id"), F.col("decoded.payload.item_id")).cast("int").alias("item_id"),
+            F.coalesce(F.col("price"), F.col("decoded.payload.price")).cast("double").alias("price"),
+            F.coalesce(F.col("quantity"), F.col("decoded.payload.quantity")).cast("double").alias("quantity"),
+            flexible_timestamp(occurred_at).alias("event_ts"),
         )
         .where(F.col("item_id").isNotNull() & F.col("event_ts").isNotNull())
     )
@@ -566,25 +712,41 @@ def get_db_connection():
     return conn
 
 
+def get_game_reference_time() -> datetime:
+    """Use the latest candle, or the first index date before candles exist."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT COALESCE(
+                    (SELECT MAX(candle_time) FROM market_candle),
+                    (SELECT MIN(price_date)::timestamp FROM external_index)
+                )
+                """
+            )
+            row = cur.fetchone()
+            if row and row[0]:
+                return row[0]
+    finally:
+        conn.close()
+    raise RuntimeError("Cannot resolve game time from candles or external indexes")
+
+
 def to_db_timestamp_literal(reference_time: str) -> str:
     return parse_reference_time(reference_time).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def has_recent_news(cur, reference_time: str) -> bool:
+def has_recent_news(cur) -> bool:
     cur.execute(
         """
         SELECT EXISTS (
             SELECT 1
             FROM internal_news
-            WHERE published_at >= %s::timestamp - (%s || ' minutes')::interval
-              AND published_at <= %s::timestamp
+            WHERE created_at >= CURRENT_TIMESTAMP - (%s || ' minutes')::interval
         ) AS exists
         """,
-        (
-            to_db_timestamp_literal(reference_time),
-            NEWS_GLOBAL_COOLDOWN_MINUTES,
-            to_db_timestamp_literal(reference_time),
-        ),
+        (NEWS_GLOBAL_COOLDOWN_MINUTES,),
     )
     return bool(cur.fetchone()["exists"])
 
@@ -595,19 +757,80 @@ def is_duplicate_or_cooling_down(cur, candidate: Candidate) -> bool:
         SELECT EXISTS (
             SELECT 1
             FROM internal_news
-            WHERE title = %s
-              AND published_at >= %s::timestamp - (%s || ' minutes')::interval
-              AND published_at <= %s::timestamp
+            WHERE item_id = %s
+              AND signal_type = %s
+              AND created_at >= CURRENT_TIMESTAMP - (%s || ' minutes')::interval
         ) AS exists
         """,
         (
-            candidate.headline,
-            to_db_timestamp_literal(candidate.reference_time),
+            candidate.item_id,
+            candidate.signal_type,
             NEWS_SIGNAL_COOLDOWN_MINUTES,
-            to_db_timestamp_literal(candidate.reference_time),
         ),
     )
     return bool(cur.fetchone()["exists"])
+
+
+def synchronize_signal_states(cur, candidates: List[Candidate]) -> List[Candidate]:
+    """Return newly activated signals and persist the current active set."""
+    cur.execute(
+        """
+        SELECT item_id, signal_type, is_active
+        FROM market_news_signal_state
+        FOR UPDATE
+        """
+    )
+    existing = {
+        (int(row["item_id"]), row["signal_type"]): bool(row["is_active"])
+        for row in cur.fetchall()
+    }
+    active_keys = {(candidate.item_id, candidate.signal_type) for candidate in candidates}
+
+    for key, was_active in existing.items():
+        if was_active and key not in active_keys:
+            cur.execute(
+                """
+                UPDATE market_news_signal_state
+                SET is_active = FALSE,
+                    cleared_at = CURRENT_TIMESTAMP
+                WHERE item_id = %s AND signal_type = %s
+                """,
+                key,
+            )
+
+    newly_activated: List[Candidate] = []
+    for candidate in candidates:
+        key = (candidate.item_id, candidate.signal_type)
+        was_active = existing.get(key, False)
+        if not was_active:
+            newly_activated.append(candidate)
+
+        cur.execute(
+            """
+            INSERT INTO market_news_signal_state (
+                item_id,
+                signal_type,
+                is_active,
+                activation_started_at,
+                last_seen_at,
+                cleared_at,
+                last_severity
+            ) VALUES (%s, %s, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, %s)
+            ON CONFLICT (item_id, signal_type) DO UPDATE
+            SET is_active = TRUE,
+                activation_started_at = CASE
+                    WHEN market_news_signal_state.is_active
+                        THEN market_news_signal_state.activation_started_at
+                    ELSE CURRENT_TIMESTAMP
+                END,
+                last_seen_at = CURRENT_TIMESTAMP,
+                cleared_at = NULL,
+                last_severity = EXCLUDED.last_severity
+            """,
+            (candidate.item_id, candidate.signal_type, candidate.severity_score),
+        )
+
+    return newly_activated
 
 
 def get_item_name(cur, item_id: int) -> str:
@@ -688,7 +911,7 @@ def generate_article_with_llm(candidate: Candidate, item_name: str) -> Dict[str,
         return generate_article_with_template(candidate, item_name)
 
 
-def insert_internal_news(cur, candidate: Candidate, article: Dict[str, str], item_name: str) -> None:
+def insert_internal_news(cur, candidate: Candidate, article: Dict[str, str], item_name: str) -> bool:
     content = article["content"]
     if article.get("summary"):
         content = f"{article['summary']}\n\n{content}"
@@ -701,54 +924,75 @@ def insert_internal_news(cur, candidate: Candidate, article: Dict[str, str], ite
             title,
             content,
             published_at,
-            created_at
+            item_id,
+            signal_type,
+            dedupe_key
         ) VALUES (
-            %s, %s, %s::timestamp, %s::timestamp
+            %s, %s, %s::timestamp, %s, %s, %s
         )
+        ON CONFLICT (dedupe_key) DO NOTHING
+        RETURNING internal_news_id
         """,
         (
             article["title"],
             content,
             game_timestamp,
-            game_timestamp,
+            candidate.item_id,
+            candidate.signal_type,
+            candidate.dedupe_key,
         ),
     )
+    return cur.fetchone() is not None
 
 
-def publish_best_candidate(candidates: DataFrame) -> bool:
-    rows = candidates.orderBy(F.desc("severity_score")).collect()
-    if not rows:
-        return False
+def publish_best_candidate(rows: List[Any]) -> bool:
+    candidates = []
+    for row in rows:
+        raw = row.asDict(recursive=True)
+        candidate = Candidate(
+            item_id=int(raw["item_id"]),
+            signal_type=raw["signal_type"],
+            severity_score=float(raw["severity_score"]),
+            headline=raw["headline"],
+            summary=raw["summary"],
+            reference_time=raw["reference_time"],
+            dedupe_key=raw["dedupe_key"],
+            raw=raw,
+        )
+        if candidate.severity_score >= NEWS_MIN_SEVERITY_SCORE:
+            candidates.append(candidate)
 
     conn = get_db_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            if has_recent_news(cur, rows[0]["reference_time"]):
+            newly_activated = synchronize_signal_states(cur, candidates)
+            if not newly_activated:
+                conn.commit()
+                print("[MARKET-NEWS-STREAM] no newly activated signal")
+                return False
+
+            if has_recent_news(cur):
                 print("[MARKET-NEWS-STREAM] global cooldown active")
                 conn.commit()
                 return False
 
-            for row in rows:
-                raw = row.asDict(recursive=True)
-                candidate = Candidate(
-                    item_id=int(raw["item_id"]),
-                    signal_type=raw["signal_type"],
-                    severity_score=float(raw["severity_score"]),
-                    headline=raw["headline"],
-                    summary=raw["summary"],
-                    reference_time=raw["reference_time"],
-                    dedupe_key=raw["dedupe_key"],
-                    raw=raw,
-                )
-
-                if candidate.severity_score < NEWS_MIN_SEVERITY_SCORE:
-                    continue
+            for candidate in newly_activated:
                 if is_duplicate_or_cooling_down(cur, candidate):
                     continue
 
                 item_name = get_item_name(cur, candidate.item_id)
                 article = generate_article_with_llm(candidate, item_name)
-                insert_internal_news(cur, candidate, article, item_name)
+                inserted = insert_internal_news(cur, candidate, article, item_name)
+                if not inserted:
+                    continue
+                cur.execute(
+                    """
+                    UPDATE market_news_signal_state
+                    SET last_published_at = CURRENT_TIMESTAMP
+                    WHERE item_id = %s AND signal_type = %s
+                    """,
+                    (candidate.item_id, candidate.signal_type),
+                )
                 conn.commit()
                 print(
                     "[MARKET-NEWS-STREAM] inserted internal news "
@@ -775,8 +1019,22 @@ def run_market_news_cycle(
     current_start = reference_time - timedelta(minutes=args.window_minutes)
     previous_start = current_start - timedelta(minutes=args.window_minutes)
 
-    raw_orders = read_json_recursive(spark, args.order_path)
-    raw_trades = read_json_recursive(spark, args.trade_path)
+    raw_orders = read_event_window(
+        spark,
+        args.order_path,
+        args.order_curated_path,
+        ORDER_INPUT_SCHEMA,
+        previous_start,
+        reference_time,
+    )
+    raw_trades = read_event_window(
+        spark,
+        args.trade_path,
+        args.trade_curated_path,
+        TRADE_INPUT_SCHEMA,
+        previous_start,
+        reference_time,
+    )
 
     orders = bucketize(
         normalize_orders(raw_orders),
@@ -793,20 +1051,48 @@ def run_market_news_cycle(
 
     order_metrics = aggregate_order_metrics(orders)
     trade_metrics = aggregate_trade_metrics(trades)
-    item_metrics = compute_item_metrics(order_metrics, trade_metrics)
-    news_candidates = build_news_candidates(item_metrics, args, reference_time)
-
-    candidate_count = news_candidates.count()
-    print(
-        f"[MARKET-NEWS-STREAM] reference_time={reference_time.isoformat()} "
-        f"candidates={candidate_count}"
+    item_metrics = compute_item_metrics(order_metrics, trade_metrics).persist(
+        StorageLevel.MEMORY_AND_DISK
     )
 
-    if candidate_count == 0:
-        return 0
+    try:
+        # Materialize the expensive HDFS parse/group/pivot lineage once. The
+        # seven signal branches below then reuse this small per-item result.
+        summary = item_metrics.agg(
+            F.sum(
+                F.col("current_created_count")
+                + F.col("current_cancelled_count")
+                + F.col("previous_created_count")
+                + F.col("previous_cancelled_count")
+            ).alias("order_event_count"),
+            F.sum(
+                F.col("current_trade_count") + F.col("previous_trade_count")
+            ).alias("trade_event_count"),
+        ).collect()[0]
+        order_event_count = int(summary["order_event_count"] or 0)
+        trade_event_count = int(summary["trade_event_count"] or 0)
+        print(
+            f"[MARKET-NEWS-STREAM] normalized orders={order_event_count} "
+            f"trades={trade_event_count}"
+        )
 
-    publish_best_candidate(news_candidates)
-    return candidate_count
+        game_reference_time = get_game_reference_time()
+        candidate_rows = (
+            build_news_candidates(item_metrics, args, game_reference_time)
+            .orderBy(F.desc("severity_score"))
+            .collect()
+        )
+        candidate_count = len(candidate_rows)
+        print(
+            f"[MARKET-NEWS-STREAM] reference_time={reference_time.isoformat()} "
+            f"game_reference_time={game_reference_time.isoformat()} "
+            f"candidates={candidate_count}"
+        )
+
+        publish_best_candidate(candidate_rows)
+        return candidate_count
+    finally:
+        item_metrics.unpersist()
 
 
 def main() -> None:

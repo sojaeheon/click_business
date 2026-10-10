@@ -1,5 +1,6 @@
 services:
   nginx:
+    profiles: ["deploy"]
     image: nginx:stable-alpine
     container_name: ecosim-nginx
     restart: always
@@ -13,6 +14,7 @@ services:
       - ecosim-network
 
   jenkins:
+    profiles: ["deploy"]
     build: .
     user: root
     container_name: jenkins

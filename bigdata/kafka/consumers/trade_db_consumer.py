@@ -1,5 +1,6 @@
 import time
 import json
+import os
 import psycopg2
 from datetime import datetime
 from kafka import KafkaConsumer
@@ -24,11 +25,16 @@ while True:
     try:
         consumer = KafkaConsumer(
             'market.trade.events',
-            bootstrap_servers='kafka:29092',
+            bootstrap_servers=os.getenv(
+                "KAFKA_BOOTSTRAP_SERVERS",
+                "kafka:29092,kafka-2:29092,kafka-3:29092",
+            ),
             auto_offset_reset='latest',
             enable_auto_commit=False,
             group_id='trade-db-consumer',
-            value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+            # utf-8-sig also accepts normal UTF-8 and safely removes a BOM
+            # from manually produced messages on Windows.
+            value_deserializer=lambda x: json.loads(x.decode('utf-8-sig'))
         )
         print("Kafka Trade DB Consumer 연결 성공")
         break
@@ -148,6 +154,19 @@ for message in consumer:
             continue
 
         if event_type == "market.trade.executed":
+            required_fields = (
+                "price",
+                "quantity",
+                "item_id",
+                "buy_order_id",
+                "sell_order_id",
+                "buy_remaining_quantity",
+                "sell_remaining_quantity",
+            )
+            if any(payload.get(field) is None for field in required_fields):
+                print("[WARN] incomplete trade event skipped from trade_history")
+                consumer.commit()
+                continue
             insert_trade(conn, payload)
         else:
             print(f"[INFO] 알 수 없는 이벤트: {event_type}")

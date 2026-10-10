@@ -1,154 +1,122 @@
-import time
 import json
-import psycopg2
+import os
+import time
 from datetime import datetime
+
+import psycopg2
 from kafka import KafkaConsumer
 from kafka.errors import NoBrokersAvailable
 
-# -----------------------------
-# PostgreSQL 연결
-# -----------------------------
+
+SKIP_VIRTUAL_EVENTS = os.getenv("SKIP_VIRTUAL_EVENTS", "false").lower() == "true"
+
+
 def get_connection():
     return psycopg2.connect(
         host="postgres-db",
         port=5432,
         database="ecosim",
         user="ecosim",
-        password="ecosim"
+        password="ecosim",
     )
 
-# -----------------------------
-# Kafka 연결
-# -----------------------------
-while True:
-    try:
-        consumer = KafkaConsumer(
-            'market.order.events',
-            bootstrap_servers='kafka:29092',
-            auto_offset_reset='earliest',
-            enable_auto_commit=False,
-            group_id='order-db-consumer',
-            value_deserializer=lambda x: json.loads(x.decode('utf-8'))
-        )
-        print("Kafka Order DB Consumer 연결 성공")
-        break
-    except NoBrokersAvailable:
-        print("Kafka 연결 실패, 재시도...")
-        time.sleep(5)
 
-# -----------------------------
-# 시간 변환
-# -----------------------------
-def to_datetime(iso_time_str):
+def create_consumer():
+    while True:
+        try:
+            return KafkaConsumer(
+                "market.order.events",
+                bootstrap_servers=os.getenv(
+                    "KAFKA_BOOTSTRAP_SERVERS",
+                    "kafka:29092,kafka-2:29092,kafka-3:29092",
+                ),
+                auto_offset_reset="earliest",
+                enable_auto_commit=False,
+                group_id="order-db-consumer",
+                value_deserializer=lambda value: json.loads(value.decode("utf-8")),
+            )
+        except NoBrokersAvailable:
+            print("Kafka unavailable; retrying in 5 seconds")
+            time.sleep(5)
+
+
+def to_datetime(value):
     try:
-        return datetime.fromisoformat(iso_time_str)
-    except:
+        return datetime.fromisoformat(value)
+    except Exception:
         return datetime.utcnow()
 
-# -----------------------------
-# 주문 생성 (INSERT)
-# -----------------------------
+
 def insert_order(conn, data, payload):
     with conn.cursor() as cur:
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO market_order (
-                market_order_id,
-                item_id,
-                company_id,
-                order_type,
-                price,
-                total_quantity,
-                remaining_quantity,
-                status,
-                is_virtual,
-                created_at,
-                updated_at
+                market_order_id, item_id, company_id, order_type, price,
+                total_quantity, remaining_quantity, status, is_virtual,
+                created_at, updated_at
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT DO NOTHING
-        """, (
-            payload["order_id"],
-            payload["item_id"],
-            # data.get("company_id"),
-            int(data.get("company_id").replace("c", "")),
-            payload["side"],
-            payload["price"],
-            payload["quantity"],
-            payload.get("remaining_quantity", payload["quantity"]),
-            payload.get("status", "PENDING"),
-            payload.get("is_virtual", False),
-            to_datetime(payload.get("created_at")),
-            to_datetime(payload.get("created_at"))
-        ))
+            """,
+            (
+                payload["order_id"],
+                payload["item_id"],
+                int(str(data.get("company_id")).replace("c", "")),
+                payload["side"],
+                payload["price"],
+                payload["quantity"],
+                payload.get("remaining_quantity", payload["quantity"]),
+                payload.get("status", "PENDING"),
+                payload.get("is_virtual", False),
+                to_datetime(payload.get("created_at")),
+                to_datetime(payload.get("created_at")),
+            ),
+        )
 
-# -----------------------------
-# 주문 취소 (UPDATE)
-# -----------------------------
+
 def cancel_order(conn, payload):
-    cancelled_at = to_datetime(payload.get("cancelled_at"))
     with conn.cursor() as cur:
-        cur.execute("""
+        cur.execute(
+            """
             UPDATE market_order
-            SET status = 'CANCELED',
-                updated_at = %s
-            WHERE market_order_id = %s
-        """, (cancelled_at, payload["order_id"]))
+               SET status = 'CANCELED', updated_at = %s
+             WHERE market_order_id = %s
+            """,
+            (to_datetime(payload.get("cancelled_at")), payload["order_id"]),
+        )
 
 
-def process_event_with_retry(conn, event_type, data, payload, retries=20, delay=0.5):
-    order_id = payload.get("order_id")
+def process_event(conn, data):
+    event_type = data.get("event_type")
+    payload = data.get("payload")
+    if not payload:
+        return
+    if SKIP_VIRTUAL_EVENTS and payload.get("is_virtual", False):
+        return
 
-    for attempt in range(retries):
-        try:
-            if event_type == "market.order.created":
-                insert_order(conn, data, payload)
-            elif event_type == "market.order.cancelled":
-                cancel_order(conn, payload)
-            else:
-                print(f"[INFO] 알 수 없는 이벤트: {event_type}")
-                return False
+    if event_type == "market.order.created":
+        insert_order(conn, data, payload)
+    elif event_type == "market.order.cancelled":
+        cancel_order(conn, payload)
 
-            conn.commit()
-            return True
-        except Exception as e:
-            conn.rollback()
 
-            if attempt == retries - 1:
-                print(f"[ERROR] {event_type} 최종 실패 → order_id={order_id}, error={e}")
-                raise
+consumer = create_consumer()
+connection = get_connection()
+connection.autocommit = False
+print(f"Order DB consumer started (skip_virtual={SKIP_VIRTUAL_EVENTS})")
 
-            print(
-                f"[RETRY] {event_type} 재시도 중 ({attempt + 1}/{retries}) "
-                f"→ order_id={order_id}, error={e}"
-            )
-            time.sleep(delay)
+while True:
+    batches = consumer.poll(timeout_ms=1000, max_records=500)
+    if not batches:
+        continue
 
-# -----------------------------
-# 메인 루프
-# -----------------------------
-conn = get_connection()
-conn.autocommit = False
-
-print("DB Consumer 시작...")
-
-for message in consumer:
     try:
-        data = message.value
-        event_type = data.get("event_type")
-        payload = data.get("payload")
-        # print(json.dumps(data, indent=2, ensure_ascii=False))
-
-        if not payload:
-            continue
-
-        success = process_event_with_retry(conn, event_type, data, payload)
-        if not success:
-            continue
-
-        # Kafka commit
+        for messages in batches.values():
+            for message in messages:
+                process_event(connection, message.value)
+        connection.commit()
         consumer.commit()
-
-        # print(f"[SUCCESS] {event_type} 처리 완료")
-
-    except Exception as e:
-        print(f"[ERROR] {e}")
-        conn.rollback()
+    except Exception as exc:
+        connection.rollback()
+        print(f"[ERROR] order DB batch failed: {exc}")
+        time.sleep(1)

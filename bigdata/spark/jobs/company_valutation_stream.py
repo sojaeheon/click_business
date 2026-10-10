@@ -1,64 +1,41 @@
+"""Stream current company valuations from Kafka change notifications.
+
+The operational PostgreSQL tables are the source of truth for company cash and
+warehouse stock. Kafka tells this job which companies (or item prices) changed.
+Only the latest trade price is materialized locally because a trade is produced
+to Kafka before the asynchronous trade-history consumer writes it to PostgreSQL.
+"""
+
 import os
-from typing import List
+from datetime import datetime, timezone
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 import psycopg2
 from psycopg2.extras import execute_values
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import (
-    col,
-    from_json,
-    to_timestamp,
-    coalesce,
-    lit,
-    from_unixtime,
-    current_timestamp,
-    row_number,
-    sum as spark_sum,
-    max as spark_max,
+from pyspark.sql.functions import col, from_json
+from pyspark.sql.types import IntegerType, MapType, StringType, StructField, StructType
+
+
+DB_HOST = os.getenv("DB_HOST", "postgres-db")
+DB_PORT = int(os.getenv("DB_PORT", "5432"))
+DB_NAME = os.getenv("DB_NAME", "ecosim")
+DB_USER = os.getenv("DB_USER", "ecosim")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "ecosim")
+
+KAFKA_BOOTSTRAP = os.getenv(
+    "KAFKA_BOOTSTRAP_SERVERS", "kafka:29092,kafka-2:29092,kafka-3:29092"
 )
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType, MapType
-from pyspark.sql.window import Window
-
-# -----------------------------
-# Spark 세션
-# -----------------------------
-spark = (
-    SparkSession.builder
-    .appName("CompanyValuationStream-Step4-StateAndValuation")
-    .getOrCreate()
-)
-spark.sparkContext.setLogLevel("WARN")
-
-# -----------------------------
-# Analytics DB 환경변수
-# -----------------------------
-AN_DB_HOST = os.getenv("ANALYTICS_DB_HOST", "analytics-postgres")
-AN_DB_PORT = int(os.getenv("ANALYTICS_DB_PORT", "5432"))
-AN_DB_NAME = os.getenv("ANALYTICS_DB_NAME", "ecosim_analytics")
-AN_DB_USER = os.getenv("ANALYTICS_DB_USER", "ecosim")
-AN_DB_PASSWORD = os.getenv("ANALYTICS_DB_PASSWORD", "ecosim")
-
-# -----------------------------
-# Operation DB 환경변수 (ranking_current 저장용)
-# -----------------------------
-OP_DB_HOST = os.getenv("OP_DB_HOST", "postgres-db")
-OP_DB_PORT = int(os.getenv("OP_DB_PORT", "5432"))
-OP_DB_NAME = os.getenv("OP_DB_NAME", "ecosim")
-OP_DB_USER = os.getenv("OP_DB_USER", "ecosim")
-OP_DB_PASSWORD = os.getenv("OP_DB_PASSWORD", "ecosim")
-
-# -----------------------------
-# Kafka 환경변수
-# -----------------------------
-KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
-KAFKA_TOPICS_STREAM = os.getenv(
+KAFKA_TOPICS = os.getenv(
     "KAFKA_TOPICS_STREAM",
-    "company.events,warehouse.events,market.trade.events"
+    "company.events,warehouse.events,market.trade.events",
+)
+TRIGGER_INTERVAL = os.getenv("VALUATION_TRIGGER_INTERVAL", "2 seconds")
+MAX_OFFSETS_PER_TRIGGER = int(os.getenv("VALUATION_MAX_OFFSETS_PER_TRIGGER", "1000"))
+CHECKPOINT_LOCATION = os.getenv(
+    "VALUATION_CHECKPOINT_LOCATION", "/tmp/checkpoints/company-valuation-v2"
 )
 
-# -----------------------------
-# 공통 envelope 스키마
-# -----------------------------
 envelope_schema = StructType([
     StructField("event_id", StringType(), True),
     StructField("event_type", StringType(), True),
@@ -70,437 +47,313 @@ envelope_schema = StructType([
     StructField("payload", MapType(StringType(), StringType()), True),
 ])
 
-# -----------------------------
-# Kafka source
-# -----------------------------
-raw = (
-    spark.readStream
-    .format("kafka")
-    .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
-    .option("subscribe", KAFKA_TOPICS_STREAM)
-    .option("startingOffsets", "latest")
-    .load()
-)
 
-base = (
-    raw.selectExpr(
-        "topic",
-        "partition",
-        "offset",
-        "timestamp as kafka_timestamp",
-        "CAST(value AS STRING) as raw_json"
+def get_connection():
+    connection = psycopg2.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        dbname=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
     )
-    .withColumn("e", from_json(col("raw_json"), envelope_schema))
-    .select(
-        col("e.event_type").alias("event_type"),
-        col("e.occurred_at").alias("occurred_at"),
-        col("e.partition_key").alias("partition_key"),
-        col("e.aggregate_id").alias("aggregate_id"),
-        col("e.payload").alias("payload"),
-        col("topic"),
-        col("partition"),
-        col("offset"),
-        col("kafka_timestamp"),
-        col("raw_json")
-    )
-)
-
-# -----------------------------
-# 정규화: company.cash.changed
-# -----------------------------
-cash_events = (
-    base.filter(col("event_type") == "company.cash.changed")
-    .select(
-        coalesce(
-            col("payload").getItem("company_id"),
-            col("partition_key"),
-            col("aggregate_id")
-        ).cast("bigint").alias("company_id"),
-        col("payload").getItem("cash").cast("bigint").alias("cash"),
-        to_timestamp(
-            coalesce(col("payload").getItem("changed_at"), col("occurred_at"))
-        ).alias("updated_at")
-    )
-    .filter(col("company_id").isNotNull() & col("cash").isNotNull())
-)
-
-# -----------------------------
-# 정규화: warehouse.item.stored / removed
-# -----------------------------
-warehouse_events = (
-    base.filter(col("event_type").isin("warehouse.item.stored", "warehouse.item.removed"))
-    .select(
-        col("event_type"),
-        col("payload").getItem("company_id").cast("bigint").alias("company_id"),
-        col("payload").getItem("item_id").cast("bigint").alias("item_id"),
-        col("payload").getItem("quantity_delta").cast("bigint").alias("raw_qty_delta"),
-        to_timestamp(
-            coalesce(
-                col("payload").getItem("stored_at"),
-                col("payload").getItem("removed_at"),
-                col("occurred_at")
-            )
-        ).alias("updated_at")
-    )
-    .filter(
-        col("company_id").isNotNull()
-        & col("item_id").isNotNull()
-        & col("raw_qty_delta").isNotNull()
-    )
-    .withColumn(
-        "qty_delta",
-        col("raw_qty_delta") * (
-            (col("event_type") == "warehouse.item.removed").cast("int") * lit(-2) + lit(1)
-        )
-    )
-    .select("company_id", "item_id", "qty_delta", "updated_at")
-)
-
-# -----------------------------
-# 정규화: market.trade.executed
-# -----------------------------
-trade_events = (
-    base.filter(col("event_type") == "market.trade.executed")
-    .select(
-        col("payload").getItem("item_id").cast("bigint").alias("item_id"),
-        coalesce(
-            col("payload").getItem("matched_price"),
-            col("payload").getItem("price")
-        ).cast("bigint").alias("last_price"),
-        coalesce(
-            from_unixtime(
-                coalesce(
-                    col("payload").getItem("executed_at"),
-                    col("occurred_at")
-                ).cast("double")
-            ).cast("timestamp"),
-            col("kafka_timestamp").cast("timestamp"),
-            current_timestamp()
-        ).alias("updated_at")
-    )
-    .filter(
-        col("item_id").isNotNull()
-        & col("last_price").isNotNull()
-        & col("updated_at").isNotNull()
-    )
-)
-
-# -----------------------------
-# DB 연결 함수
-# -----------------------------
-def get_an_conn():
-    conn = psycopg2.connect(
-        host=AN_DB_HOST,
-        port=AN_DB_PORT,
-        dbname=AN_DB_NAME,
-        user=AN_DB_USER,
-        password=AN_DB_PASSWORD
-    )
-    conn.autocommit = False
-    return conn
+    connection.autocommit = False
+    return connection
 
 
-def get_op_conn():
-    conn = psycopg2.connect(
-        host=OP_DB_HOST,
-        port=OP_DB_PORT,
-        dbname=OP_DB_NAME,
-        user=OP_DB_USER,
-        password=OP_DB_PASSWORD
-    )
-    conn.autocommit = False
-    return conn
+def as_int(value: Any) -> Optional[int]:
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
-def normalize_company_ids(company_ids: List[int]) -> List[int]:
-    if not company_ids:
-        return []
-    return sorted(set(int(x) for x in company_ids if x is not None))
+def parse_event_time(value: Optional[str]) -> datetime:
+    """Normalize ISO-8601, seconds, milliseconds, and scientific epochs to UTC."""
+    if value:
+        try:
+            epoch = float(value)
+            if epoch > 10_000_000_000:
+                epoch /= 1000
+            return datetime.fromtimestamp(epoch, tz=timezone.utc)
+        except (TypeError, ValueError, OverflowError, OSError):
+            try:
+                return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                pass
+    return datetime.now(timezone.utc)
 
-# -----------------------------
-# 가치 재계산: 변경된 company_id만
-# -----------------------------
-def recompute_company_valuation_for_companies(an_cur, company_ids: List[int]):
-    target_ids = normalize_company_ids(company_ids)
+
+def event_time(payload: Dict[str, str], fields: Iterable[str], fallback: Optional[str]) -> datetime:
+    for field in fields:
+        value = payload.get(field)
+        if value:
+            return parse_event_time(value)
+    return parse_event_time(fallback)
+
+
+def newer(current: Optional[Tuple[int, datetime]], candidate_time: datetime) -> bool:
+    return current is None or candidate_time >= current[1]
+
+
+def recompute_valuations(cursor, company_ids: Iterable[int]) -> List[Tuple[int, int]]:
+    """Read cash and stock from operational tables and upsert only changed companies."""
+    target_ids = sorted(set(company_ids))
     if not target_ids:
-        return
+        return []
 
-    an_cur.execute("""
+    cursor.execute(
+        """
         WITH targets AS (
             SELECT UNNEST(%s::bigint[]) AS company_id
-        ),
-        inv AS (
+        ), inventory AS (
             SELECT
-                q.company_id,
-                SUM(q.qty * p.last_price)::bigint AS inventory_value
-            FROM company_item_qty_state q
-            JOIN item_price_state p ON p.item_id = q.item_id
-            WHERE q.company_id IN (SELECT company_id FROM targets)
-            GROUP BY q.company_id
+                warehouse.company_id,
+                SUM(slot.quantity * price.last_price)::bigint AS inventory_value
+            FROM warehouse
+            JOIN warehouse_slot slot ON slot.warehouse_id = warehouse.warehouse_id
+            JOIN item_price_state price ON price.item_id = slot.item_id
+            WHERE warehouse.company_id IN (SELECT company_id FROM targets)
+              AND slot.item_id IS NOT NULL
+              AND slot.quantity > 0
+            GROUP BY warehouse.company_id
         )
         INSERT INTO company_valuation (company_id, cash, inventory_value, market_cap, updated_at)
         SELECT
-            c.company_id,
-            c.cash,
-            COALESCE(inv.inventory_value, 0) AS inventory_value,
-            c.cash + COALESCE(inv.inventory_value, 0) AS market_cap,
+            company.company_id,
+            company.cash,
+            COALESCE(inventory.inventory_value, 0),
+            company.cash + COALESCE(inventory.inventory_value, 0),
             NOW()
-        FROM targets t
-        JOIN company_cash_state c ON c.company_id = t.company_id
-        LEFT JOIN inv ON inv.company_id = c.company_id
+        FROM company
+        JOIN targets ON targets.company_id = company.company_id
+        LEFT JOIN inventory ON inventory.company_id = company.company_id
         ON CONFLICT (company_id) DO UPDATE
         SET cash = EXCLUDED.cash,
             inventory_value = EXCLUDED.inventory_value,
             market_cap = EXCLUDED.market_cap,
             updated_at = EXCLUDED.updated_at
-    """, (target_ids,))
+        RETURNING company_id, market_cap
+        """,
+        (target_ids,),
+    )
+    return [(int(company_id), int(market_cap)) for company_id, market_cap in cursor.fetchall()]
 
-# -----------------------------
-# ranking_current 동기화 (FK 보호)
-# - 운영 DB company 테이블에 존재하는 company_id만 upsert
-# -----------------------------
-def sync_ranking_current(company_ids: List[int]):
-    target_ids = normalize_company_ids(company_ids)
-    if not target_ids:
+
+def sync_ranking_current(cursor, valuations: List[Tuple[int, int]]) -> None:
+    if not valuations:
         return
 
-    an_conn = get_an_conn()
-    op_conn = get_op_conn()
+    execute_values(
+        cursor,
+        """
+        INSERT INTO ranking_current (company_id, valuation, ranking_updated_at)
+        SELECT value.company_id, value.valuation, NOW()
+        FROM (VALUES %s) AS value(company_id, valuation)
+        JOIN company ON company.company_id = value.company_id
+        ON CONFLICT (company_id) DO UPDATE
+        SET valuation = EXCLUDED.valuation,
+            ranking_updated_at = EXCLUDED.ranking_updated_at
+        """,
+        valuations,
+        template="(%s, %s)",
+        page_size=1000,
+    )
 
+
+def affected_company_ids(cursor, item_ids: Iterable[int]) -> Set[int]:
+    """Find companies whose warehouse currently contains a repriced item."""
+    ids = sorted(set(item_ids))
+    if not ids:
+        return set()
+    cursor.execute(
+        """
+        SELECT DISTINCT warehouse.company_id
+        FROM warehouse
+        JOIN warehouse_slot slot ON slot.warehouse_id = warehouse.warehouse_id
+        WHERE slot.item_id = ANY(%s)
+          AND slot.quantity > 0
+        """,
+        (ids,),
+    )
+    return {int(row[0]) for row in cursor.fetchall()}
+
+
+def bootstrap_current_valuations() -> None:
+    """Rebuild current values before consuming only new Kafka events."""
+    connection = get_connection()
     try:
-        with an_conn.cursor() as an_cur, op_conn.cursor() as op_cur:
-            an_cur.execute("""
-                SELECT company_id, market_cap
-                FROM company_valuation
-                WHERE company_id = ANY(%s)
-            """, (target_ids,))
-            rows = an_cur.fetchall()
-
-            payload = [
-                (int(company_id), int(market_cap))
-                for company_id, market_cap in rows
-                if market_cap is not None
-            ]
-
-            if not payload:
-                op_conn.commit()
-                return
-
-            execute_values(
-                op_cur,
+        with connection.cursor() as cursor:
+            cursor.execute(
                 """
-                INSERT INTO ranking_current (company_id, valuation, ranking_updated_at)
-                SELECT v.company_id, v.valuation, NOW()
-                FROM (VALUES %s) AS v(company_id, valuation)
-                JOIN company c ON c.company_id = v.company_id
-                ON CONFLICT (company_id) DO UPDATE
-                SET valuation = EXCLUDED.valuation,
-                    ranking_updated_at = EXCLUDED.ranking_updated_at
-                """,
-                payload,
-                template="(%s, %s)",
-                page_size=1000
-            )
-
-        op_conn.commit()
-    except Exception:
-        op_conn.rollback()
-        raise
-    finally:
-        an_conn.close()
-        op_conn.close()
-
-# -----------------------------
-# foreachBatch: cash state
-# -----------------------------
-def upsert_cash_state(batch_df, batch_id: int):
-    dedup_df = (
-        batch_df
-        .filter(
-            col("company_id").isNotNull()
-            & col("cash").isNotNull()
-            & col("updated_at").isNotNull()
-        )
-        .withColumn(
-            "rn",
-            row_number().over(
-                Window.partitionBy("company_id").orderBy(col("updated_at").desc())
-            )
-        )
-        .filter(col("rn") == 1)
-        .select("company_id", "cash", "updated_at")
-    )
-
-    rows = dedup_df.collect()
-    if not rows:
-        return
-
-    data = [(int(r["company_id"]), int(r["cash"]), r["updated_at"]) for r in rows]
-    changed_company_ids = [int(r["company_id"]) for r in rows]
-
-    an_conn = get_an_conn()
-    try:
-        with an_conn.cursor() as an_cur:
-            execute_values(an_cur, """
-                INSERT INTO company_cash_state (company_id, cash, updated_at)
-                VALUES %s
-                ON CONFLICT (company_id) DO UPDATE
-                SET cash = EXCLUDED.cash,
-                    updated_at = EXCLUDED.updated_at
-            """, data, page_size=1000)
-
-            recompute_company_valuation_for_companies(an_cur, changed_company_ids)
-
-        an_conn.commit()
-        sync_ranking_current(changed_company_ids)
-        print(f"[CASH] batch={batch_id}, upserted={len(data)}")
-    except Exception:
-        an_conn.rollback()
-        raise
-    finally:
-        an_conn.close()
-
-# -----------------------------
-# foreachBatch: qty state
-# -----------------------------
-def upsert_item_qty_state(batch_df, batch_id: int):
-    agg_df = (
-        batch_df
-        .filter(
-            col("company_id").isNotNull()
-            & col("item_id").isNotNull()
-            & col("qty_delta").isNotNull()
-            & col("updated_at").isNotNull()
-        )
-        .groupBy("company_id", "item_id")
-        .agg(
-            spark_sum("qty_delta").alias("qty_delta"),
-            spark_max("updated_at").alias("updated_at")
-        )
-    )
-
-    rows = agg_df.collect()
-    if not rows:
-        return
-
-    data = [(int(r["company_id"]), int(r["item_id"]), int(r["qty_delta"]), r["updated_at"]) for r in rows]
-    changed_company_ids = [int(r["company_id"]) for r in rows]
-
-    an_conn = get_an_conn()
-    try:
-        with an_conn.cursor() as an_cur:
-            execute_values(an_cur, """
-                INSERT INTO company_item_qty_state (company_id, item_id, qty, updated_at)
-                VALUES %s
-                ON CONFLICT (company_id, item_id) DO UPDATE
-                SET qty = company_item_qty_state.qty + EXCLUDED.qty,
-                    updated_at = GREATEST(company_item_qty_state.updated_at, EXCLUDED.updated_at)
-            """, data, page_size=1000)
-
-            an_cur.execute("""
-                UPDATE company_item_qty_state
-                SET qty = 0
-                WHERE qty < 0
-            """)
-
-            recompute_company_valuation_for_companies(an_cur, changed_company_ids)
-
-        an_conn.commit()
-        sync_ranking_current(changed_company_ids)
-        print(f"[WH] batch={batch_id}, upserted={len(data)}")
-    except Exception:
-        an_conn.rollback()
-        raise
-    finally:
-        an_conn.close()
-
-# -----------------------------
-# foreachBatch: price state
-# -----------------------------
-def upsert_item_price_state(batch_df, batch_id: int):
-    dedup_df = (
-        batch_df
-        .filter(
-            col("item_id").isNotNull()
-            & col("last_price").isNotNull()
-            & col("updated_at").isNotNull()
-        )
-        .withColumn(
-            "rn",
-            row_number().over(
-                Window.partitionBy("item_id").orderBy(col("updated_at").desc())
-            )
-        )
-        .filter(col("rn") == 1)
-        .select("item_id", "last_price", "updated_at")
-    )
-
-    rows = dedup_df.collect()
-    if not rows:
-        return
-
-    data = [(int(r["item_id"]), int(r["last_price"]), r["updated_at"]) for r in rows]
-    changed_item_ids = [int(r["item_id"]) for r in rows]
-
-    if not changed_item_ids:
-        return
-
-    an_conn = get_an_conn()
-    changed_company_ids: List[int] = []
-
-    try:
-        with an_conn.cursor() as an_cur:
-            execute_values(an_cur, """
                 INSERT INTO item_price_state (item_id, last_price, updated_at)
-                VALUES %s
+                SELECT DISTINCT ON (item_id)
+                    item_id,
+                    close_price,
+                    NOW()
+                FROM market_candle
+                WHERE candle_type = 'MIN_1'
+                ORDER BY item_id, candle_time DESC
                 ON CONFLICT (item_id) DO UPDATE
                 SET last_price = EXCLUDED.last_price,
                     updated_at = EXCLUDED.updated_at
-            """, data, page_size=1000)
-
-            an_cur.execute("""
-                SELECT DISTINCT company_id
-                FROM company_item_qty_state
-                WHERE item_id = ANY(%s)
-            """, (changed_item_ids,))
-            changed_company_ids = [int(r[0]) for r in an_cur.fetchall()]
-
-            recompute_company_valuation_for_companies(an_cur, changed_company_ids)
-
-        an_conn.commit()
-        sync_ranking_current(changed_company_ids)
-        print(f"[PRICE] batch={batch_id}, upserted={len(data)}")
+                """
+            )
+            cursor.execute("SELECT company_id FROM company")
+            company_ids = [int(row[0]) for row in cursor.fetchall()]
+            valuations = recompute_valuations(cursor, company_ids)
+            sync_ranking_current(cursor, valuations)
+        connection.commit()
+        print(
+            f"[VALUATION] bootstrap companies={len(company_ids)}, "
+            f"valuations={len(valuations)}"
+        )
     except Exception:
-        an_conn.rollback()
+        connection.rollback()
         raise
     finally:
-        an_conn.close()
+        connection.close()
 
-# -----------------------------
-# Streaming Queries
-# -----------------------------
-q_cash = (
-    cash_events.writeStream
-    .foreachBatch(upsert_cash_state)
-    .outputMode("update")
-    .option("checkpointLocation", "/tmp/checkpoints/valuation-step4-cash-state")
+
+def process_batch(batch_df, batch_id: int) -> None:
+    """Deduplicate Kafka events, update prices, then calculate affected companies."""
+    rows = batch_df.select(
+        "event_id", "event_type", "occurred_at", "partition_key", "aggregate_id", "payload"
+    ).collect()
+    events = [
+        {
+            "event_id": row["event_id"],
+            "event_type": row["event_type"],
+            "occurred_at": row["occurred_at"],
+            "partition_key": row["partition_key"],
+            "aggregate_id": row["aggregate_id"],
+            "payload": row["payload"] or {},
+        }
+        for row in rows
+        if row["event_id"]
+    ]
+    if not events:
+        return
+
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            execute_values(
+                cursor,
+                """
+                INSERT INTO valuation_processed_event (event_id)
+                VALUES %s
+                ON CONFLICT (event_id) DO NOTHING
+                RETURNING event_id
+                """,
+                [(event["event_id"],) for event in events],
+                template="(%s)",
+                page_size=1000,
+            )
+            new_event_ids = {row[0] for row in cursor.fetchall()}
+            events = [event for event in events if event["event_id"] in new_event_ids]
+            if not events:
+                connection.commit()
+                return
+
+            changed_company_ids: Set[int] = set()
+            price_by_item: Dict[int, Tuple[int, datetime]] = {}
+
+            for event in events:
+                payload = event["payload"]
+                event_type = event["event_type"]
+
+                if event_type == "company.cash.changed":
+                    company_id = as_int(
+                        payload.get("company_id")
+                        or event["partition_key"]
+                        or event["aggregate_id"]
+                    )
+                    if company_id is not None:
+                        changed_company_ids.add(company_id)
+
+                elif event_type in ("warehouse.item.stored", "warehouse.item.removed"):
+                    company_id = as_int(payload.get("company_id") or event["partition_key"])
+                    if company_id is not None:
+                        changed_company_ids.add(company_id)
+
+                elif event_type == "market.trade.executed":
+                    item_id = as_int(payload.get("item_id"))
+                    price = as_int(
+                        payload.get("matched_price")
+                        or payload.get("trade_price")
+                        or payload.get("price")
+                    )
+                    updated_at = event_time(payload, ("executed_at",), event["occurred_at"])
+                    current = price_by_item.get(item_id) if item_id is not None else None
+                    if item_id is not None and price is not None and newer(current, updated_at):
+                        price_by_item[item_id] = (price, updated_at)
+
+            if price_by_item:
+                execute_values(
+                    cursor,
+                    """
+                    INSERT INTO item_price_state (item_id, last_price, updated_at)
+                    VALUES %s
+                    ON CONFLICT (item_id) DO UPDATE
+                    SET last_price = EXCLUDED.last_price,
+                        updated_at = EXCLUDED.updated_at
+                    WHERE EXCLUDED.updated_at >= item_price_state.updated_at
+                    """,
+                    [
+                        (item_id, price, updated_at)
+                        for item_id, (price, updated_at) in price_by_item.items()
+                    ],
+                    page_size=1000,
+                )
+                changed_company_ids.update(affected_company_ids(cursor, price_by_item))
+
+            valuations = recompute_valuations(cursor, changed_company_ids)
+            sync_ranking_current(cursor, valuations)
+
+        connection.commit()
+        print(
+            f"[VALUATION] batch={batch_id}, events={len(events)}, "
+            f"companies={len(changed_company_ids)}, valuations={len(valuations)}"
+        )
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+bootstrap_current_valuations()
+
+spark = SparkSession.builder.appName("CompanyValuationStream").getOrCreate()
+spark.sparkContext.setLogLevel("WARN")
+
+raw_events = (
+    spark.readStream.format("kafka")
+    .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
+    .option("subscribe", KAFKA_TOPICS)
+    .option("startingOffsets", "latest")
+    .option("maxOffsetsPerTrigger", MAX_OFFSETS_PER_TRIGGER)
+    .load()
+)
+
+events = (
+    raw_events.selectExpr("CAST(value AS STRING) AS raw_json")
+    .withColumn("envelope", from_json(col("raw_json"), envelope_schema))
+    .select("envelope.*")
+    .filter(col("event_type").isin(
+        "company.cash.changed",
+        "warehouse.item.stored",
+        "warehouse.item.removed",
+        "market.trade.executed",
+    ))
+)
+
+query = (
+    events.writeStream.foreachBatch(process_batch)
+    .outputMode("append")
+    .option("checkpointLocation", CHECKPOINT_LOCATION)
+    .trigger(processingTime=TRIGGER_INTERVAL)
     .start()
 )
 
-q_wh = (
-    warehouse_events.writeStream
-    .foreachBatch(upsert_item_qty_state)
-    .outputMode("update")
-    .option("checkpointLocation", "/tmp/checkpoints/valuation-step4-item-qty-state")
-    .start()
-)
-
-q_tr = (
-    trade_events.writeStream
-    .foreachBatch(upsert_item_price_state)
-    .outputMode("update")
-    .option("checkpointLocation", "/tmp/checkpoints/valuation-step4-item-price-state")
-    .start()
-)
-
-spark.streams.awaitAnyTermination()
+query.awaitTermination()

@@ -28,7 +28,7 @@ public class KafkaProducerConfig {
     /**
      * Kafka bootstrap server 주소.
      */
-    @Value("${spring.kafka.bootstrap-servers:kafka:29092}")
+    @Value("${spring.kafka.bootstrap-servers:kafka:29092,kafka-2:29092,kafka-3:29092}")
     private String bootstrapServers;
 
     /**

@@ -16,7 +16,9 @@ def _get_env(name: str, default: str | None = None) -> str:
 
 
 KAFKA_TOPIC = _get_env("KAFKA_TOPIC", "market.trade.events")
-KAFKA_BOOTSTRAP = _get_env("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
+KAFKA_BOOTSTRAP = _get_env(
+    "KAFKA_BOOTSTRAP_SERVERS", "kafka:29092,kafka-2:29092,kafka-3:29092"
+)
 KAFKA_GROUP_ID = _get_env("KAFKA_GROUP_ID", "trade-hdfs-consumer")
 KAFKA_AUTO_OFFSET_RESET = _get_env("KAFKA_AUTO_OFFSET_RESET", "earliest")
 CONSUMER_TYPE = _get_env("CONSUMER_TYPE", "trade_hdfs")
@@ -40,7 +42,8 @@ def decode_key(raw_key) -> str | None:
 
 
 def parse_json(raw_value: bytes) -> dict:
-    return json.loads(raw_value.decode("utf-8", errors="replace"))
+    # Manually produced Windows messages can contain a UTF-8 BOM.
+    return json.loads(raw_value.decode("utf-8-sig", errors="replace"))
 
 
 def dt_from_epoch_second(epoch_second: int) -> datetime:

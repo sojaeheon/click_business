@@ -48,6 +48,20 @@ const CustomCandle = (props: any) => {
   const isUp = close >= (prevClose ?? open);
   const color = isUp ? "#f43f5e" : "#3b82f6";
 
+  if (high === low) {
+    const centerY = y + height / 2;
+    return (
+      <line
+        x1={x + width * 0.15}
+        y1={centerY}
+        x2={x + width * 0.85}
+        y2={centerY}
+        stroke={color}
+        strokeWidth={2}
+      />
+    );
+  }
+
   const ratio = (val: number) => high === low ? 0.5 : (high - val) / (high - low);
   const pyHigh = y;
   const pyLow = y + height;
@@ -767,6 +781,7 @@ export function MarketPage() {
                             <Bar
                               dataKey="bounds"
                               shape={<CustomCandle />}
+                              minPointSize={2}
                               isAnimationActive={false}
                             />
                           ) : (
@@ -805,6 +820,7 @@ export function MarketPage() {
                           <Bar
                             dataKey="bounds"
                             shape={<CustomCandle />}
+                            minPointSize={2}
                             isAnimationActive={false}
                           />
                         ) : (
@@ -849,15 +865,16 @@ export function MarketPage() {
                 {(() => {
                   const DISPLAY_LEVELS = 10; // 위아래 각 10개씩
 
-                  // 현재가보다 높은 매도 호가만 필터링 (가격 내림차순)
+                  // 현재가와 같은 경계 호가도 표시한다. 기준가격이 재호가보다
+                  // 먼저 움직이는 순간에도 최우선 호가가 사라지지 않아야 한다.
                   const askPrices = [...orderBook.asks]
-                    .filter(ask => ask.price > currentMarketPrice)
+                    .filter(ask => ask.price >= currentMarketPrice)
                     .sort((a, b) => b.price - a.price)
                     .slice(0, DISPLAY_LEVELS);
 
-                  // 현재가보다 낮은 매수 호가만 필터링 (가격 내림차순)
+                  // 현재가와 같은 경계 호가도 표시한다.
                   const bidPrices = [...orderBook.bids]
-                    .filter(bid => bid.price < currentMarketPrice)
+                    .filter(bid => bid.price <= currentMarketPrice)
                     .sort((a, b) => b.price - a.price)
                     .slice(0, DISPLAY_LEVELS);
 
@@ -866,6 +883,11 @@ export function MarketPage() {
                   // 빈 행 개수 계산
                   const emptyAsksCount = DISPLAY_LEVELS - askPrices.length;
                   const emptyBidsCount = DISPLAY_LEVELS - bidPrices.length;
+                  const maxOrderQuantity = Math.max(
+                    1,
+                    ...askPrices.map(ask => ask.quantity),
+                    ...bidPrices.map(bid => bid.quantity)
+                  );
 
                   // 위쪽 빈 행 추가 (매도 호가가 부족한 경우)
                   for (let i = 0; i < emptyAsksCount; i++) {
@@ -945,7 +967,7 @@ export function MarketPage() {
                         <div className="relative h-full flex items-center justify-end pr-4">
                           {isAsk && qty !== undefined && qty > 0 && (
                             <>
-                              <div className="absolute right-0 top-1.5 bottom-1.5 bg-blue-100/40 rounded-l transition-all" style={{ width: `${Math.min(((qty ?? 0) / 400) * 100, 100)}%` }} />
+                              <div className="absolute right-0 top-1.5 bottom-1.5 bg-blue-100/40 rounded-l transition-all" style={{ width: `${Math.min(((qty ?? 0) / maxOrderQuantity) * 100, 100)}%` }} />
                               <span className="text-blue-500 font-bold text-[20px] z-10 tracking-tight">{qty?.toLocaleString()}</span>
                             </>
                           )}
@@ -958,7 +980,7 @@ export function MarketPage() {
                         <div className="relative h-full flex items-center justify-start pl-4">
                           {!isAsk && qty !== undefined && qty > 0 && (
                             <>
-                              <div className="absolute left-0 top-1.5 bottom-1.5 bg-rose-100/40 rounded-r transition-all" style={{ width: `${Math.min(((qty ?? 0) / 400) * 100, 100)}%` }} />
+                              <div className="absolute left-0 top-1.5 bottom-1.5 bg-rose-100/40 rounded-r transition-all" style={{ width: `${Math.min(((qty ?? 0) / maxOrderQuantity) * 100, 100)}%` }} />
                               <span className="text-rose-500 font-bold text-[20px] z-10 tracking-tight">{qty?.toLocaleString()}</span>
                             </>
                           )}

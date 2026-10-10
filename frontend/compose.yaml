@@ -3,6 +3,8 @@ services:
     build: .
     container_name: ecosim-frontend
     restart: always
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
     networks:
       - ecosim-network
 

@@ -10,10 +10,51 @@ services:
       - .env
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-db:5432/ecosim
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092,kafka-2:29092,kafka-3:29092
       SPRING_DATA_REDIS_HOST: redis
+      MARKET_BOT_ENABLED: "false"
+      MARKET_MATCHING_ENABLED: "false"
+      GAME_TIME_ENABLED: "true"
       CORS_ALLOWED_ORIGINS: http://j14b109.p.ssafy.io,http://15.165.236.217,http://localhost,http://localhost:5173
       SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_GOOGLE_TOKEN_URI: https://oauth2.googleapis.com/token
+    networks:
+      - ecosim-network
+
+  bot-order-producer:
+    build: .
+    container_name: bot-order-producer
+    restart: always
+    env_file:
+      - .env
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-db:5432/ecosim
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092,kafka-2:29092,kafka-3:29092
+      SPRING_DATA_REDIS_HOST: redis
+      MARKET_BOT_ENABLED: "true"
+      MARKET_MATCHING_ENABLED: "false"
+      GAME_TIME_ENABLED: "false"
+      MARKET_BOT_INTERVAL_MS: "1000"
+      MARKET_BOT_MIN_LEVELS: "10"
+      MARKET_BOT_TARGET_NOTIONAL: "600000"
+      MARKET_BOT_MAX_ORDERS_PER_ITEM_PER_TICK: "20"
+      MARKET_BOT_TICK_SIZE: "100"
+      MARKET_BOT_REPRICE_INTERVAL_MS: "10000"
+    networks:
+      - ecosim-network
+
+  matching-engine:
+    build: .
+    container_name: matching-engine
+    restart: always
+    env_file:
+      - .env
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-db:5432/ecosim
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092,kafka-2:29092,kafka-3:29092
+      SPRING_DATA_REDIS_HOST: redis
+      MARKET_BOT_ENABLED: "false"
+      MARKET_MATCHING_ENABLED: "true"
+      GAME_TIME_ENABLED: "false"
     networks:
       - ecosim-network
 

@@ -22,15 +22,17 @@ RUN printf 'server {\n\
     listen 80;\n\
     root /usr/share/nginx/html;\n\
     index index.html;\n\
+    resolver 127.0.0.11 valid=10s ipv6=off;\n\
+    set $backend_origin http://ecosim-backend:8000;\n\
 \n\
     location /api {\n\
-        proxy_pass http://ecosim-backend:8000;\n\
+        proxy_pass $backend_origin$request_uri;\n\
         proxy_set_header Host $host;\n\
         proxy_set_header X-Real-IP $remote_addr;\n\
     }\n\
 \n\
     location /ws-ecosim {\n\
-        proxy_pass http://ecosim-backend:8000;\n\
+        proxy_pass $backend_origin$request_uri;\n\
         proxy_http_version 1.1;\n\
         proxy_set_header Upgrade $http_upgrade;\n\
         proxy_set_header Connection "upgrade";\n\

@@ -16,7 +16,9 @@ def _get_env(name: str, default: str | None = None) -> str:
 
 
 KAFKA_TOPIC = _get_env("KAFKA_TOPIC", "market.order.events")
-KAFKA_BOOTSTRAP = _get_env("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
+KAFKA_BOOTSTRAP = _get_env(
+    "KAFKA_BOOTSTRAP_SERVERS", "kafka:29092,kafka-2:29092,kafka-3:29092"
+)
 KAFKA_GROUP_ID = _get_env("KAFKA_GROUP_ID", "order-hdfs-consumer")
 KAFKA_AUTO_OFFSET_RESET = _get_env("KAFKA_AUTO_OFFSET_RESET", "earliest")
 CONSUMER_TYPE = _get_env("CONSUMER_TYPE", "order_hdfs")

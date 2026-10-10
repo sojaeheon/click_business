@@ -122,7 +122,7 @@ public class CandleManager {
                 return new ArrayList<>();
             }
             
-            log.info("[CandleManager] Redis에서 {}개 분봉 조회 ({}): itemId={}", valuesWithScores.size(), type, itemId);
+            log.debug("[CandleManager] Redis에서 {}개 분봉 조회 ({}): itemId={}", valuesWithScores.size(), type, itemId);
             
             List<CandleData> candles = new ArrayList<>();
             for (ZSetOperations.TypedTuple<String> tuple : valuesWithScores) {

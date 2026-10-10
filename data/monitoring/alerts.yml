@@ -1,0 +1,26 @@
+groups:
+  - name: ecosim-data-pipeline
+    rules:
+      - alert: HdfsRawSinkDown
+        expr: up{job="hdfs-raw-sink"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: HDFS raw sink metrics endpoint is unavailable
+
+      - alert: HdfsRawSinkFlushStalled
+        expr: time() - raw_sink_last_flush_cycle_timestamp_seconds > 120
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: HDFS raw sink has not completed a flush cycle for over two minutes
+
+      - alert: HdfsRawSinkLagSustained
+        expr: sum(kafka_consumergroup_lag{consumergroup="raw-sink-v1"}) > 1000
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: HDFS raw sink Kafka lag has remained above 1000 records

@@ -6,6 +6,7 @@ import com.ssafy.ecosim.domain.market.service.CandleAggregator;
 import com.ssafy.ecosim.global.util.GameTimeUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -25,6 +26,7 @@ import java.util.Optional;
 @Slf4j
 @Component
 @EnableScheduling
+@ConditionalOnProperty(name = "game-time.enabled", havingValue = "true", matchIfMissing = true)
 @RequiredArgsConstructor
 public class GameTimeScheduler {
     

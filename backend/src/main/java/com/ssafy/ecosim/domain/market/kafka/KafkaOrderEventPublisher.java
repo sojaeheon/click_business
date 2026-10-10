@@ -58,7 +58,7 @@ public class KafkaOrderEventPublisher implements OrderEventPublisher {
 
         orderEventProducer.sendOrderCreatedEvent(envelope);
 
-        log.info("[Kafka] market.order.created published: item={}, side={}, price={}, qty={}, virtual={}",
+        log.debug("[Kafka] market.order.created published: item={}, side={}, price={}, qty={}, virtual={}",
                 event.getItemId(), event.getOrderType(), event.getPrice(),
                 event.getTotalQuantity(), event.getIsVirtual());
     }
@@ -89,7 +89,7 @@ public class KafkaOrderEventPublisher implements OrderEventPublisher {
 
         orderEventProducer.sendOrderCancelledEvent(envelope);
 
-        log.info("[Kafka] market.order.cancelled published: orderId={}, item={}, side={}",
+        log.debug("[Kafka] market.order.cancelled published: orderId={}, item={}, side={}",
                 event.getOrderId(), event.getItemId(), event.getOrderType());
     }
 
